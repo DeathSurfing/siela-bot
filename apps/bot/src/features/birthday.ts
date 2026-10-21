@@ -70,8 +70,14 @@ export class BirthdayService {
     this.logger.info({ today, month, day, rows: rows.length }, "processing birthdays");
 
     for (const row of rows) {
-      if (row.lastWishedDate === today) continue;
+      this.logger.info({ row }, "birthday candidate");
+      if (row.lastWishedDate === today) {
+        this.logger.info({ userId: row.userId }, "already wished today");
+        continue;
+      }
+      this.logger.info({ userId: row.userId }, "calling wish");
       await this.wish(row, today);
+      this.logger.info({ userId: row.userId }, "wish completed");
     }
     this.lastRunDate = today;
   }
@@ -94,7 +100,7 @@ export class BirthdayService {
       ? `🎉 Happy Birthday, <@${row.userId}>! 🎂 You're ${age} today!`
       : `🎉 Happy Birthday, <@${row.userId}>! 🎂`;
 
-    this.logger.info({ guildId: row.guildId, userId: row.userId, channel: await this.settings.getBirthdayChannel(row.guildId).catch(() => null) }, "wishing birthday");
+    this.logger.info({ guildId: row.guildId, userId: row.userId }, "wishing birthday");
     try {
       const channelId = await this.settings.getBirthdayChannel(row.guildId);
       if (channelId) {
