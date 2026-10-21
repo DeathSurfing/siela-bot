@@ -41,7 +41,7 @@ export class ControlClient {
         method,
         headers: {
           authorization: `Bearer ${this.token}`,
-          "content-type": "application/json",
+          ...(options.body === undefined ? {} : { "content-type": "application/json" }),
           "x-request-id": requestId,
           "x-actor": "mcp",
         },
