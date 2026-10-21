@@ -155,6 +155,12 @@ export const musicPlaySchema = z
   })
   .strict();
 
+export const musicJoinSchema = z
+  .object({
+    voiceChannelId: snowflakeSchema.optional(),
+  })
+  .strict();
+
 export const musicVolumeSchema = z
   .object({
     volume: z.number().int().min(0).max(150),

@@ -14,6 +14,7 @@ import {
   musicJumpSchema,
   musicLoopSchema,
   musicMoveSchema,
+  musicJoinSchema,
   musicPlaySchema,
   musicRemoveSchema,
   musicSeekSchema,
@@ -244,6 +245,9 @@ export function registerTools(server: McpServer, client: ControlClient, logger: 
   );
   register(server, "music_update_config", "Update music policy (admin).", musicSettingsUpdateSchema.shape, ADMIN, (args) =>
     call(() => client.patch("/v1/music/config", args)),
+  );
+  register(server, "music_join", "Join a voice channel so it can be used for playback.", musicJoinSchema.shape, OPERATE, (args) =>
+    call(() => client.post("/v1/music/join", args)),
   );
   register(server, "music_play", "Play/queue a search, track URL, or playlist URL (YouTube/YouTube Music/SoundCloud/Spotify).", musicPlaySchema.shape, OPERATE, (args) =>
     call(() => client.post("/v1/music/play", args)),

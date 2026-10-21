@@ -118,8 +118,20 @@ class GuildPlayer {
       if (!this.advancing) void this.advance();
     });
     this.connection.on(VoiceConnectionStatus.Disconnected, () => {
-      this.service.logger.warn({ guildId: this.guildId }, "voice connection disconnected");
-      void this.service.disconnect(this.guildId, true);
+      this.service.logger.warn({ guildId: this.guildId }, "voice connection disconnected; attempting to resume");
+      void (async () => {
+        try {
+          await Promise.race([
+            entersState(this.connection, VoiceConnectionStatus.Signalling, 5_000),
+            entersState(this.connection, VoiceConnectionStatus.Connecting, 5_000),
+          ]);
+          await entersState(this.connection, VoiceConnectionStatus.Ready, 15_000);
+          this.service.logger.info({ guildId: this.guildId }, "voice connection resumed");
+        } catch (error) {
+          this.service.logger.warn({ err: error, guildId: this.guildId }, "voice reconnect failed");
+          await this.service.disconnect(this.guildId, true);
+        }
+      })();
     });
     this.connection.on(VoiceConnectionStatus.Destroyed, () => {
       this.stopProcess();
@@ -691,13 +703,23 @@ export class MusicService extends EventEmitter {
     return tracks;
   }
 
-  private async ensurePlayer(member: GuildMember, voiceChannelId?: string): Promise<GuildPlayer> {
+  private async ensurePlayer(
+    member: GuildMember,
+    voiceChannelId?: string,
+    restore = true,
+  ): Promise<GuildPlayer> {
     const channelId = voiceChannelId ?? member.voice.channelId;
     if (!channelId) throw new UserError("Join a voice channel first.");
     const channel = member.guild.channels.cache.get(channelId);
     if (!channel || channel.type !== ChannelType.GuildVoice) throw new UserError("That is not a voice channel.");
     const existing = this.players.get(member.guild.id);
-    if (existing && existing.connection.joinConfig.channelId === channelId) return existing;
+    const existingStatus = existing?.connection.state.status;
+    const usable =
+      existing &&
+      existingStatus !== VoiceConnectionStatus.Destroyed &&
+      existingStatus !== VoiceConnectionStatus.Disconnected &&
+      existing.connection.joinConfig.channelId === channelId;
+    if (usable) return existing;
     if (existing) await this.disconnect(member.guild.id, true);
 
     const connection = joinVoiceChannel({
@@ -738,7 +760,7 @@ export class MusicService extends EventEmitter {
     });
     const guildPlayer = new GuildPlayer(member.guild.id, connection, player, this);
     const musicSettings = await this.options.settings.getMusic(member.guild.id);
-    const persisted = await this.loadPersisted(member.guild.id);
+    const persisted = restore ? await this.loadPersisted(member.guild.id) : null;
     if (persisted) {
       guildPlayer.queue.push(...(persisted.queue ?? []));
       guildPlayer.loop = persisted.loop ?? "off";
@@ -757,6 +779,13 @@ export class MusicService extends EventEmitter {
       });
     }
     return guildPlayer;
+  }
+
+  async join(member: GuildMember, voiceChannelId?: string): Promise<string> {
+    const guildPlayer = await this.ensurePlayer(member, voiceChannelId, false);
+    const channelId = guildPlayer.connection.joinConfig.channelId;
+    if (!channelId) throw new ServiceUnavailableError("Could not determine the voice channel.");
+    return channelId;
   }
 
   async play(

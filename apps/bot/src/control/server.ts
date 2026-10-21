@@ -11,6 +11,7 @@ import {
   messageSendSchema,
   musicAutoplaySchema,
   musicFilterSchema,
+  musicJoinSchema,
   musicJumpSchema,
   musicLoopSchema,
   musicMoveSchema,
@@ -341,6 +342,12 @@ export class ControlServer {
     this.route("GET", "/v1/music/state", async () => {
       const music = this.requireMusic();
       return music.state(this.guildId()) ?? { playing: false, paused: false, volume: 0, loop: "off", position: 0, current: null, upcoming: [] };
+    });
+    this.route("POST", "/v1/music/join", async (request) => {
+      const body = this.parse(musicJoinSchema, request.body ?? {});
+      const member = await this.guild().members.fetch(this.options.client.user!.id);
+      const channelId = await this.requireMusic().join(member, body.voiceChannelId);
+      return { channelId };
     });
     this.route("POST", "/v1/music/play", async (request) => {
       const body = this.parse(musicPlaySchema, request.body);

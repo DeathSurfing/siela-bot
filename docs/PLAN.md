@@ -673,12 +673,13 @@ interface TranslationProvider {
 
 | Command | Description |
 |---|---|
+| `join [voice-channel]` | Join your current voice channel, or a specified one. |
 | `play <query/url>` | Search SoundCloud, enqueue a track URL, or import a YouTube/YouTube Music/SoundCloud playlist into the queue. |
 | `pause` / `resume` | Toggle playback. |
 | `skip [n]` | Skip current or n tracks. |
 | `stop` | Stop and clear the queue. |
 | `queue [page]` | Paginated queue view with total duration and page number. |
-| `nowplaying` | Current track + controls. |
+| `nowplaying` (aliases `current`, `currentlyplaying`, `cp`, `np`) | Current track + reaction controls. |
 | `volume <0-150>` | Set volume. |
 | `seek <mm:ss>` | Returns a clear "not supported" message. |
 | `loop <off/track/queue>` | Loop mode. |
@@ -1025,7 +1026,8 @@ All tool names are lowercase snake case. No tool accepts a `guildId`; the config
 | `tempvc_delete` | admin | yes | Delete a channel; requires `confirm`. |
 | `music_get_config` | read | no | DJ roles, default volume, queue cap, music channel, alone timeout. |
 | `music_update_config` | admin | yes | Update music policy fields. |
-| `music_play` | operate | yes | Play/queue a SoundCloud query or SoundCloud/Spotify URL. |
+| `music_join` | operate | yes | Join a voice channel. |
+| `music_play` | operate | yes | Play/queue a search, track URL, or playlist URL. |
 | `music_pause` / `music_resume` | operate | yes | Playback state. |
 | `music_skip` | operate | yes | Skip current. |
 | `music_stop` | operate | yes | Stop and clear. |

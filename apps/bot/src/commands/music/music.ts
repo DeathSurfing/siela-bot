@@ -94,6 +94,27 @@ const playCommand: Command = {
   },
 };
 
+const joinCommand: Command = {
+  name: "join",
+  aliases: ["j", "summon"],
+  category: "music",
+  description: "Join your current voice channel (or a specified one).",
+  usage: "[voice-channel]",
+  examples: ["join", "join #Lounge"],
+  cooldownMs: 2_000,
+  slash: new SlashCommandBuilder()
+    .setName("join")
+    .setDescription("Join your voice channel")
+    .addChannelOption((option) =>
+      option.setName("channel").setDescription("Voice channel; defaults to yours").setRequired(false),
+    ),
+  async execute(ctx) {
+    const channelId = ctx.args[0]?.replace(/^<#|>$/g, "");
+    const joined = await music(ctx).join(ctx.member, channelId);
+    await ctx.reply({ content: `Joined <#${joined}>.`, ephemeral: true });
+  },
+};
+
 const pauseCommand: Command = {
   name: "pause",
   category: "music",
@@ -202,7 +223,7 @@ const queueCommand: Command = {
 
 const nowPlayingCommand: Command = {
   name: "nowplaying",
-  aliases: ["np"],
+  aliases: ["np", "current", "currentlyplaying", "cp"],
   category: "music",
   description: "Show the current track.",
   usage: "",
@@ -450,6 +471,7 @@ const filtersCommand: Command = {
 };
 
 export const musicCommands = [
+  joinCommand,
   playCommand,
   pauseCommand,
   resumeCommand,
