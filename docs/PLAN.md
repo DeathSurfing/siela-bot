@@ -1470,6 +1470,7 @@ services:
     mem_limit: 512m
 
   migrate:
+    image: localhost/siela-bot:latest
     build:
       context: ../..
       dockerfile: deploy/podman/Containerfile.bot
@@ -1514,6 +1515,7 @@ services:
     mem_limit: 2g
 
   bot:
+    image: localhost/siela-bot:latest
     build:
       context: ../..
       dockerfile: deploy/podman/Containerfile.bot
@@ -1545,6 +1547,7 @@ services:
     mem_limit: 1g
 
   mcp:
+    image: localhost/siela-mcp:latest
     build:
       context: ../..
       dockerfile: deploy/podman/Containerfile.mcp
