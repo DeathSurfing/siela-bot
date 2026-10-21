@@ -255,9 +255,9 @@ export class TempVcService {
     if (oldState.channelId && oldState.channelId !== settings.hubChannelId) {
       const row = await this.getRow(oldState.channelId);
       if (row?.status === "active") {
-        const channel = guild.channels.cache.get(oldState.channelId);
-        const empty = channel?.type === ChannelType.GuildVoice && channel.members.size === 0;
-        this.scheduleCleanup(guild, oldState.channelId, empty ? 0 : settings.graceSeconds, empty);
+        // Check immediately on every leave. cleanupIfEmpty still returns without
+        // deleting when someone else is present.
+        this.scheduleCleanup(guild, oldState.channelId, 0, true);
       }
     }
   }
