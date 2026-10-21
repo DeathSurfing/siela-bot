@@ -12,8 +12,7 @@ export GUILD_ID="..."
 export DISCORD_CLIENT_ID="..."
 ./scripts/podman-init.sh
 
-podman compose -p siela -f deploy/podman/compose.yaml up -d --build
-podman compose -p siela -f deploy/podman/compose.yaml run --rm migrate
+./scripts/podman-stack.sh up -d --build
 podman ps --format '{{.Names}}\t{{.Status}}'
 ```
 
@@ -23,16 +22,16 @@ The bot auto-detects the guild when it is in exactly one guild.
 
 ```bash
 # logs
-podman compose -p siela -f deploy/podman/compose.yaml logs -f bot
-podman compose -p siela -f deploy/podman/compose.yaml logs -f mcp
+./scripts/podman-stack.sh logs -f bot
+./scripts/podman-stack.sh logs -f translator
 
 # restart one service
 podman restart siela-bot
-podman restart siela-mcp
+podman restart siela-translator
 
 # health
 podman healthcheck run siela-bot
-podman healthcheck run siela-mcp
+podman healthcheck run siela-translator
 
 # stop the stack (volumes are kept)
 podman compose -p siela -f deploy/podman/compose.yaml down
@@ -63,6 +62,35 @@ Restore:
 ```bash
 gunzip -c /var/backups/siela/siela-YYYY-MM-DD.dump.gz \
   | podman exec -i siela-postgres pg_restore -U siela -d siela --clean --if-exists
+```
+
+## Remote Podman Desktop
+
+Podman Desktop can manage the server stack over SSH. The remote host needs the
+rootful Podman socket (`/run/podman/podman.sock`), which is already enabled by
+`podman.socket` on this host.
+
+On the Mac:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/siela_podman_ed25519
+ssh-copy-id -i ~/.ssh/siela_podman_ed25519.pub root@192.168.1.3
+
+podman system connection add siela-server \
+  --identity "$HOME/.ssh/siela_podman_ed25519" \
+  ssh://root@192.168.1.3/run/podman/podman.sock
+```
+
+Then enable **Podman Desktop → Settings → Preferences → Enable remote
+connections** (setting key `podman.system.connections.remote`). The
+connection appears as `siela-server` in the container engine picker.
+
+This is a rootful connection: the SSH key has full control of the server.
+Restrict it to the LAN in `/root/.ssh/authorized_keys` and revoke it when not
+needed. Remove the connection with:
+
+```bash
+podman system connection remove siela-server
 ```
 
 ## Troubleshooting
