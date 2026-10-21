@@ -30,6 +30,7 @@ export const welcomeSettings = pgTable("welcome_settings", {
   channelId: text("channel_id"),
   message: text("message").notNull().default("Welcome {mention} to **{server}**!"),
   embed: boolean("embed").notNull().default(true),
+  card: boolean("card").notNull().default(false),
   pingUser: boolean("ping_user").notNull().default(false),
   dmEnabled: boolean("dm_enabled").notNull().default(false),
   dmMessage: text("dm_message"),
@@ -82,6 +83,14 @@ export const musicSettings = pgTable("music_settings", {
   aloneTimeoutSeconds: integer("alone_timeout_seconds").notNull().default(120),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   updatedBy: text("updated_by"),
+});
+
+export const musicSessions = pgTable("music_sessions", {
+  guildId: text("guild_id")
+    .primaryKey()
+    .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+  state: jsonb("state").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const interactionCounters = pgTable(
@@ -163,6 +172,7 @@ export type WelcomeSettingsRow = typeof welcomeSettings.$inferSelect;
 export type AutoRoleSettingsRow = typeof autoroleSettings.$inferSelect;
 export type TempVcSettingsRow = typeof tempvcSettings.$inferSelect;
 export type MusicSettingsRow = typeof musicSettings.$inferSelect;
+export type MusicSessionRow = typeof musicSessions.$inferSelect;
 export type CounterRow = typeof interactionCounters.$inferSelect;
 export type OptoutRow = typeof interactionOptouts.$inferSelect;
 export type TempVoiceChannelRow = typeof tempVoiceChannels.$inferSelect;

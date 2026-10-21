@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.0.13",
     "@siela/config": "workspace:*",
     "@siela/db": "workspace:*",
     "@siela/shared": "workspace:*",

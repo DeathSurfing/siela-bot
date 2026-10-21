@@ -79,6 +79,7 @@ export class SettingsService {
     if (patch.channelId !== undefined) values.channelId = patch.channelId;
     if (patch.message !== undefined) values.message = patch.message;
     if (patch.embed !== undefined) values.embed = patch.embed;
+    if (patch.card !== undefined) values.card = patch.card;
     if (patch.pingUser !== undefined) values.pingUser = patch.pingUser;
     if (patch.dmEnabled !== undefined) values.dmEnabled = patch.dmEnabled;
     if (patch.dmMessage !== undefined) values.dmMessage = patch.dmMessage;

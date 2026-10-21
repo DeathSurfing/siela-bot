@@ -1,5 +1,12 @@
-import { EmbedBuilder, type GuildMember, type PartialGuildMember } from "discord.js";
+import {
+  AttachmentBuilder,
+  EmbedBuilder,
+  type GuildMember,
+  type MessageCreateOptions,
+  type PartialGuildMember,
+} from "discord.js";
 import { COLORS, renderTemplate, TEMPLATE_KEYS } from "@siela/shared";
+import { generateWelcomeCard } from "./welcomeCard.js";
 import type { SettingsService } from "./settings.js";
 import type { Logger } from "../lib/logger.js";
 
@@ -43,20 +50,53 @@ export class WelcomeService {
       const channel = member.guild.channels.cache.get(settings.channelId);
       if (channel?.isTextBased()) {
         const content = renderTemplate(settings.message, this.values(member));
-        const payload = settings.embed
-          ? {
+        const allowedMentions = { parse: settings.pingUser ? (["users"] as const) : [] };
+        let payload: MessageCreateOptions;
+        if (settings.card) {
+          try {
+            const card = await generateWelcomeCard({
+              displayName: member.displayName ?? member.user.username,
+              username: member.user.username,
+              avatarUrl: member.user.displayAvatarURL({ size: 256, extension: "png" }),
+              serverName: member.guild.name,
+              memberCount: member.guild.memberCount,
+              message: content,
+            });
+            payload = {
+              embeds: [
+                new EmbedBuilder()
+                  .setColor(COLORS.primary)
+                  .setDescription(content)
+                  .setImage("attachment://welcome.png"),
+              ],
+              files: [new AttachmentBuilder(card, { name: "welcome.png" })],
+              allowedMentions,
+            };
+          } catch (error) {
+            this.logger.warn({ err: error }, "welcome card generation failed; falling back to embed");
+            payload = {
               embeds: [
                 new EmbedBuilder()
                   .setColor(COLORS.primary)
                   .setDescription(content)
                   .setThumbnail(member.user.displayAvatarURL({ size: 256 })),
               ],
-              allowedMentions: { parse: settings.pingUser ? (["users"] as const) : [] },
-            }
-          : {
-              content,
-              allowedMentions: { parse: settings.pingUser ? (["users"] as const) : [] },
+              allowedMentions,
             };
+          }
+        } else {
+          payload = settings.embed
+            ? {
+                embeds: [
+                  new EmbedBuilder()
+                    .setColor(COLORS.primary)
+                    .setDescription(content)
+                    .setThumbnail(member.user.displayAvatarURL({ size: 256 })),
+                ],
+                allowedMentions,
+              }
+            : { content, allowedMentions };
+        }
         await channel.send(payload).catch((error) => {
           this.logger.warn({ err: error, guildId: member.guild.id }, "welcome message failed");
         });
@@ -100,6 +140,27 @@ export class WelcomeService {
       .setColor(COLORS.primary)
       .setDescription(content)
       .setFooter({ text: "Welcome preview" });
+    if (settings.card) {
+      try {
+        const card = await generateWelcomeCard({
+          displayName: member.displayName ?? member.user.username,
+          username: member.user.username,
+          avatarUrl: member.user.displayAvatarURL({ size: 256, extension: "png" }),
+          serverName: member.guild.name,
+          memberCount: member.guild.memberCount,
+          message: content,
+        });
+        embed.setImage("attachment://welcome.png");
+        await channel.send({
+          embeds: [embed],
+          files: [new AttachmentBuilder(card, { name: "welcome.png" })],
+          allowedMentions: { parse: [] },
+        });
+        return;
+      } catch (error) {
+        this.logger.warn({ err: error }, "welcome card preview failed; falling back to embed");
+      }
+    }
     await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
   }
 }

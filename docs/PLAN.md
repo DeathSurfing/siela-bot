@@ -131,7 +131,7 @@ Discord users ── prefix / slash / context menu ──┐
 - Full moderation suite (bans, kicks, automod, tickets).
 - Voice recording, transcription, or AI chat.
 - Invite tracking / inviter attribution.
-- Welcome image cards (deferred; see gaps).
+- Deep welcome-card customization beyond the generated card (the generated card is implemented and toggled with `welcome card on/off`).
 - Apple Music, Deezer, YouTube, and other music sources (only SoundCloud + optional Spotify in v1).
 - Public bot listing or verification-scale operation.
 - Paid translation APIs and OAuth for MCP in v1 (LibreTranslate and one shared token instead).
@@ -473,7 +473,7 @@ Rules:
 
 **Commands:** `welcome setup`, `welcome channel`, `welcome message`, `welcome embed`, `welcome ping`, `welcome dm`, `welcome test`, `welcome disable`, `welcome goodbye`.
 
-**Deferred:** generated welcome image cards (CPU/font/assets cost; nice-to-have).
+**Welcome card:** `welcome card on/off` toggles a generated PNG card (avatar, display name, message, server, member count) rendered with `@napi-rs/canvas`. The bot image installs DejaVu fonts; if rendering fails, the welcome falls back to the normal embed/text path.
 
 ### 5.4 Auto-role
 
@@ -711,7 +711,7 @@ lavalink:
 - One player per guild (single guild anyway).
 - `GuildPlayer` owns the queue, current track, loop mode, volume, and timeout timers.
 - Shoukaku handles node reconnection; the player reports state changes to the music channel.
-- Queue is in-memory for v1; optional DB snapshot is a later enhancement.
+- Queue persistence is implemented in `music_sessions` (jsonb): current track, upcoming queue, volume, loop, and autoplay are saved after mutations and restored the next time the bot joins voice.
 - Max queue size (default 100), max volume 150, default volume 80.
 
 **Commands:**
@@ -849,6 +849,7 @@ erDiagram
 | `channel_id` | `text` | Required when enabled. |
 | `message` | `text` | Placeholder template. |
 | `embed` | `boolean` | Default true. |
+| `card` | `boolean` | Default false; generated welcome image card. |
 | `ping_user` | `boolean` | Default false. |
 | `dm_enabled` | `boolean` | Default false. |
 | `dm_message` | `text` | Optional. |
@@ -897,6 +898,14 @@ erDiagram
 | `music_channel_id` | `text` | Optional restriction. |
 | `alone_timeout_seconds` | `integer` | Default 120. |
 | `updated_at` / `updated_by` | | |
+
+#### `music_sessions`
+
+| Column | Type | Notes |
+|---|---|---|
+| `guild_id` | `text` PK/FK | Cascade. |
+| `state` | `jsonb` | Current track, queue, volume, loop, autoplay. |
+| `updated_at` | `timestamptz` | Debounced after queue mutations. |
 
 #### `interaction_counters`
 
@@ -1479,7 +1488,7 @@ services:
     depends_on:
       - postgres
     restart: "no"
-    command: ["node", "apps/bot/dist/scripts/migrate.js"]
+    command: ["node", "dist/scripts/migrate.js"]
 
   lavalink:
     image: ghcr.io/lavalink-devs/lavalink:4
@@ -2020,7 +2029,7 @@ Estimates assume one experienced developer, part-time review, and no major Disco
 
 ### Phase 0 — Decisions and accounts (1–2 days)
 
-- Confirm remaining defaults (hosting size, admin model, welcome extras, audit retention, queue persistence).
+- Confirm remaining defaults (hosting size, admin model, welcome card, audit retention).
 - Create Discord application; enable intents; invite bot to the test guild with minimal permissions.
 - Provision Linux host with Podman 5+, or Podman machine locally.
 - Run `scripts/podman-init.sh` with `DISCORD_TOKEN`; it generates DB/Lavalink/MCP secrets.
@@ -2126,14 +2135,14 @@ This section separates **ambiguities in the brief** from **design gaps found whi
 | 11 | Prefix vs slash is unspecified. | Prefix-only needs Message Content intent and is poor on mobile. | **Confirmed hybrid:** prefix + slash + context menu + mention prefix. | Resolved |
 | 12 | Prefix validation rules are unspecified. | A bad prefix breaks parsing or conflicts. | 1–5 chars, at least one non-alphanumeric, no whitespace/`@#/`, DB constraint, mention fallback. | Resolved |
 | 13 | Auto-role policy is unspecified. | Admin-role auto-grant is a severe escalation. | Max 10 roles, skip bots, optional account-age gate, reject dangerous roles, hierarchy checks, sync. | Recommended |
-| 14 | Welcome extras are unspecified. | Scope creep (image cards, DM, goodbye, invite tracking). | v1: channel + optional DM + optional goodbye; image cards/invite tracking deferred. | Needs confirmation |
+| 14 | Welcome extras are unspecified. | Scope creep (image cards, DM, goodbye, invite tracking). | Channel + generated welcome card (`welcome card on/off`); DM/goodbye remain optional and off by default; invite tracking is out of scope. | Resolved |
 | 15 | Help "clean UI" is subjective. | Component limits, mobile layout, admin visibility. | Components V2 + categories + pagination + ephemeral + permission-aware. | Resolved |
 | 16 | Single-guild enforcement is implicit. | Accidental multi-guild data or commands. | Resolve `GUILD_ID` explicitly or auto-detect it when only one guild exists; guild-scoped registration; reject other guilds; all queries scoped. | Resolved |
 | 17 | MCP exposure is unspecified. | Public control plane is dangerous. | Exposed on the Podman `mcp` network via `MCP_URL`; one `MCP_TOKEN`; host/public exposure is an optional override; no OAuth in v1. | Resolved |
-| 18 | Queue persistence is unspecified. | Music stops after restart. | Accept loss for v1; optional DB snapshot later. | Open |
+| 18 | Queue persistence is unspecified. | Music stops after restart. | Persist queue state in `music_sessions` and restore it on the next voice join. | Resolved |
 | 19 | Data retention/privacy is unspecified. | User IDs, audit logs, translation text. | 90-day audit, no content logs, in-memory translation cache, `privacy delete`. | Resolved |
 | 20 | Hosting/scale is unspecified. | Resource sizing, voice latency, backups. | 2 vCPU / 8 GB RAM recommended (4 GB only with reduced limits) / 20 GB disk; Linux host near community; Podman rootless. | Needs confirmation |
-| 21 | Welcome image cards / invite tracking are not requested but often assumed. | Scope/CPU/assets. | Defer both; invite tracking explicitly out of scope. | Recommended |
+| 21 | Welcome image cards / invite tracking are not requested but often assumed. | Scope/CPU/assets. | Generated welcome card implemented; invite tracking explicitly out of scope. | Resolved |
 | 22 | Music DJ/permissions are unspecified. | Everyone can stop/disconnect. | Optional DJ roles; default everyone; configurable. | Needs confirmation |
 | 23 | Translation formatting (code blocks/mentions) is unspecified. | Mangled output or accidental pings. | Protect mentions/emoji; plain-text best effort; no pings; document code limitation. | Residual |
 | 24 | Podman rootless constraints were not considered. | Ports, secrets, SELinux, compose differences. | Named volumes, `mcp` network, generated `.env`, Quadlet, `:Z`, healthchecks, podman-compose-safe compose subset. | Resolved |
@@ -2181,8 +2190,8 @@ This section separates **ambiguities in the brief** from **design gaps found whi
 
 ### 13.4 What I would cut or defer for v1
 
-- Welcome image cards and invite tracking.
-- Queue persistence and autoplay.
+- Invite tracking.
+- Advanced welcome-card customization beyond the generated card.
 - Music filters beyond a small preset set.
 - OAuth 2.1 and multi-token scopes for MCP (one shared token on the Podman network is enough for a single-operator deployment).
 - Web dashboard.
@@ -2198,11 +2207,11 @@ The big decisions are now confirmed: SoundCloud + optional Spotify, LibreTransla
 
 1. **Admin model:** `Manage Guild` + owner + optional `ADMIN_ROLE_IDS` (recommended) vs a dedicated admin role only.
 2. **Auto-role policy:** which roles, skip bots, minimum account age? Recommended: skip bots, 0-day default, reject Administrator/managed/above-bot.
-3. **Welcome extras:** DM welcome? goodbye? image card? Recommended: channel + optional DM + optional goodbye; no image card in v1.
+3. **Welcome extras:** generated image card is implemented and toggled with `welcome card on/off`; DM/goodbye remain optional and off by default.
 4. **Music DJ/permissions:** optional DJ roles (recommended) vs everyone can control.
 5. **Hosting:** Linux VPS specs/region? Recommended baseline 2 vCPU / 8 GB RAM (4 GB only with reduced Lavalink/LibreTranslate limits) / 20 GB disk, rootless Podman.
 6. **Audit retention:** 90 days recommended; any compliance requirement?
-7. **Queue persistence:** accept loss on restart for v1, or require DB snapshots?
+7. **Queue persistence:** implemented with the `music_sessions` table and restored on the next voice join.
 8. **Spotify:** add the two optional Spotify values now, or start SoundCloud-only and add them later?
 
 ---

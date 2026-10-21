@@ -191,7 +191,13 @@ export class SielaBot {
     await this.services.settings.ensure(guild.id);
     this.music = new MusicService(
       this.client,
-      { url: this.config.LAVALINK_URL, password: this.config.LAVALINK_PASSWORD, guildId: guild.id, settings: this.services.settings },
+      {
+        url: this.config.LAVALINK_URL,
+        password: this.config.LAVALINK_PASSWORD,
+        guildId: guild.id,
+        settings: this.services.settings,
+        db: this.dbHandle.db,
+      },
       this.logger,
     );
     this.services.music = this.music;

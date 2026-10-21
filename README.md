@@ -6,8 +6,9 @@ A single-guild Discord bot with music, welcome/auto-role, social counters, tempo
 
 - **Music** — Lavalink 4 + LavaSrc: SoundCloud streaming with zero tokens; optional Spotify search via `SPOTIFY_CLIENT_ID`/`SPOTIFY_CLIENT_SECRET`; no YouTube.
 - **Translation** — self-hosted LibreTranslate; no paid API key.
-- **Welcomer** — join messages, optional DMs, optional goodbye messages.
-- **Auto-role** — safe role assignment on join with hierarchy and dangerous-permission checks.
+- **Welcomer** — join messages, generated welcome image cards (`welcome card on/off`), optional DMs, optional goodbye messages.
+- **Auto-role** — admin-configurable roles with hierarchy and dangerous-permission checks.
+- **Music queue persistence** — the queue, volume, loop, and autoplay state survive bot restarts and are restored on the next voice join.
 - **Social** — `slap`, `kiss`, `hug`, `chodu` with PostgreSQL pair counters, stats, leaderboard, and opt-out.
 - **Temporary VC** — join-to-create private voice channels with lock/permit/deny/disconnect/claim/transfer.
 - **Prefix** — global single-guild prefix with validation and audit.

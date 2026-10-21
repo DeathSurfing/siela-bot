@@ -26,6 +26,7 @@ export const welcomeUpdateSchema = z
     channelId: optionalSnowflakeSchema,
     message: z.string().max(MAX_WELCOME_MESSAGE).optional(),
     embed: z.boolean().optional(),
+    card: z.boolean().optional(),
     pingUser: z.boolean().optional(),
     dmEnabled: z.boolean().optional(),
     dmMessage: z.string().max(MAX_WELCOME_MESSAGE).nullable().optional(),

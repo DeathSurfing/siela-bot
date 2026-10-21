@@ -50,7 +50,7 @@ services:
     depends_on:
       - postgres
     restart: "no"
-    command: ["node", "apps/bot/dist/scripts/migrate.js"]
+    command: ["node", "dist/scripts/migrate.js"]
 
   lavalink:
     image: ghcr.io/lavalink-devs/lavalink:4

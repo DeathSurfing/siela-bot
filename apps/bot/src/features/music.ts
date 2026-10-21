@@ -1,5 +1,7 @@
 import { EventEmitter } from "node:events";
 import { ChannelType, type Client, type GuildMember } from "discord.js";
+import { eq } from "drizzle-orm";
+import { musicSessions, type Database } from "@siela/db";
 import {
   Connectors,
   Constants,
@@ -18,6 +20,15 @@ export interface MusicServiceOptions {
   password: string;
   guildId: string;
   settings: SettingsService;
+  db: Database;
+}
+
+interface PersistedMusicState {
+  current: Track | null;
+  queue: Track[];
+  volume: number;
+  loop: MusicLoopMode;
+  autoplay: boolean;
 }
 
 function trackInfo(track: Track): MusicTrackInfo {
@@ -68,6 +79,7 @@ class GuildPlayer {
   async playNow(track: Track): Promise<void> {
     this.current = track;
     await this.player.playTrack({ track: { encoded: track.encoded }, volume: this.volume });
+    this.service.schedulePersist(this.guildId);
   }
 
   async advance(): Promise<void> {
@@ -91,6 +103,7 @@ class GuildPlayer {
       }
     }
     await this.player.stopTrack().catch(() => undefined);
+    this.service.schedulePersist(this.guildId);
     this.service.emit("queueEnd", { guildId: this.guildId });
   }
 
@@ -111,6 +124,7 @@ export class MusicService extends EventEmitter {
   readonly logger: Logger;
   readonly shoukaku: Shoukaku;
   private readonly players = new Map<string, GuildPlayer>();
+  private readonly persistTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly client: Client,
@@ -142,6 +156,54 @@ export class MusicService extends EventEmitter {
 
   isUp(): boolean {
     return [...this.shoukaku.nodes.values()].some((node) => node.state === Constants.State.CONNECTED);
+  }
+
+  schedulePersist(guildId: string): void {
+    const existing = this.persistTimers.get(guildId);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      this.persistTimers.delete(guildId);
+      void this.persist(guildId);
+    }, 750);
+    timer.unref?.();
+    this.persistTimers.set(guildId, timer);
+  }
+
+  private async persist(guildId: string): Promise<void> {
+    const gp = this.players.get(guildId);
+    if (!gp) return;
+    const state: PersistedMusicState = {
+      current: gp.current,
+      queue: gp.queue,
+      volume: gp.volume,
+      loop: gp.loop,
+      autoplay: gp.autoplay,
+    };
+    try {
+      await this.options.db
+        .insert(musicSessions)
+        .values({ guildId, state, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: musicSessions.guildId,
+          set: { state, updatedAt: new Date() },
+        });
+    } catch (error) {
+      this.logger.warn({ err: error, guildId }, "failed to persist music state");
+    }
+  }
+
+  private async loadPersisted(guildId: string): Promise<PersistedMusicState | null> {
+    try {
+      const [row] = await this.options.db
+        .select()
+        .from(musicSessions)
+        .where(eq(musicSessions.guildId, guildId))
+        .limit(1);
+      return (row?.state as PersistedMusicState | undefined) ?? null;
+    } catch (error) {
+      this.logger.debug({ err: error, guildId }, "failed to load music state");
+      return null;
+    }
   }
 
   async autoplayTrack(guildId: string, previous: Track | null): Promise<Track | null> {
@@ -198,9 +260,24 @@ export class MusicService extends EventEmitter {
     });
     const guildPlayer = new GuildPlayer(member.guild.id, player, this);
     const musicSettings = await this.options.settings.getMusic(member.guild.id);
-    guildPlayer.volume = musicSettings.defaultVolume;
-    await player.setGlobalVolume(musicSettings.defaultVolume);
-    this.players.set(member.guild.id, guildPlayer);
+    const persisted = await this.loadPersisted(member.guild.id);
+    if (persisted) {
+      guildPlayer.queue.push(...(persisted.queue ?? []));
+      guildPlayer.loop = persisted.loop ?? "off";
+      guildPlayer.autoplay = persisted.autoplay ?? false;
+      guildPlayer.volume = persisted.volume ?? musicSettings.defaultVolume;
+      await player.setGlobalVolume(guildPlayer.volume);
+      this.players.set(member.guild.id, guildPlayer);
+      if (persisted.current) {
+        await guildPlayer.playNow(persisted.current).catch((error) => {
+          this.logger.warn({ err: error, guildId: member.guild.id }, "failed to restore persisted track");
+        });
+      }
+    } else {
+      guildPlayer.volume = musicSettings.defaultVolume;
+      await player.setGlobalVolume(musicSettings.defaultVolume);
+      this.players.set(member.guild.id, guildPlayer);
+    }
     return guildPlayer;
   }
 
@@ -222,6 +299,7 @@ export class MusicService extends EventEmitter {
       await guildPlayer.playNow(first);
       return { added: accepted.length, first: trackInfo(first) };
     }
+    this.schedulePersist(member.guild.id);
     return { added: accepted.length, first: trackInfo(accepted[0]!) };
   }
 
@@ -244,6 +322,7 @@ export class MusicService extends EventEmitter {
       gp.queue.splice(0, Math.max(0, count - 1));
     }
     await gp.advance();
+    this.schedulePersist(guildId);
   }
 
   async stop(guildId: string): Promise<void> {
@@ -253,9 +332,11 @@ export class MusicService extends EventEmitter {
     gp.current = null;
     gp.autoplay = false;
     await gp.player.stopTrack().catch(() => undefined);
+    this.schedulePersist(guildId);
   }
 
   async disconnect(guildId: string): Promise<void> {
+    this.schedulePersist(guildId);
     this.players.delete(guildId);
     await this.shoukaku.leaveVoiceChannel(guildId).catch(() => undefined);
   }
@@ -266,6 +347,7 @@ export class MusicService extends EventEmitter {
     const value = Math.max(0, Math.min(150, Math.trunc(volume)));
     gp.volume = value;
     await gp.player.setGlobalVolume(value);
+    this.schedulePersist(guildId);
     return value;
   }
 
@@ -279,6 +361,7 @@ export class MusicService extends EventEmitter {
     const gp = this.players.get(guildId);
     if (!gp) throw new UserError("The bot is not playing anything.");
     gp.loop = mode;
+    this.schedulePersist(guildId);
   }
 
   async shuffle(guildId: string): Promise<void> {
@@ -288,6 +371,7 @@ export class MusicService extends EventEmitter {
       const j = Math.floor(Math.random() * (i + 1));
       [gp.queue[i], gp.queue[j]] = [gp.queue[j]!, gp.queue[i]!];
     }
+    this.schedulePersist(guildId);
   }
 
   async remove(guildId: string, index: number): Promise<Track> {
@@ -295,6 +379,7 @@ export class MusicService extends EventEmitter {
     if (!gp) throw new UserError("The bot is not playing anything.");
     const [removed] = gp.queue.splice(index - 1, 1);
     if (!removed) throw new UserError("Invalid queue index.");
+    this.schedulePersist(guildId);
     return removed;
   }
 
@@ -302,6 +387,7 @@ export class MusicService extends EventEmitter {
     const gp = this.players.get(guildId);
     if (!gp) throw new UserError("The bot is not playing anything.");
     gp.queue.length = 0;
+    this.schedulePersist(guildId);
   }
 
   async move(guildId: string, from: number, to: number): Promise<void> {
@@ -311,6 +397,7 @@ export class MusicService extends EventEmitter {
     if (!track) throw new UserError("Invalid source index.");
     const target = Math.max(0, Math.min(gp.queue.length, to - 1));
     gp.queue.splice(target, 0, track);
+    this.schedulePersist(guildId);
   }
 
   async jump(guildId: string, index: number): Promise<void> {
@@ -319,12 +406,14 @@ export class MusicService extends EventEmitter {
     const [track] = gp.queue.splice(index - 1, 1);
     if (!track) throw new UserError("Invalid queue index.");
     await gp.playNow(track);
+    this.schedulePersist(guildId);
   }
 
   async autoplay(guildId: string, enabled: boolean): Promise<void> {
     const gp = this.players.get(guildId);
     if (!gp) throw new UserError("The bot is not playing anything.");
     gp.autoplay = enabled;
+    this.schedulePersist(guildId);
   }
 
   async filters(guildId: string, preset: "off" | "bassboost" | "nightcore" | "vaporwave"): Promise<void> {
@@ -346,6 +435,7 @@ export class MusicService extends EventEmitter {
     } else if (preset === "vaporwave") {
       await gp.player.setTimescale({ speed: 0.8, pitch: 0.8, rate: 1 });
     }
+    this.schedulePersist(guildId);
   }
 
   state(guildId: string): MusicQueueState | null {

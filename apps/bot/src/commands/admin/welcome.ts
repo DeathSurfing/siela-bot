@@ -21,6 +21,7 @@ function configEmbed(prefix: string, settings: Awaited<ReturnType<CommandContext
       { name: "Enabled", value: settings.enabled ? "yes" : "no", inline: true },
       { name: "Channel", value: settings.channelId ? `<#${settings.channelId}>` : "not set", inline: true },
       { name: "Embed", value: settings.embed ? "yes" : "no", inline: true },
+      { name: "Card", value: settings.card ? "yes" : "no", inline: true },
       { name: "Ping user", value: settings.pingUser ? "yes" : "no", inline: true },
       { name: "DM", value: settings.dmEnabled ? "yes" : "no", inline: true },
       { name: "Message", value: `\`\`\`${settings.message.slice(0, 900)}\`\`\`` },
@@ -53,6 +54,9 @@ export const welcomeCommand: Command = {
     )
     .addSubcommand((sub) => sub.setName("show").setDescription("Show the current configuration"))
     .addSubcommand((sub) => sub.setName("embed").setDescription("Toggle embeds").addStringOption((option) =>
+      option.setName("value").setDescription("on or off").setRequired(true).addChoices({ name: "on", value: "on" }, { name: "off", value: "off" }),
+    ))
+    .addSubcommand((sub) => sub.setName("card").setDescription("Toggle the generated welcome image card").addStringOption((option) =>
       option.setName("value").setDescription("on or off").setRequired(true).addChoices({ name: "on", value: "on" }, { name: "off", value: "off" }),
     ))
     .addSubcommand((sub) => sub.setName("ping").setDescription("Toggle user ping").addStringOption((option) =>
@@ -118,9 +122,13 @@ export const welcomeCommand: Command = {
         await ctx.reply({ content: "Welcome message updated.", ephemeral: true });
         return;
       }
-      if (action === "embed" || action === "ping" || action === "dm") {
+      if (action === "embed" || action === "card" || action === "ping" || action === "dm") {
         const value = onOff(ctx.args[1]);
-        const patch = action === "embed" ? { embed: value } : action === "ping" ? { pingUser: value } : { dmEnabled: value };
+        const patch =
+          action === "embed" ? { embed: value }
+          : action === "card" ? { card: value }
+          : action === "ping" ? { pingUser: value }
+          : { dmEnabled: value };
         const after = await ctx.services.settings.updateWelcome(ctx.guild.id, patch, ctx.author.id);
         await ctx.services.audit.log({ guildId: ctx.guild.id, actorId: ctx.author.id, actorType: "user", source: "discord", action: `welcome.${action}`, before, after });
         await ctx.reply({ content: `Welcome **${action}** set to **${value ? "on" : "off"}**.`, ephemeral: true });
