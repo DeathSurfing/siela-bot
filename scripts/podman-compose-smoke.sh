@@ -63,7 +63,6 @@ echo "==> waiting for healthchecks"
 for i in $(seq 1 30); do
   HEALTHY=1
   podman healthcheck run siela-bot >/dev/null 2>&1 || HEALTHY=0
-  podman healthcheck run siela-translator >/dev/null 2>&1 || HEALTHY=0
   if [[ "${MCP_ON}" == "1" ]]; then
     podman healthcheck run siela-mcp >/dev/null 2>&1 || HEALTHY=0
   fi

@@ -26,8 +26,6 @@ import {
   tempvcChannelUpdateSchema,
   tempvcSettingsUpdateSchema,
   tempvcUserActionSchema,
-  translateMessageSchema,
-  translateTextSchema,
   welcomeTestSchema,
   welcomeUpdateSchema,
   type BotStatus,
@@ -422,16 +420,6 @@ export class ControlServer {
     this.route("POST", "/v1/music/disconnect", async () => {
       await this.requireMusic().disconnect(this.guildId());
       return { ok: true };
-    });
-
-    this.route("POST", "/v1/translate", async (request) => {
-      const body = request.body as Record<string, unknown>;
-      if (typeof body.text === "string") {
-        const parsed = this.parse(translateTextSchema, body);
-        return services.translation.translate(parsed.text);
-      }
-      const parsed = this.parse(translateMessageSchema, body);
-      return services.translation.translateMessage(this.options.client, parsed.channelId, parsed.messageId);
     });
 
     this.route("POST", "/v1/messages", async (request) => {

@@ -2,7 +2,6 @@ import type { Command } from "../framework/types.js";
 import { helpCommand } from "./utility/help.js";
 import { pingCommand } from "./utility/ping.js";
 import { privacyCommand } from "./utility/privacy.js";
-import { translateCommand } from "./utility/translate.js";
 import { prefixCommand } from "./admin/prefix.js";
 import { welcomeCommand } from "./admin/welcome.js";
 import { autoRoleCommand } from "./admin/autorole.js";
@@ -27,7 +26,6 @@ export const commands: Command[] = [
   helpCommand,
   pingCommand,
   privacyCommand,
-  translateCommand,
   prefixCommand,
   welcomeCommand,
   autoRoleCommand,

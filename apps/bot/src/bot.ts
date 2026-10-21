@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import {
   ActionRowBuilder,
   ActivityType,
-  ApplicationCommandType,
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
@@ -20,7 +19,6 @@ import {
   type GuildMember,
   type Interaction,
   type Message,
-  type MessageContextMenuCommandInteraction,
   type MessageReaction,
   type ModalSubmitInteraction,
   type PartialMessageReaction,
@@ -33,7 +31,7 @@ import {
   type VoiceChannel,
   type VoiceState,
 } from "discord.js";
-import { APP_VERSION, DEFAULTS, truncate, type BotStatus } from "@siela/shared";
+import { APP_VERSION, DEFAULTS, type BotStatus } from "@siela/shared";
 import { pingDatabase, type DatabaseHandle, type TempVoiceChannelRow } from "@siela/db";
 import type { BotConfig } from "@siela/config";
 import { commands } from "./commands/index.js";
@@ -56,7 +54,7 @@ import { CounterService } from "./features/counters.js";
 import { WelcomeService } from "./features/welcome.js";
 import { AutoRoleService } from "./features/autorole.js";
 import { parseTempVcPanelCustomId, tempVcPanelCustomId, TempVcService } from "./features/tempvc.js";
-import { TranslationService } from "./features/translation.js";
+
 import { MusicService } from "./features/music.js";
 import { PrivacyService } from "./features/privacy.js";
 import { buildHelpPayload } from "./features/help.js";
@@ -119,7 +117,6 @@ export class SielaBot {
       welcome: new WelcomeService(settings, this.logger),
       autoRole: new AutoRoleService(settings, this.logger),
       tempVc: new TempVcService(this.client, this.dbHandle.db, settings, this.logger),
-      translation: new TranslationService(this.config.TRANSLATOR_URL, this.logger),
       privacy: new PrivacyService(counters),
       music,
     };
@@ -230,12 +227,6 @@ export class SielaBot {
   private async registerCommands(guild: Guild): Promise<void> {
     const slash = this.registry.slashCommands();
     await guild.commands.set(slash);
-    if (this.client.application) {
-      await this.client.application.commands.set([]).catch(() => undefined);
-      await guild.commands
-        .create({ name: "Translate to English", type: ApplicationCommandType.Message })
-        .catch((error) => this.logger.warn({ err: error }, "context menu registration failed"));
-    }
     this.logger.info({ count: slash.length }, "guild commands registered");
   }
 
@@ -280,10 +271,6 @@ export class SielaBot {
     try {
       if (interaction.isChatInputCommand()) {
         await this.onChatInput(interaction);
-        return;
-      }
-      if (interaction.isMessageContextMenuCommand()) {
-        await this.onMessageContextMenu(interaction);
         return;
       }
       if ((interaction.isButton() || interaction.isUserSelectMenu()) && interaction.customId.startsWith("tempvc:")) {
@@ -332,44 +319,6 @@ export class SielaBot {
     const allowed = await this.guard(command, ctx);
     if (!allowed) return;
     await command.execute(ctx);
-  }
-
-  private async onMessageContextMenu(interaction: MessageContextMenuCommandInteraction): Promise<void> {
-    if (interaction.commandName !== "Translate to English") return;
-    if (!interaction.inGuild() || !interaction.guild) return;
-    const remaining = this.services.translation.checkRateLimit(interaction.user.id);
-    if (remaining > 0) {
-      await interaction.reply({
-        content: `Please wait ${Math.ceil(remaining / 1000)}s before translating again.`,
-        ephemeral: true,
-      });
-      return;
-    }
-    await interaction.deferReply();
-    try {
-      const source = this.services.translation.extractText(interaction.targetMessage);
-      if (!source) throw new UserError("That message has no translatable text.");
-      const result = await this.services.translation.translate(source);
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0x8b5cf6)
-            .setTitle("Translation → English")
-            .addFields(
-              { name: "Original", value: truncate(result.original, 1_000) },
-              { name: "English", value: truncate(result.translated, 1_000) },
-            )
-            .setFooter({
-              text: result.detectedSource
-                ? `Detected: ${result.detectedSource} • ${result.provider}`
-                : result.provider,
-            }),
-        ],
-        allowedMentions: { parse: [] },
-      });
-    } catch (error) {
-      await interaction.editReply({ content: error instanceof Error ? error.message : "Translation failed." });
-    }
   }
 
   private async onHelpSelect(interaction: StringSelectMenuInteraction): Promise<void> {
@@ -702,7 +651,6 @@ export class SielaBot {
 
   async status(): Promise<BotStatus> {
     const database = (await pingDatabase(this.dbHandle.db)) ? "up" : "down";
-    const translation = (await this.services.translation.health().catch(() => false)) ? "up" : "down";
     const music = this.music ? await this.music.isUp().catch(() => false) : false;
     const activeTempVcs = this.guildId ? await this.services.tempVc.activeCount(this.guildId).catch(() => 0) : 0;
     return {
@@ -712,7 +660,6 @@ export class SielaBot {
       guildId: this.guildId,
       database,
       music: this.music ? (music ? "up" : "down") : "unknown",
-      translation,
       activePlayers: this.music ? this.music.activePlayers() : 0,
       activeTempVcs,
       version: APP_VERSION,

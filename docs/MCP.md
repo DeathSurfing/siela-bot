@@ -54,7 +54,6 @@ token and no database credentials.
 - `counters_*`, `optouts_list`
 - `tempvc_*`
 - `music_*`
-- `translate_text`, `translate_message`
 - `message_send`
 - `audit_tail`
 - `privacy_delete_user_data`

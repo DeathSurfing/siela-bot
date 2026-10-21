@@ -14,6 +14,6 @@
 | Data loss | Postgres volume plus `pg_dump` backups; restore drill in the runbook |
 | Container compromise | Rootless Podman; non-root users; read-only root filesystems; dropped capabilities |
 
-Residual risks: third-party music availability and terms, Hugging Face NLLB
-translation quality/CPU use, role-level Discord permission bypass for “private”
-VCs, and MCP token compromise on the private network when MCP is enabled.
+Residual risks: third-party music availability and terms, role-level Discord
+permission bypass for “private” VCs, and MCP token compromise on the private
+network when MCP is enabled.

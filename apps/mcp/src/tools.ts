@@ -26,8 +26,6 @@ import {
   tempvcChannelUpdateSchema,
   tempvcSettingsUpdateSchema,
   tempvcUserActionSchema,
-  translateMessageSchema,
-  translateTextSchema,
   welcomeTestSchema,
   welcomeUpdateSchema,
 } from "@siela/shared";
@@ -82,7 +80,7 @@ export function registerTools(server: McpServer, client: ControlClient, logger: 
     return fn();
   };
 
-  register(server, "bot_status", "Gateway, database, music, translation, uptime, and version.", {}, READ, () =>
+  register(server, "bot_status", "Gateway, database, music, uptime, and version.", {}, READ, () =>
     call(() => client.get("/v1/status")),
   );
   register(server, "commands_list", "Metadata for every bot command.", {}, READ, () =>
@@ -290,12 +288,6 @@ export function registerTools(server: McpServer, client: ControlClient, logger: 
     call(() => client.post("/v1/music/disconnect")),
   );
 
-  register(server, "translate_text", "Translate literal text to English.", translateTextSchema.shape, READ, (args) =>
-    call(() => client.post("/v1/translate", args)),
-  );
-  register(server, "translate_message", "Translate a Discord message by channel/message ID.", translateMessageSchema.shape, OPERATE, (args) =>
-    call(() => client.post("/v1/translate", args)),
-  );
   register(
     server,
     "message_send",

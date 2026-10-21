@@ -21,7 +21,6 @@ networks:
 
 volumes:
   pgdata:
-  translator_models:
 
 services:
   postgres:
@@ -51,35 +50,6 @@ services:
     restart: "no"
     command: ["node", "dist/scripts/migrate.js"]
 
-  translator:
-    image: localhost/siela-translator:latest
-    build:
-      context: ../..
-      dockerfile: deploy/podman/Containerfile.translator
-    container_name: siela-translator
-    environment:
-      TRANSLATOR_MODEL: facebook/nllb-200-distilled-600M
-      TRANSLATOR_THREADS: "4"
-      TRANSLATOR_BEAMS: "4"
-      HF_HOME: /models
-      TRANSFORMERS_CACHE: /models
-      TOKENIZERS_PARALLELISM: "false"
-    volumes:
-      - translator_models:/models
-    networks: [edge]
-    restart: unless-stopped
-    init: true
-    security_opt:
-      - no-new-privileges:true
-    cap_drop: [ALL]
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)\" || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 60
-      start_period: 180s
-    mem_limit: 4g
-
   bot:
     image: localhost/siela-bot:latest
     build:
@@ -95,7 +65,6 @@ services:
     depends_on:
       - postgres
       - migrate
-      - translator
     restart: unless-stopped
     init: true
     read_only: true

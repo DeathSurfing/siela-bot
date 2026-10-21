@@ -4,7 +4,6 @@ import {
   formatDuration,
   parseDuration,
   prefixSchema,
-  protectMentions,
   renderTemplate,
   sanitizeChannelName,
   truncate,
@@ -51,15 +50,6 @@ describe("renderTemplate", () => {
 
   it("leaves unknown placeholders intact", () => {
     expect(renderTemplate("Hi {unknown}", {})).toBe("Hi {unknown}");
-  });
-});
-
-describe("protectMentions", () => {
-  it("round-trips mentions, emoji, and URLs", () => {
-    const input = "Hi <@123456789012345678> <#123456789012345678> https://example.com";
-    const protectedText = protectMentions(input);
-    expect(protectedText.text).not.toContain("<@");
-    expect(protectedText.restore(protectedText.text)).toBe(input);
   });
 });
 

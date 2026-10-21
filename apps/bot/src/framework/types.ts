@@ -25,7 +25,6 @@ import type { CounterService } from "../features/counters.js";
 import type { WelcomeService } from "../features/welcome.js";
 import type { AutoRoleService } from "../features/autorole.js";
 import type { TempVcService } from "../features/tempvc.js";
-import type { TranslationService } from "../features/translation.js";
 import type { MusicService } from "../features/music.js";
 import type { PrivacyService } from "../features/privacy.js";
 import type { CommandRegistry } from "./registry.js";
@@ -39,7 +38,6 @@ export interface Services {
   welcome: WelcomeService;
   autoRole: AutoRoleService;
   tempVc: TempVcService;
-  translation: TranslationService;
   privacy: PrivacyService;
   music: MusicService | null;
 }

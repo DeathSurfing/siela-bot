@@ -49,7 +49,7 @@ const botSchema = z.object({
   DEFAULT_PREFIX: z.string().default("!"),
   ADMIN_ROLE_IDS: z.string().optional(),
   BOT_OWNER_ID: optionalSnowflake,
-  TRANSLATOR_URL: z.string().url().default("http://translator:8000"),
+
   LOG_LEVEL: logLevel.default("info"),
   AUDIT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
   TZ: z.string().default("UTC"),

@@ -102,7 +102,6 @@ export interface BotStatus {
   guildId: string | null;
   database: "up" | "down";
   music: "up" | "down" | "unknown";
-  translation: "up" | "down" | "unknown";
   activePlayers: number;
   activeTempVcs: number;
   version: string;

@@ -4,7 +4,7 @@
 # MCP is optional. The flag is read from the environment first, then from
 # deploy/podman/.env:
 #
-#   MCP_ENABLED=false  # bot + Postgres + translator only (default)
+#   MCP_ENABLED=false  # bot + Postgres only (default)
 #   MCP_ENABLED=true   # include the MCP server
 #
 # Examples:

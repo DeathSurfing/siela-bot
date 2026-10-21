@@ -46,7 +46,7 @@ export const privacyCommand: Command = {
           .setDescription(
             [
               "Siela stores your Discord user ID, interaction counters, opt-outs, and temporary-VC ownership while it is active.",
-              "Message content is not stored. Translations are kept only in an in-memory cache.",
+              "Message content is not stored.",
               `Use \`${await ctx.services.settings.getPrefix(ctx.guild.id)}privacy delete\` to remove your counter/opt-out data.`,
             ].join("\n\n"),
           ),

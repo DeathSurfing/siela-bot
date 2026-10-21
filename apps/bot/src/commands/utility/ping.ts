@@ -6,17 +6,14 @@ export const pingCommand: Command = {
   name: "ping",
   aliases: ["latency"],
   category: "utility",
-  description: "Show gateway, database, music, and translation status.",
+  description: "Show gateway, database, and music status.",
   usage: "",
   examples: ["ping"],
   cooldownMs: 3_000,
   slash: new SlashCommandBuilder().setName("ping").setDescription("Show bot latency and service status"),
   async execute(ctx: CommandContext) {
     const started = Date.now();
-    const [translation, music] = await Promise.all([
-      ctx.services.translation.health().catch(() => false),
-      ctx.services.music?.isUp().catch(() => false) ?? Promise.resolve(false),
-    ]);
+    const music = (await ctx.services.music?.isUp().catch(() => false)) ?? false;
     const embed = new EmbedBuilder()
       .setColor(COLORS.primary)
       .setTitle("Siela status")
@@ -25,7 +22,6 @@ export const pingCommand: Command = {
         { name: "Round trip", value: `${Date.now() - started}ms`, inline: true },
         { name: "Uptime", value: formatDuration(ctx.client.uptime ?? 0), inline: true },
         { name: "Music", value: music ? "🟢 up" : "🔴 down", inline: true },
-        { name: "Translation", value: translation ? "🟢 up" : "🔴 down", inline: true },
         { name: "Database", value: "🟢 connected", inline: true },
       )
       .setTimestamp();

@@ -114,37 +114,6 @@ export const TEMPLATE_KEYS = [
   "joinedAt",
 ] as const;
 
-const PLACEHOLDER_BASE = 0xe000;
-
-export interface ProtectedText {
-  text: string;
-  restore(value: string): string;
-}
-
-/**
- * Protect mentions, custom emoji, and URLs from machine translation.
- * Uses private-use characters so the surrounding words remain translatable.
- */
-export function protectMentions(input: string): ProtectedText {
-  const protectedValues: string[] = [];
-  const pattern =
-    /<@[!&]?\d+>|<#\d+>|<a?:[a-zA-Z0-9_]+:\d+>|https?:\/\/[^\s<>]+/g;
-  const text = input.replace(pattern, (match) => {
-    const index = protectedValues.length;
-    protectedValues.push(match);
-    return `${String.fromCodePoint(PLACEHOLDER_BASE + index)}`;
-  });
-  return {
-    text,
-    restore(value: string): string {
-      return value.replace(/[\uE000-\uF8FF]/g, (char) => {
-        const index = char.codePointAt(0)! - PLACEHOLDER_BASE;
-        return protectedValues[index] ?? char;
-      });
-    },
-  };
-}
-
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

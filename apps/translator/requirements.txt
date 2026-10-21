@@ -1,7 +1,0 @@
-fastapi==0.115.6
-indic-transliteration==2.3.82
-langdetect==1.0.9
-sentencepiece==0.2.0
-sacremoses==0.1.1
-transformers==4.46.3
-uvicorn[standard]==0.34.0

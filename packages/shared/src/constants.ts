@@ -56,13 +56,10 @@ export const DEFAULTS = {
   musicMaxQueueSize: 100,
   musicAloneTimeoutSeconds: 120,
   auditRetentionDays: 90,
-  translationMaxChars: 2000,
-  translationCooldownMs: 10_000,
 } as const;
 
 export const COOLDOWNS = {
   social: 3_000,
-  translate: 5_000,
   music: 3_000,
   vc: 2_000,
   admin: 2_000,

@@ -113,19 +113,6 @@ export const countersResetSchema = z
   })
   .strict();
 
-export const translateTextSchema = z
-  .object({
-    text: z.string().min(1).max(2_000),
-  })
-  .strict();
-
-export const translateMessageSchema = z
-  .object({
-    channelId: snowflakeSchema,
-    messageId: snowflakeSchema,
-  })
-  .strict();
-
 export const messageSendSchema = z
   .object({
     channelId: snowflakeSchema,
@@ -243,7 +230,6 @@ export const botStatusSchema = z.object({
   guildId: z.string().nullable(),
   database: z.enum(["up", "down"]),
   music: z.enum(["up", "down", "unknown"]),
-  translation: z.enum(["up", "down", "unknown"]),
   activePlayers: z.number(),
   activeTempVcs: z.number(),
   version: z.string(),
