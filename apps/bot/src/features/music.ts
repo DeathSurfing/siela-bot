@@ -237,6 +237,15 @@ class GuildPlayer {
 
     const stream = createReadStream(fifoPath);
     this.fifoStream = stream;
+    const meter = setInterval(() => {
+      this.service.logger.debug(
+        { guildId: this.guildId, pcmBytes: stream.bytesRead, mpvCode: mpv.exitCode },
+        "mpv PCM stream",
+      );
+    }, 5_000);
+    meter.unref?.();
+    stream.once("close", () => clearInterval(meter));
+    stream.once("error", () => clearInterval(meter));
     stream.on("error", (error) => {
       this.service.logger.debug({ err: error, guildId: this.guildId }, "mpv FIFO read stream closed");
     });
@@ -640,6 +649,27 @@ export class MusicService extends EventEmitter {
     }
     const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Pause } });
     connection.subscribe(player);
+    connection.on("stateChange", (oldState, newState) => {
+      this.logger.info(
+        { guildId: member.guild.id, from: oldState.status, to: newState.status },
+        "voice connection state",
+      );
+    });
+    connection.on("debug", (message) => {
+      this.logger.debug({ guildId: member.guild.id, message }, "voice debug");
+    });
+    connection.on("error", (error) => {
+      this.logger.warn({ err: error, guildId: member.guild.id }, "voice connection error");
+    });
+    player.on("stateChange", (oldState, newState) => {
+      this.logger.info(
+        { guildId: member.guild.id, from: oldState.status, to: newState.status },
+        "audio player state",
+      );
+    });
+    player.on("debug", (message) => {
+      this.logger.debug({ guildId: member.guild.id, message }, "audio player debug");
+    });
     const guildPlayer = new GuildPlayer(member.guild.id, connection, player, this);
     const musicSettings = await this.options.settings.getMusic(member.guild.id);
     const persisted = await this.loadPersisted(member.guild.id);
