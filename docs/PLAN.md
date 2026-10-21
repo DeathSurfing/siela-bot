@@ -1717,7 +1717,7 @@ podman compose -p siela -f deploy/podman/compose.yaml up -d --build
 #    LIBRETRANSLATE_URL=http://libretranslate:5000,
 #    CONTROL_API_URL=http://bot-control:3001,
 #    MCP_URL=http://mcp:8080/mcp.
-# 4. Optionally appends SPOTIFY_CLIENT_ID/SPOTIFY_CLIENT_SECRET if provided.
+# 4. No Spotify credentials are needed; Spotify links resolve through oEmbed.
 ```
 
 ```bash
@@ -1808,7 +1808,7 @@ No Docker daemon is required. If the runner lacks rootless Podman, use a dedicat
 | Healthcheck fails | `wget`/`curl` missing in the image | Use a tool present in the image, or a TCP check; keep the app health endpoint. |
 | MCP unreachable from the host | The `mcp` network is internal and no host port is published | Use the `compose.host.yaml` override, or run the client as a container on the `mcp` network. |
 | LibreTranslate unhealthy / 503 on first boot | Language models are still downloading | Wait for the model volume to populate; keep the healthcheck retries high. |
-| Spotify track does not play | Spotify credentials missing, or no SoundCloud mirror match | Set `SPOTIFY_CLIENT_ID`/`SPOTIFY_CLIENT_SECRET`; otherwise use SoundCloud directly. |
+| Spotify track does not play | No SoundCloud search match | Try the track name directly, or use a SoundCloud link. |
 
 ---
 
@@ -2287,8 +2287,7 @@ Aliases: `p`, `s`, `q`, `np`, `dc`.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | unset | Enable `spsearch:`; SoundCloud works without them. |
-| `SPOTIFY_ENABLED` | `false` | Set to `true` by the init script only when both Spotify values exist. |
+| Spotify credentials | not required | Spotify links resolve through Spotify's public oEmbed metadata and are searched on SoundCloud. |
 | `LIBRETRANSLATE_URL` | `http://libretranslate:5000` | Internal translation service. |
 | `LIBRETRANSLATE_API_KEY` | unset | Not needed on the internal network. |
 | `DEFAULT_PREFIX` | `!` | Initial prefix. |

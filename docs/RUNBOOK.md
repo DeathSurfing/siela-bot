@@ -10,8 +10,6 @@ export DISCORD_TOKEN="..."
 # optional:
 export GUILD_ID="..."
 export DISCORD_CLIENT_ID="..."
-export SPOTIFY_CLIENT_ID="..."
-export SPOTIFY_CLIENT_SECRET="..."
 ./scripts/podman-init.sh
 
 podman compose -p siela -f deploy/podman/compose.yaml up -d --build
