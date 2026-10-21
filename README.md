@@ -29,6 +29,7 @@ Only `DISCORD_TOKEN` is required. The init script derives the client ID, prints 
 ## Repository
 
 - `apps/bot` — discord.js bot, feature services, control API, health/metrics.
+- `apps/translator` — self-hosted FastAPI + Hugging Face NLLB translation service.
 - `apps/mcp` — MCP server (stdio + Streamable HTTP) and tool catalog.
 - `packages/shared` — Zod schemas, types, constants, utilities.
 - `packages/db` — Drizzle schema, migrations, Postgres client.

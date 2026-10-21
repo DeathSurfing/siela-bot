@@ -154,6 +154,104 @@ ENGLISH_MARKERS = {
     "your",
 }
 
+# Frequent Hinglish spellings are normalized before generic transliteration.
+# ITRANS is a lossy fit for informal Romanized Hindi, so common words are
+# mapped directly and Devanagari text is left untouched by the transliterator.
+HINGLISH_WORDS = {
+    "aaj": "आज",
+    "abhi": "अभी",
+    "accha": "अच्छा",
+    "acchi": "अच्छी",
+    "acha": "अच्छा",
+    "achha": "अच्छा",
+    "aap": "आप",
+    "aur": "और",
+    "bahut": "बहुत",
+    "bhai": "भाई",
+    "bohot": "बहुत",
+    "bol": "बोल",
+    "bolo": "बोलो",
+    "chahiye": "चाहिए",
+    "dekh": "देख",
+    "dekhna": "देखना",
+    "didi": "दीदी",
+    "diya": "दिया",
+    "fir": "फिर",
+    "gaana": "गाना",
+    "gaya": "गया",
+    "gayi": "गई",
+    "ghar": "घर",
+    "haan": "हाँ",
+    "hai": "है",
+    "hain": "हैं",
+    "han": "हाँ",
+    "hum": "हम",
+    "ja": "जा",
+    "jaa": "जा",
+    "kal": "कल",
+    "kam": "कम",
+    "kar": "कर",
+    "kare": "करे",
+    "karo": "करो",
+    "karna": "करना",
+    "kaise": "कैसे",
+    "kaisi": "कैसी",
+    "kaisa": "कैसा",
+    "ke": "के",
+    "khana": "खाना",
+    "ki": "की",
+    "ko": "को",
+    "kuch": "कुछ",
+    "kya": "क्या",
+    "kyu": "क्यों",
+    "kyun": "क्यों",
+    "liye": "लिए",
+    "liya": "लिया",
+    "log": "लोग",
+    "main": "मैं",
+    "mai": "मैं",
+    "mein": "में",
+    "mera": "मेरा",
+    "meri": "मेरी",
+    "minute": "मिनट",
+    "minutes": "मिनट",
+    "movie": "मूवी",
+    "mujhe": "मुझे",
+    "nahi": "नहीं",
+    "nahin": "नहीं",
+    "office": "ऑफिस",
+    "pani": "पानी",
+    "pasand": "पसंद",
+    "phir": "फिर",
+    "picture": "पिक्चर",
+    "raha": "रहा",
+    "rahe": "रहे",
+    "rahi": "रही",
+    "sab": "सब",
+    "second": "सेकंड",
+    "se": "से",
+    "set": "सेट",
+    "song": "गाना",
+    "sun": "सुन",
+    "suno": "सुनो",
+    "tera": "तेरा",
+    "teri": "तेरी",
+    "tha": "था",
+    "the": "थे",
+    "thi": "थी",
+    "timer": "टाइमर",
+    "tujhe": "तुझे",
+    "tum": "तुम",
+    "tumhe": "तुम्हें",
+    "wo": "वो",
+    "woh": "वह",
+    "yaar": "यार",
+    "ye": "ये",
+    "yeh": "यह",
+    "zyada": "ज़्यादा",
+    "biryani": "बिरयानी",
+}
+
 HINGLISH_MARKERS = {
     "aap",
     "abhi",
@@ -235,6 +333,13 @@ SCRIPT_PATTERNS = [
 ]
 
 
+def normalize_hinglish(text: str) -> str:
+    normalized = text
+    for word in sorted(HINGLISH_WORDS, key=len, reverse=True):
+        normalized = re.sub(rf"\b{re.escape(word)}\b", HINGLISH_WORDS[word], normalized, flags=re.IGNORECASE)
+    return transliterate(normalized, sanscript.ITRANS, sanscript.DEVANAGARI)
+
+
 class TranslateRequest(BaseModel):
     text: str = Field(min_length=1, max_length=10_000)
 
@@ -303,7 +408,7 @@ class Translator:
             # NLLB has a Devanagari Hindi input for this; romanized Hinglish is
             # not translated reliably without transliteration.
             try:
-                model_text = transliterate(text, sanscript.ITRANS, sanscript.DEVANAGARI)
+                model_text = normalize_hinglish(text)
             except Exception as error:
                 print(f"hinglish transliteration failed: {type(error).__name__}: {error}", flush=True)
 

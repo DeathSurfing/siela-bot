@@ -62,7 +62,7 @@ Discord users ── prefix / slash / context menu ──┐
 | Discord library | discord.js v14.x, pinned |
 | Database | PostgreSQL 17 + Drizzle ORM |
 | Music | yt-dlp + mpv: SoundCloud streaming out of the box; Spotify links resolve through oEmbed metadata and SoundCloud search |
-| Translation | Self-hosted LibreTranslate container (zero API tokens, free) |
+| Translation | Self-hosted Hugging Face translator container (zero API tokens, free) |
 | Command UX | **Hybrid (confirmed):** prefix + slash + context menu + mention prefix |
 | Admin model | `Manage Guild` permission, server owner, optional `ADMIN_ROLE_IDS`; runtime checks on every admin action |
 | MCP | Separate process; stdio locally; Streamable HTTP exposed on the Podman `mcp` network; one `MCP_TOKEN`; `MCP_URL` flag |
@@ -77,7 +77,7 @@ Discord users ── prefix / slash / context menu ──┐
 | Decision | Choice |
 |---|---|
 | Music sources | yt-dlp + mpv; SoundCloud is the zero-token default; Spotify links resolve through oEmbed metadata and SoundCloud search |
-| Translation | Self-hosted LibreTranslate; no paid API key |
+| Translation | Self-hosted Hugging Face translator; no paid API key |
 | MCP exposure | Exposed on the Podman `mcp` network via `MCP_URL=http://mcp:8080/mcp`; one generated `MCP_TOKEN`; optional host/TLS overrides |
 | Social action | `chodu` (renamed from `fuck`), opt-out-aware, cooldown-limited, text-only; optional NSFW gate |
 | Command UX | Hybrid: prefix + slash + context menu + mention prefix |
@@ -101,7 +101,7 @@ Discord users ── prefix / slash / context menu ──┐
 1. **Music source reliability and legality** — yt-dlp depends on third-party services; SoundCloud search can be inconsistent and Spotify playback is metadata search only. Respect third-party terms.
 2. **"Private" voice channels are not absolute** — Discord role-level permission allows can bypass an `@everyone` deny. The plan mitigates this but cannot make it mathematically private without controlling all roles.
 3. **MCP is an admin control plane** — even on the private Podman network, one leaked `MCP_TOKEN` can change guild configuration. The plan keeps the network private, requires confirmation for destructive tools, and audits every mutation.
-4. **LibreTranslate resource usage** — self-hosted translation is free but costs RAM/CPU and needs a model volume; first boot downloads models.
+4. **Hugging Face translator resource usage** — self-hosted translation is free but costs RAM/CPU and needs a model volume; first boot downloads models.
 5. **`chodu` is a moderation risk** — it is opt-out-aware, cooldown-limited, text-only, and can be NSFW-gated or disabled by an admin.
 
 ---
@@ -134,7 +134,7 @@ Discord users ── prefix / slash / context menu ──┐
 - Deep welcome-card customization beyond the generated card (the generated card is implemented and toggled with `welcome card on/off`).
 - Apple Music, Deezer, YouTube, and other music sources (only SoundCloud + optional Spotify in v1).
 - Public bot listing or verification-scale operation.
-- Paid translation APIs and OAuth for MCP in v1 (LibreTranslate and one shared token instead).
+- Paid translation APIs and OAuth for MCP in v1 (Hugging Face translator and one shared token instead).
 
 ### 1.3 Assumptions
 
@@ -143,7 +143,7 @@ Discord users ── prefix / slash / context menu ──┐
 - `Guild Members` and `Message Content` privileged intents are enabled in the Discord developer portal.
 - Production host is Linux with Podman 5+ and cgroups v2; macOS uses a Podman machine for development only.
 - MCP is exposed on the Podman `mcp` network via `MCP_URL`; a public domain/TLS proxy is optional and out of the default compose.
-- No paid translation key is required: LibreTranslate runs as a local container.
+- No paid translation key is required: Hugging Face translator runs as a local container.
 - SoundCloud works with zero tokens; Spotify is optional and requires a free Spotify client ID/secret only if `spsearch:` is wanted.
 - Expected scale is a single community (assume < 1,000 members, < 50 concurrent voice users); this is not a hard limit.
 - UI language is English for v1.
@@ -153,7 +153,7 @@ Discord users ── prefix / slash / context menu ──┐
 | Area | Target |
 |---|---|
 | Command acknowledgement | < 2.5s; defer if provider/music work will take longer. |
-| Translation latency | p95 < 5s for a 2,000-character message on a CPU-only host (LibreTranslate). |
+| Translation latency | p95 < 5s for a 2,000-character message on a CPU-only host (Hugging Face translator). |
 | Music start | < 5s after `play` for a SoundCloud search result; Spotify-mirrored tracks may take longer. |
 | Required user config | `DISCORD_TOKEN` only; the client ID is derived from the token and the guild ID is auto-detected when the bot is in exactly one guild; internal secrets are generated. |
 | Availability | Best-effort single instance; systemd/Podman restart within 60s. |
@@ -174,7 +174,7 @@ Discord users ── prefix / slash / context menu ──┐
 | G4 | Auto-role | `autorole` service + `guildMemberAdd` | — | `autorole ...` | `autorole_get`, `autorole_update`, `autorole_validate`, `autorole_sync` |
 | G5 | Social counters | `counters` service + atomic upsert | `slap`, `kiss`, `hug`, `chodu`, `socialstats`, `socialtop`, `optout`, `optin` | Optional reset | `counters_get`, `counters_leaderboard`, `counters_reset` |
 | G6 | Temp VC | `tempvc` service + `voiceStateUpdate` | `vc lock`, `vc permit`, `vc deny`, `vc disconnect`, etc. | `tempvc setup`, `tempvc config` | `tempvc_*` |
-| G7 | Translate | `translate` service + LibreTranslate container | `translate` (reply or text) | — | `translate_text`, `translate_message` |
+| G7 | Translate | `translate` service + Hugging Face translator container | `translate` (reply or text) | — | `translate_text`, `translate_message` |
 | G8 | Prefix | `prefix` service + cache | `prefix` | `prefix set`, `prefix reset` | `prefix_get`, `prefix_set`, `prefix_reset` |
 | G9 | Admin security | Central `assertAdmin` + audit | — | All config commands | Tier checks |
 | G10 | Help | Command registry + Components V2 | `help`, `/help` | — | `commands_list` |
@@ -193,7 +193,7 @@ flowchart LR
   B --> DB[(PostgreSQL)]
   B --> L[yt-dlp + mpv]
   L <--> V[Discord Voice]
-  B --> T[LibreTranslate container]
+  B --> T[Hugging Face translator container]
   B --> G[GIF API]
   M[MCP clients on the mcp network] <--> MCP[MCP server]
   MCP <-->|private control API| B
@@ -218,7 +218,7 @@ flowchart LR
 | yt-dlp + mpv | Music search/streaming and voice encoding | Reach PostgreSQL or control API |
 | Control API | Private, typed API over bot services | Be publicly exposed without auth |
 | MCP server | Translate tool calls into control API calls; require `MCP_TOKEN` on HTTP | Connect to Discord gateway, hold DB credentials, run SQL/shell |
-| LibreTranslate | Self-hosted English translation | Be exposed outside `edge`, hold DB/control access |
+| Hugging Face translator | Self-hosted English translation | Be exposed outside `edge`, hold DB/control access |
 | PostgreSQL | Persistent settings, counters, temp VC state, audit | Be published to the host |
 | Caddy | Optional TLS/reverse proxy for clients outside the Podman network | Terminate non-TLS admin traffic |
 | Podman | Build, run, isolate, healthcheck, restart | Require Docker |
@@ -295,7 +295,7 @@ flowchart LR
 | Bot → PostgreSQL | Trusted | Parameterized ORM, least-privilege DB user, no public port |
 | Bot → yt-dlp/mpv | Local subprocess | Timeouts, URL allowlist, private-IP blocking |
 | yt-dlp → internet | Untrusted content | http(s)-only URLs, private-IP/loopback/link-local blocking |
-| Bot → LibreTranslate | Trusted local service | `edge` network only, timeouts, circuit breaker, no content logging |
+| Bot → Hugging Face translator | Trusted local service | `edge` network only, timeouts, circuit breaker, no content logging |
 | Bot → GIF API | Third-party, no key | Fixed endpoint, timeout, text-only fallback |
 
 ### 3.5 Key flows
@@ -345,7 +345,7 @@ flowchart LR
 1. User replies to a message with `translate` (or uses `/translate`).
 2. Bot fetches the target message, extracts text (content or embed description).
 3. Mentions/custom emoji are protected with placeholders.
-4. Bot calls LibreTranslate on the `edge` network with timeout/retry.
+4. Bot calls Hugging Face translator on the `edge` network with timeout/retry.
 5. Bot replies with original (truncated) + translation + detected language.
 6. No message content is persisted; only an in-memory LRU cache is used.
 
@@ -373,7 +373,7 @@ flowchart LR
 | HTTP | Fastify | Fast, schema-friendly, small | Express, Hono |
 | MCP | `@modelcontextprotocol/sdk` | Official SDK, stdio + Streamable HTTP | Custom JSON-RPC |
 | Music | yt-dlp + mpv + @discordjs/voice | Zero-token SoundCloud; Spotify metadata search; no JVM | Lavalink (extra service/JVM) |
-| Translation | LibreTranslate container | Free, self-hosted, no API token; text stays on the host | DeepL/Google (paid keys) |
+| Translation | Hugging Face translator container | Free, self-hosted, no API token; text stays on the host | DeepL/Google (paid keys) |
 | GIFs | Adapter: nekos.best default | Simple SFW API with no key for slap/kiss/hug | Tenor (key/policy), local assets |
 | Logs | Pino | JSON logs, redaction, low overhead | Winston |
 | Metrics | prom-client | Prometheus-compatible | OpenTelemetry-only |
@@ -1257,7 +1257,7 @@ Do **not** grant: Administrator, Kick Members, Ban Members, Manage Guild, Manage
 | Postgres password | Generated | `scripts/podman-init.sh` writes it to `.env` |
 | `MCP_TOKEN` | Generated | Same script |
 | Spotify client ID/secret | Optional | Add to `.env` only if Spotify search is wanted |
-| LibreTranslate API key | Not used | Internal instance has no API key |
+| Hugging Face translator API key | Not used | Internal instance has no API key |
 | DeepL/Google keys | Not used | Removed from v1 |
 
 - The bootstrap script generates internal secrets with `openssl rand`; the human supplies only `DISCORD_TOKEN` (and optional Spotify values).
@@ -1272,7 +1272,7 @@ Do **not** grant: Administrator, Kick Members, Ban Members, Manage Guild, Manage
 | Action | Limit |
 |---|---|
 | Social command | 3s/user across kinds |
-| Translate | 5/min and 100/hour per user; max 2 concurrent LibreTranslate requests |
+| Translate | 5/min and 100/hour per user; translator serializes model inference |
 | Music play | 5/min/user; queue max 100 |
 | Temp VC create | 30s/user; max 1 active/user; max 50 global |
 | VC management | 10/min/user |
@@ -1287,7 +1287,7 @@ Do **not** grant: Administrator, Kick Members, Ban Members, Manage Guild, Manage
 - Store only Discord IDs, configuration, counters, temp VC state, and audit metadata.
 - Do not store message content, translation payloads, or music search history. For `message_send`, the audit records the channel ID, message ID, and length, not the body.
 - Audit diffs redact secrets and avoid storing free-text message bodies; templates are configuration, not user messages.
-- Translation text stays on the Podman host (LibreTranslate); only model downloads leave the host.
+- Translation text stays on the Podman host (Hugging Face translator); only model downloads leave the host.
 - Audit logs are redacted and retained 90 days by default.
 - `privacy` command explains what is stored; `privacy delete` removes the caller's counters/opt-outs.
 - Backups are encrypted and access-controlled.
@@ -1306,7 +1306,7 @@ Do **not** grant: Administrator, Kick Members, Ban Members, Manage Guild, Manage
                     └───────┬───────────┘
                             │ mcp + edge
 ┌───────────────┐   ┌───────▼────────┐   ┌──────────────┐   ┌────────────────┐
-│  PostgreSQL   │◀──│   Bot process  │──▶│ yt-dlp/mpv│   │ LibreTranslate │
+│  PostgreSQL   │◀──│   Bot process  │──▶│ yt-dlp/mpv│   │ Hugging Face translator │
 │  data network │   │ control+data+  │   │ edge network │   │  edge network  │
 └───────────────┘   │ edge networks  │   └──────┬───────┘   └────────────────┘
                     └───┬────────┬───┘          │
@@ -1324,7 +1324,7 @@ Do **not** grant: Administrator, Kick Members, Ban Members, Manage Guild, Manage
 
 | Network | Members | Internet | Purpose |
 |---|---|---|---|
-| `edge` | bot, libretranslate | yes | Discord, yt-dlp downloads, LibreTranslate model downloads, GIF API |
+| `edge` | bot, translator | yes | Discord, yt-dlp downloads, Hugging Face translator model downloads, GIF API |
 | `data` | bot, postgres | no (internal) | Database only |
 | `control` | bot, mcp | no (internal) | MCP → bot control API only |
 | `mcp` | mcp, optional Caddy, optional client containers | no (internal) by default | MCP HTTP exposed on the Podman network via `MCP_URL` |
@@ -1332,7 +1332,7 @@ Do **not** grant: Administrator, Kick Members, Ban Members, Manage Guild, Manage
 - MCP cannot reach PostgreSQL.
 - The control API listens on `0.0.0.0:3001` inside the bot container and is protected by the generated `MCP_TOKEN`. For defense in depth, bind to the `control` interface or a Unix socket via the optional `CONTROL_API_HOST` setting.
 - Postgres publishes no host ports.
-- LibreTranslate is reachable only on `edge`; it does not need DB or control access.
+- Hugging Face translator is reachable only on `edge`; it does not need DB or control access.
 - MCP is reachable only on the `mcp` network by default. A host-local client can use the optional `compose.host.yaml` override; a public client needs an optional TLS proxy outside the default compose.
 
 | Port | Service | Exposure |
@@ -1340,7 +1340,7 @@ Do **not** grant: Administrator, Kick Members, Ban Members, Manage Guild, Manage
 | 3001 | Bot control API | `control` network only |
 | 3002 | Bot health/metrics | `127.0.0.1` inside bot container |
 | 8080 | MCP HTTP | `mcp` network only; `MCP_URL=http://mcp:8080/mcp` |
-| 5000 | LibreTranslate | `edge` network only |
+| 8000 | Hugging Face translator | `edge` network only |
 | 8443 | Caddy HTTPS | Optional, only if you add the proxy override |
 | 5432 | PostgreSQL | `data` network only |
 
@@ -1371,13 +1371,13 @@ Build rules:
 | Service | Memory guidance | CPU guidance |
 |---|---|---|
 | Bot | 512 MiB–1 GiB | 0.5–1 vCPU |
-| LibreTranslate | 1–2 GiB | 1 vCPU |
+| Hugging Face translator (NLLB-600M) | 3–4 GiB | 2–4 vCPU |
 | PostgreSQL | 256–512 MiB | 0.25–0.5 vCPU |
 | MCP | 128–256 MiB | 0.1–0.25 vCPU |
 | Caddy (optional) | 64–128 MiB | 0.1 vCPU |
-| **Host** | **4 GiB recommended; 2 GiB minimum with a small `LT_LOAD_ONLY` set** | **2 vCPU minimum** |
+| **Host** | **8 GiB recommended** | **4 vCPU minimum, 8 preferred** |
 
-LibreTranslate is the largest consumer. Loading fewer languages reduces its RAM and disk; the first boot downloads models, so allow time and disk. yt-dlp/mpv add CPU during playback but no permanent service.
+The NLLB translator is the largest consumer. Its model is cached in a volume; first boot downloads roughly 2.4 GiB. yt-dlp/mpv add CPU during playback but no permanent service.
 
 ### 9.3 Compose for development/staging
 
@@ -1403,7 +1403,7 @@ networks:
 
 volumes:
   pgdata:
-  libretranslate_models:
+  translator_models:
 
 services:
   postgres:
@@ -1434,26 +1434,34 @@ services:
     command: ["node", "dist/scripts/migrate.js"]
 
 
-  libretranslate:
-    image: libretranslate/libretranslate:latest
-    container_name: siela-libretranslate
+  translator:
+    image: localhost/siela-translator:latest
+    build:
+      context: ../..
+      dockerfile: deploy/podman/Containerfile.translator
+    container_name: siela-translator
     environment:
-      LT_LOAD_ONLY: en,es,fr,de,hi,ko
-      LT_DISABLE_WEB_UI: "true"
-      LT_CHAR_LIMIT: "2000"
-      LT_REQ_LIMIT: "60"
-      LT_THREADS: "2"
+      TRANSLATOR_MODEL: facebook/nllb-200-distilled-600M
+      TRANSLATOR_THREADS: "4"
+      TRANSLATOR_BEAMS: "4"
+      HF_HOME: /models
+      TRANSFORMERS_CACHE: /models
+      TOKENIZERS_PARALLELISM: "false"
     volumes:
-      - libretranslate_models:/home/libretranslate/.local
+      - translator_models:/models
     networks: [edge]
     restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
     healthcheck:
-      test: ["CMD-SHELL", "./venv/bin/python scripts/healthcheck.py"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)\" || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 60
-      start_period: 60s
-    mem_limit: 2g
+      start_period: 180s
+    mem_limit: 4g
 
   bot:
     image: localhost/siela-bot:latest
@@ -1470,7 +1478,7 @@ services:
     depends_on:
       - postgres
       - migrate
-      - libretranslate
+      - translator
     restart: unless-stopped
     init: true
     read_only: true
@@ -1556,7 +1564,7 @@ Only needed when clients outside the Podman network must reach MCP. Set `MCP_URL
 - `:Z` is for SELinux hosts (Fedora/RHEL); harmless on others.
 - Named volumes avoid rootless bind-mount ownership problems.
 - `internal: true` networks have no default route. The bot joins `edge` for internet and `data`/`control` for internal services; MCP joins `control` and `mcp`.
-- `depends_on` is a plain list; startup order is best-effort and both compose providers may start services before dependencies are ready. The app retries DB and LibreTranslate connections.
+- `depends_on` is a plain list; startup order is best-effort and both compose providers may start services before dependencies are ready. The app retries DB and Hugging Face translator connections.
 - `migrate` is a one-shot compose service (`restart: "no"`). `podman compose up -d` runs it once; it retries until Postgres is ready and then exits. You can also run it explicitly:
   ```bash
   podman compose -p siela -f deploy/podman/compose.yaml run --rm migrate
@@ -1573,7 +1581,7 @@ Only needed when clients outside the Podman network must reach MCP. Set `MCP_URL
 
 - No top-level `name`, `profiles`, `deploy`, `secrets`, `configs`, `build.target`, or `depends_on.condition`.
 - `depends_on` is a plain list; the app retries connections instead of relying on startup order.
-- Healthchecks use `CMD-SHELL` with a tool that exists in the image (`wget` for Node, the LibreTranslate health script, `pg_isready` for Postgres).
+- Healthchecks use `CMD-SHELL` with a tool that exists in the image (`wget` for Node, the Hugging Face translator health script, `pg_isready` for Postgres).
 - Secrets are environment variables from a generated `.env` (600) or Podman secrets in Quadlet; compose `secrets` is not used.
 - Migrations are a one-shot compose service (`restart: "no"`), not a profile service; the runner retries until Postgres is ready.
 - `scripts/podman-compose-smoke.sh` runs `podman compose config`, `up -d`, healthchecks, and a sample MCP call, then tears down. CI and release checks run it.
@@ -1590,9 +1598,9 @@ siela-data.network
 siela-control.network
 siela-mcp.network
 siela-pgdata.volume
-siela-libretranslate-models.volume
+siela-translator-models.volume
 siela-postgres.container
-siela-libretranslate.container
+siela-translator.container
 siela-bot.container
 siela-mcp.container
 siela-caddy.container   # optional
@@ -1603,8 +1611,8 @@ Example `siela-bot.container`:
 ```ini
 [Unit]
 Description=Siela Discord bot
-After=siela-postgres.service siela-libretranslate.service
-Wants=siela-postgres.service siela-libretranslate.service
+After=siela-postgres.service siela-translator.service
+Wants=siela-postgres.service siela-translator.service
 
 [Container]
 ContainerName=siela-bot
@@ -1715,7 +1723,7 @@ podman compose -p siela -f deploy/podman/compose.yaml up -d --build
 # 3. Writes deploy/podman/.env with mode 600, including fixed defaults:
 #    POSTGRES_USER=siela, POSTGRES_DB=siela,
 #    DATABASE_URL=postgres://siela:<generated>@postgres:5432/siela,
-#    LIBRETRANSLATE_URL=http://libretranslate:5000,
+#    TRANSLATOR_URL=http://translator:8000,
 #    CONTROL_API_URL=http://bot-control:3001,
 #    MCP_URL=http://mcp:8080/mcp.
 # 4. No Spotify credentials are needed; Spotify links resolve through oEmbed.
@@ -1729,7 +1737,7 @@ export DISCORD_TOKEN="..."
 - The human supplies only `DISCORD_TOKEN`. The script derives the client ID, prints an invite URL (select the §8.3 permissions on Discord's invite screen), and generates the internal secrets.
 - `GUILD_ID` is optional; the bot auto-detects it when it is in exactly one guild, or binds to the first guild it joins when it is in none. Set it explicitly only if the bot is ever in more than one guild.
 - Spotify is the only optional music credential; omit it and SoundCloud still works.
-- LibreTranslate needs no API key on the internal network.
+- Hugging Face translator needs no API key on the internal network.
 - Podman secrets are optional; if you prefer them, create `discord_token`, `database_password`, and `mcp_token` and reference them with `Secret=`.
 - The app config loader supports `*_FILE` variables (for example `DISCORD_TOKEN_FILE`) so secrets can be mounted as files if env secrets are not available.
 - Rotate a generated secret by re-running the bootstrap script (or updating the Podman secret) and restarting the affected units.
@@ -1803,12 +1811,12 @@ No Docker daemon is required. If the runner lacks rootless Podman, use a dedicat
 | Permission denied on a bind mount | SELinux label or UID mismatch | Add `:Z`; use a named volume; `podman unshare chown` if needed. |
 | `exec format error` | Image built for the wrong architecture | Build/pull `linux/amd64` or `linux/arm64` for the host. |
 | `no such service` / compose command missing | No compose provider installed | Install `podman-compose` or Docker Compose v2 as the Podman provider. |
-| `depends_on` ignored | Older compose provider | Let the app retry DB/LibreTranslate; use healthchecks + restart policies. |
+| `depends_on` ignored | Older compose provider | Let the app retry DB/Hugging Face translator; use healthchecks + restart policies. |
 | Service cannot reach `bot-control` | Missing network alias / wrong network | Attach MCP and bot to `control`; add `aliases: [bot-control]` to the bot. |
 | Secret not found | Secret created in a different user namespace | Create secrets as the same rootless user; verify `podman secret ls`. |
 | Healthcheck fails | `wget`/`curl` missing in the image | Use a tool present in the image, or a TCP check; keep the app health endpoint. |
 | MCP unreachable from the host | The `mcp` network is internal and no host port is published | Use the `compose.host.yaml` override, or run the client as a container on the `mcp` network. |
-| LibreTranslate unhealthy / 503 on first boot | Language models are still downloading | Wait for the model volume to populate; keep the healthcheck retries high. |
+| Hugging Face translator unhealthy / 503 on first boot | Language models are still downloading | Wait for the model volume to populate; keep the healthcheck retries high. |
 | Spotify track does not play | No SoundCloud search match | Try the track name directly, or use a SoundCloud link. |
 
 ---
@@ -1832,7 +1840,7 @@ No Docker daemon is required. If the runner lacks rootless Podman, use a dedicat
 - DB pool size, query errors.
 - yt-dlp/mpv availability, active players, queue length.
 - Temp VC active count, creation failures.
-- LibreTranslate requests/characters, errors, in-flight count, model-load state.
+- Hugging Face translator requests/characters, errors, in-flight count, model-load state.
 - Rate-limit hits.
 
 ### 10.3 Health
@@ -1851,7 +1859,7 @@ No Docker daemon is required. If the runner lacks rootless Podman, use a dedicat
 - yt-dlp/mpv unavailable > 5 minutes.
 - DB errors > 5/minute.
 - Command/MCP error rate > 5%.
-- LibreTranslate unhealthy > 5 minutes.
+- Hugging Face translator unhealthy > 5 minutes.
 - Backup failed or older than 36 hours.
 - Disk > 80%.
 
@@ -1864,7 +1872,7 @@ Delivery: optional Discord admin webhook, email, or uptime service. Do not put t
 | PostgreSQL down | DB-backed commands fail with a friendly error; `/readyz` fails; Podman restarts the bot. Music already playing continues from memory; the queue is not persisted. |
 | yt-dlp/mpv down | Music commands return a clear error; other features keep working. |
 | Discord API outage | discord.js retries/rate-limits; commands may be delayed; no silent data corruption. |
-| LibreTranslate down | Friendly error; circuit breaker prevents a retry storm; other features unaffected. |
+| Hugging Face translator down | Friendly error; circuit breaker prevents a retry storm; other features unaffected. |
 | MCP server down | Discord bot and music are unaffected; Podman-network automation unavailable. |
 | Caddy down | External MCP clients unavailable; Podman-network/stdio clients and Discord still work. |
 | Host reboot | Quadlet/systemd restarts containers; temp VC state is reconciled; queue is lost (documented). |
@@ -1877,7 +1885,7 @@ Delivery: optional Discord admin webhook, email, or uptime service. Do not put t
 - yt-dlp/mpv outage or upgrade.
 - Temp VC orphan reconciliation.
 - MCP token rotation.
-- LibreTranslate outage / model volume reset / disable command.
+- Hugging Face translator outage / model volume reset / disable command.
 - SoundCloud or Spotify source outage / switch source.
 - Disk full / log cleanup.
 - Emergency: disable MCP HTTP, revoke tokens, stop bot.
@@ -1894,7 +1902,7 @@ Delivery: optional Discord admin webhook, email, or uptime service. Do not put t
 - Auto-role validator: Administrator, managed, above-bot, @everyone, max roles.
 - Temp VC overwrite builder: owner/bot/everyone permutations.
 - Counter service: atomic upsert, opt-out, self-target, optional NSFW gate.
-- Translate: mention/emoji placeholders, length limit, LibreTranslate timeout, already-English.
+- Translate: mention/emoji placeholders, length limit, Hugging Face translator timeout, already-English.
 - MCP tools: schema validation, `MCP_TOKEN` check, destructive confirmation.
 - Control API: auth, request ID, error shape.
 
@@ -1906,7 +1914,7 @@ Delivery: optional Discord admin webhook, email, or uptime service. Do not put t
 - Temp VC creation lock prevents duplicates.
 - Audit row written for each admin/MCP mutation.
 - Control API round-trip with a fake Discord gateway/player.
-- LibreTranslate container responds to a sample translation on `edge`.
+- Hugging Face translator container responds to a sample translation on `edge`.
 
 ### 11.3 Discord E2E (manual/scheduled)
 
@@ -1987,7 +1995,7 @@ Estimates assume one experienced developer, part-time review, and no major Disco
 - Auto-role service/commands/validation/sync/tests.
 - Counters schema, social commands (`slap`/`kiss`/`hug`/`chodu`), stats/leaderboard, opt-out, optional NSFW gate, GIF adapter (no key).
 - Temp VC service, event handler, owner commands, permissions, cleanup/reconciliation.
-- LibreTranslate service in compose, translation command/context menu, limits/cache.
+- Hugging Face translator service in compose, translation command/context menu, limits/cache.
 - Help UI with categories/pagination/admin hiding.
 
 **Exit:** all guild feature acceptance criteria pass in the test guild.
@@ -2059,7 +2067,7 @@ This section separates **ambiguities in the brief** from **design gaps found whi
 | 7 | "Can't kick/ban, just disconnect" mixes guild and channel actions. | Users may expect a server kick. | No guild Kick/Ban perms; `vc disconnect` only; `vc deny` blocks rejoin. | Resolved |
 | 8 | Temp VC ownership lifecycle is unspecified. | Orphans, duplicate channels, owner leaves. | Advisory lock, unique active row, grace cleanup, restart reconciliation, transfer/claim. | Resolved |
 | 9 | Music source/legality is unspecified. | Third-party terms and playback reliability. | SoundCloud is the zero-token primary; Spotify is optional metadata + SoundCloud mirror; no YouTube; no public music service. | Residual risk |
-| 10 | Translation provider/cost/privacy is unspecified. | Recurring cost; message text leaves server. | Self-hosted LibreTranslate: no API key, text stays on the host, only CPU/RAM cost. | Resolved |
+| 10 | Translation provider/cost/privacy is unspecified. | Recurring cost; message text leaves server. | Self-hosted Hugging Face translator: no API key, text stays on the host, only CPU/RAM cost. | Resolved |
 | 11 | Prefix vs slash is unspecified. | Prefix-only needs Message Content intent and is poor on mobile. | **Confirmed hybrid:** prefix + slash + context menu + mention prefix. | Resolved |
 | 12 | Prefix validation rules are unspecified. | A bad prefix breaks parsing or conflicts. | 1–5 chars, at least one non-alphanumeric, no whitespace/`@#/`, DB constraint, mention fallback. | Resolved |
 | 13 | Auto-role policy is unspecified. | Admin-role auto-grant is a severe escalation. | Max 10 roles, skip bots, optional account-age gate, reject dangerous roles, hierarchy checks, sync. | Recommended |
@@ -2093,7 +2101,7 @@ This section separates **ambiguities in the brief** from **design gaps found whi
 13. **Rootless ports.** 443 cannot be bound rootless. **Closed:** MCP stays on the `mcp` network; host publish is an optional override; TLS proxy is optional.
 14. **SELinux volume labels.** **Closed:** `:Z` and named volumes.
 15. **MCP prompt injection.** **Closed:** no arbitrary tools, one token, confirmations, audit; residual risk documented.
-16. **Too many API tokens.** Spotify and paid translation keys were going to be required. **Closed:** SoundCloud + LibreTranslate need zero tokens; Spotify is optional; internal secrets are generated.
+16. **Too many API tokens.** Spotify and paid translation keys were going to be required. **Closed:** SoundCloud + Hugging Face translator need zero tokens; Spotify is optional; internal secrets are generated.
 17. **Spotify is a mirror, not a stream.** LavaSrc resolves Spotify metadata and plays from SoundCloud. **Closed:** documented; `spsearch:` fails cleanly when credentials are absent; SoundCloud always works.
 18. **Translation mention/emoji mangling.** **Closed:** placeholder protection; code blocks documented as best effort.
 19. **Admin permission drift.** Slash defaults are not enforcement. **Closed:** runtime `assertAdmin` on every path.
@@ -2107,7 +2115,7 @@ This section separates **ambiguities in the brief** from **design gaps found whi
 |---|---|---|
 | SoundCloud/Spotify ToS and reliability | Third-party behavior | Switchable source config, monitoring, no public service |
 | Spotify mirror misses | No official Spotify stream; SoundCloud match may fail | Friendly fallback to SoundCloud search; optional credentials |
-| LibreTranslate quality/CPU | Argos models are smaller than commercial APIs | Quotas, small language set, accept lower quality |
+| Hugging Face translator quality/CPU | Argos models are smaller than commercial APIs | Quotas, small language set, accept lower quality |
 | Role-level VC bypass | Discord permission model | Dedicated category, role sweep, documentation |
 | LLM prompt injection | Model behavior | No arbitrary tools, one token, confirmations |
 | Voice latency | Host region | Choose VPS near community; monitor |
@@ -2131,13 +2139,13 @@ This section separates **ambiguities in the brief** from **design gaps found whi
 
 ## 14. Open decisions
 
-The big decisions are now confirmed: SoundCloud + optional Spotify, LibreTranslate, MCP on the Podman network via `MCP_URL` with one token, `chodu`, and hybrid commands. Remaining smaller decisions:
+The big decisions are now confirmed: SoundCloud + optional Spotify, Hugging Face translator, MCP on the Podman network via `MCP_URL` with one token, `chodu`, and hybrid commands. Remaining smaller decisions:
 
 1. **Admin model:** `Manage Guild` + owner + optional `ADMIN_ROLE_IDS` (recommended) vs a dedicated admin role only.
 2. **Auto-role policy:** which roles, skip bots, minimum account age? Recommended: skip bots, 0-day default, reject Administrator/managed/above-bot.
 3. **Welcome extras:** generated image card is implemented and toggled with `welcome card on/off`; DM/goodbye remain optional and off by default.
 4. **Music DJ/permissions:** optional DJ roles (recommended) vs everyone can control.
-5. **Hosting:** Linux VPS specs/region? Recommended baseline 2 vCPU / 4 GB RAM (2 GB with a small LibreTranslate language set) / 20 GB disk, rootless Podman.
+5. **Hosting:** Linux VPS specs/region? Recommended baseline 2 vCPU / 4 GB RAM (2 GB with a small Hugging Face translator language set) / 20 GB disk, rootless Podman.
 6. **Audit retention:** 90 days recommended; any compliance requirement?
 7. **Queue lifetime:** memory-only; disconnect and restart clear it. No persistence or restore.
 8. **Spotify:** add the two optional Spotify values now, or start SoundCloud-only and add them later?
@@ -2169,7 +2177,7 @@ The big decisions are now confirmed: SoundCloud + optional Spotify, LibreTransla
 
 - [ ] `podman exec siela-bot yt-dlp --version` and `mpv --version` succeed.
 - [ ] Spotify credentials present only if `spsearch:` is wanted; `spsearch:` fails cleanly when absent.
-- [ ] LibreTranslate healthy; model volume populated; sample translation works.
+- [ ] Hugging Face translator healthy; model volume populated; sample translation works.
 - [ ] Voice join tested; SoundCloud search/play tested.
 - [ ] Control API reachable only on `control` network.
 - [ ] MCP reachable at `MCP_URL=http://mcp:8080/mcp` on the `mcp` network; `MCP_TOKEN` enforced.
@@ -2184,7 +2192,7 @@ The big decisions are now confirmed: SoundCloud + optional Spotify, LibreTransla
 - [ ] Auto-role assignment + rejection cases.
 - [ ] Social counters + opt-out + optional NSFW gate.
 - [ ] Temp VC create/lock/permit/deny/disconnect/cleanup/reconcile.
-- [ ] Translate reply/text/context menu; LibreTranslate outage.
+- [ ] Translate reply/text/context menu; Hugging Face translator outage.
 - [ ] Music play/queue/skip/leave; SoundCloud works with zero tokens.
 - [ ] Help categories/admin hiding/pagination.
 - [ ] Non-admin denial for every admin command.
@@ -2290,8 +2298,8 @@ Aliases: `j`/`summon` for `join`; `p`, `s`, `q`; `np`/`current`/`currentlyplayin
 | Variable | Default | Purpose |
 |---|---|---|
 | Spotify credentials | not required | Spotify links resolve through Spotify's public oEmbed metadata and are searched on SoundCloud. |
-| `LIBRETRANSLATE_URL` | `http://libretranslate:5000` | Internal translation service. |
-| `LIBRETRANSLATE_API_KEY` | unset | Not needed on the internal network. |
+| `TRANSLATOR_URL` | `http://translator:8000` | Internal translation service. |
+| `TRANSLATOR_API_KEY` | unset | Not needed on the internal network. |
 | `DEFAULT_PREFIX` | `!` | Initial prefix. |
 | `ADMIN_ROLE_IDS` | unset | Optional admin roles. |
 | `BOT_OWNER_ID` | unset | Emergency owner. |
@@ -2367,7 +2375,7 @@ podman exec siela-postgres pg_dump -U siela -Fc siela \
 | Quadlet | systemd-native Podman container unit format. |
 | yt-dlp | Media resolver/downloader used for music search and streaming. |
 | mpv | Decodes and streams audio to raw PCM for Discord voice. |
-| LibreTranslate | Self-hosted, free translation service used for the `translate` command. |
+| Hugging Face translator | Self-hosted, free translation service used for the `translate` command. |
 | Temp VC | Join-to-create temporary voice channel owned by a member. |
 | Atomic upsert | Single SQL statement that inserts or increments without a race. |
 | `MCP_TOKEN` | The single shared token for MCP HTTP and the bot control API. |
@@ -2384,7 +2392,7 @@ podman exec siela-postgres pg_dump -U siela -Fc siela \
 - [x] Custom VC permissions are explicit and bounded.
 - [x] Auto-role privilege escalation is addressed.
 - [x] Consent/opt-out for social actions is addressed.
-- [x] Translation privacy and resource use are addressed (LibreTranslate, zero API keys).
+- [x] Translation privacy and resource use are addressed (Hugging Face translator, zero API keys).
 - [x] MCP has a trust boundary, one token, confirmations, and audit.
 - [x] Music uses yt-dlp + mpv; SoundCloud is zero-token and Spotify links resolve via metadata search.
 - [x] Podman rootless constraints, generated secrets, `podman compose` compatibility, Quadlet, migrations, and backups are addressed.
