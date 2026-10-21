@@ -1,8 +1,9 @@
 # Optional override: publish MCP to the host loopback only.
 #
-# Use only when a host-local HTTP client needs to reach MCP:
+# Use only when MCP is enabled and a host-local HTTP client needs to reach it:
 #   podman compose -p siela \
 #     -f deploy/podman/compose.yaml \
+#     -f deploy/podman/compose.mcp.yaml \
 #     -f deploy/podman/compose.host.yaml up -d
 
 services:

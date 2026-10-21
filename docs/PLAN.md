@@ -2295,7 +2295,8 @@ Aliases: `j`/`summon` for `join`; `p`, `s`, `q`; `np`/`current`/`currentlyplayin
 | `DEFAULT_PREFIX` | `!` | Initial prefix. |
 | `ADMIN_ROLE_IDS` | unset | Optional admin roles. |
 | `BOT_OWNER_ID` | unset | Emergency owner. |
-| `MCP_URL` | `http://mcp:8080/mcp` | MCP endpoint on the `mcp` network. |
+| `MCP_ENABLED` | `false` | Start the optional MCP container. |
+| `MCP_URL` | `http://mcp:8080/mcp` | MCP endpoint on the `mcp` network when enabled. |
 | `MCP_HTTP_PORT` | `8080` | MCP listen port. |
 | `MCP_TRANSPORT` | `http` | `stdio` for local clients. |
 | `CONTROL_API_URL` | `http://bot-control:3001` | MCP → bot. |
@@ -2318,32 +2319,34 @@ export DISCORD_TOKEN="..."
 
 # 2. Development on macOS/Linux
 podman machine start                 # macOS only
-podman compose -p siela -f deploy/podman/compose.yaml up -d --build
+./scripts/podman-stack.sh up -d --build
 
 # 3. Watch logs
-podman compose -p siela -f deploy/podman/compose.yaml logs -f bot
+./scripts/podman-stack.sh logs -f bot
 
 # 4. Migrations (one-shot service; `up` already ran it)
-podman compose -p siela -f deploy/podman/compose.yaml run --rm migrate
+./scripts/podman-stack.sh run --rm migrate
 
-# 5. Health
+# 5. Health (MCP only exists when MCP_ENABLED=true)
 podman healthcheck run siela-bot
-podman healthcheck run siela-mcp
 podman ps --format '{{.Names}}\t{{.Status}}'
 
+# MCP is off by default. Enable it in deploy/podman/.env:
+#   MCP_ENABLED=true
+# then run: ./scripts/podman-stack.sh up -d
 # MCP is on the Podman network at MCP_URL=http://mcp:8080/mcp.
-# For a host-local HTTP client only:
-# podman compose -p siela -f deploy/podman/compose.yaml -f deploy/podman/compose.host.yaml up -d
+# For a host-local HTTP client only, include compose.mcp.yaml and compose.host.yaml.
 
 # 6. Production (rootless Linux, Quadlet)
 loginctl enable-linger "$USER"
 systemctl --user daemon-reload
-systemctl --user enable --now siela-bot.service siela-mcp.service
+systemctl --user enable --now siela-bot.service
+# Enable siela-mcp.service only when MCP_ENABLED=true.
 
 # 7. Updates (migrations first)
-podman compose -p siela -f deploy/podman/compose.yaml pull
-podman compose -p siela -f deploy/podman/compose.yaml run --rm migrate
-podman compose -p siela -f deploy/podman/compose.yaml up -d
+./scripts/podman-stack.sh pull
+./scripts/podman-stack.sh run --rm migrate
+./scripts/podman-stack.sh up -d
 podman ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}'
 
 # 8. Backup

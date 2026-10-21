@@ -11,10 +11,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPOSE_FILE="${ROOT_DIR}/deploy/podman/compose.yaml"
 ENV_FILE="${ROOT_DIR}/deploy/podman/.env"
 ENV_EXAMPLE="${ROOT_DIR}/deploy/podman/.env.example"
-COMPOSE=(podman compose -p siela -f "${COMPOSE_FILE}")
+COMPOSE=("${ROOT_DIR}/scripts/podman-stack.sh")
 
 TMP_ENV=""
 cleanup() {
@@ -30,6 +29,15 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   cp "${ENV_EXAMPLE}" "${TMP_ENV}"
 fi
 
+MCP_ENABLED="${MCP_ENABLED:-$(grep -E '^MCP_ENABLED=' "${ENV_FILE}" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r"' || true)}"
+MCP_ENABLED="${MCP_ENABLED:-false}"
+MCP_ENABLED="$(printf '%s' "${MCP_ENABLED}" | tr '[:upper:]' '[:lower:]')"
+case "${MCP_ENABLED}" in
+  1|true|yes|on) MCP_ON=1 ;;
+  *) MCP_ON=0 ;;
+esac
+echo "MCP: $([[ "${MCP_ON}" == "1" ]] && echo enabled || echo disabled)"
+
 echo "==> podman compose config"
 "${COMPOSE[@]}" config >/dev/null
 echo "config OK"
@@ -39,8 +47,12 @@ if [[ "${MODE}" != "up" ]]; then
   exit 0
 fi
 
-if [[ ! -f "${ROOT_DIR}/deploy/podman/Containerfile.bot" || ! -f "${ROOT_DIR}/deploy/podman/Containerfile.mcp" ]]; then
-  echo "error: Containerfile.bot/Containerfile.mcp not found; run 'up' after Phase 1" >&2
+if [[ ! -f "${ROOT_DIR}/deploy/podman/Containerfile.bot" ]]; then
+  echo "error: Containerfile.bot not found; run 'up' after Phase 1" >&2
+  exit 1
+fi
+if [[ "${MCP_ON}" == "1" && ! -f "${ROOT_DIR}/deploy/podman/Containerfile.mcp" ]]; then
+  echo "error: MCP_ENABLED is true but Containerfile.mcp is missing" >&2
   exit 1
 fi
 
@@ -49,8 +61,12 @@ echo "==> podman compose up"
 
 echo "==> waiting for healthchecks"
 for i in $(seq 1 30); do
-  if podman healthcheck run siela-bot >/dev/null 2>&1 && \
-     podman healthcheck run siela-mcp >/dev/null 2>&1; then
+  HEALTHY=1
+  podman healthcheck run siela-bot >/dev/null 2>&1 || HEALTHY=0
+  if [[ "${MCP_ON}" == "1" ]]; then
+    podman healthcheck run siela-mcp >/dev/null 2>&1 || HEALTHY=0
+  fi
+  if [[ "${HEALTHY}" == "1" ]]; then
     echo "health OK"
     break
   fi

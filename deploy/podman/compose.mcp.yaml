@@ -1,0 +1,41 @@
+# Optional MCP overlay.
+#
+# The MCP server is disabled by default. Start it with the stack wrapper:
+#   MCP_ENABLED=true scripts/podman-stack.sh up -d
+#
+# Or compose it explicitly:
+#   podman compose -p siela \
+#     -f deploy/podman/compose.yaml \
+#     -f deploy/podman/compose.mcp.yaml up -d
+
+networks:
+  mcp:
+    internal: true
+
+services:
+  mcp:
+    image: localhost/siela-mcp:latest
+    build:
+      context: ../..
+      dockerfile: deploy/podman/Containerfile.mcp
+    container_name: siela-mcp
+    env_file: .env
+    networks: [control, mcp]
+    depends_on:
+      - bot
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m
+    # No host port. MCP is exposed on the `mcp` network at
+    # MCP_URL=http://mcp:8080/mcp.

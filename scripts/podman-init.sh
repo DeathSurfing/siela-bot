@@ -7,6 +7,7 @@
 # Optional:
 #   DISCORD_CLIENT_ID  (otherwise derived from the token)
 #   GUILD_ID           (otherwise auto-detected by the bot)
+#   MCP_ENABLED        (true starts MCP; default false)
 #   FORCE=1            (overwrite an existing .env)
 #
 # The script generates POSTGRES_PASSWORD and MCP_TOKEN,
@@ -70,6 +71,7 @@ POSTGRES_USER=siela
 POSTGRES_DB=siela
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 DATABASE_URL=postgres://siela:${POSTGRES_PASSWORD}@postgres:5432/siela
+MCP_ENABLED=${MCP_ENABLED:-false}
 MCP_TOKEN=${MCP_TOKEN}
 MCP_URL=http://mcp:8080/mcp
 
@@ -86,5 +88,6 @@ echo "wrote ${ENV_FILE} (mode 600)"
 echo "client id: ${CLIENT_ID}"
 echo "guild id: ${GUILD_ID:-auto-detect}"
 echo "generated: POSTGRES_PASSWORD, MCP_TOKEN"
+echo "MCP: ${MCP_ENABLED:-false} (set MCP_ENABLED=true in deploy/podman/.env to enable)"
 echo "invite: https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&scope=bot%20applications.commands"
-echo "next: podman compose -p siela -f deploy/podman/compose.yaml up -d --build"
+echo "next: scripts/podman-stack.sh up -d --build"

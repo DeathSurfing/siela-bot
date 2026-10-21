@@ -13,19 +13,18 @@ A single-guild Discord bot with music, welcome/auto-role, social counters, tempo
 - **Temporary VC** — join-to-create private voice channels with a control panel in the channel's text chat for lock/unlock, rename, limit, kick, ownership transfer, and delete. Empty temp VCs are removed immediately. `jointocreate #voice [template]` (alias `j2c`) auto-creates a **Temporary VCs** category and sets the default `{user}'s VC` template.
 - **Prefix** — global single-guild prefix with validation and audit.
 - **Hybrid commands** — prefix + slash + context menu + mention prefix.
-- **MCP** — 50+ tools exposed on the Podman `mcp` network via `MCP_URL` and one `MCP_TOKEN`.
-- **Podman** — `podman compose`-compatible stack: Postgres, LibreTranslate, bot, MCP, and a one-shot migrate service. The bot image includes yt-dlp and mpv.
+- **MCP (optional)** — 50+ tools exposed on the Podman `mcp` network via `MCP_URL` and one `MCP_TOKEN`. Off by default; set `MCP_ENABLED=true` to enable.
+- **Podman** — `podman compose`-compatible core stack: Postgres, LibreTranslate, bot, and a one-shot migrate service. MCP is an optional overlay. The bot image includes yt-dlp and mpv.
 
 ## Quickstart
 
 ```bash
 export DISCORD_TOKEN="..."
 ./scripts/podman-init.sh
-podman compose -p siela -f deploy/podman/compose.yaml up -d --build
-podman compose -p siela -f deploy/podman/compose.yaml run --rm migrate
+./scripts/podman-stack.sh up -d --build
 ```
 
-Only `DISCORD_TOKEN` is required. The init script derives the client ID, prints an invite URL, generates the internal Postgres/MCP secrets, and writes a 600-permission `.env`. `GUILD_ID` is auto-detected when the bot is in exactly one guild.
+Only `DISCORD_TOKEN` is required. The init script derives the client ID, prints an invite URL, generates the internal Postgres/MCP secrets, and writes a 600-permission `.env`. `GUILD_ID` is auto-detected when the bot is in exactly one guild. MCP is disabled by default; set `MCP_ENABLED=true` in `deploy/podman/.env` (or run `MCP_ENABLED=true ./scripts/podman-stack.sh up -d`) to start it. The wrapper selects `compose.mcp.yaml` only when the flag is on.
 
 ## Repository
 
