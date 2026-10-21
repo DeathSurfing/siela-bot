@@ -50,6 +50,7 @@ import { CounterService } from "./features/counters.js";
 import { WelcomeService } from "./features/welcome.js";
 import { AutoRoleService } from "./features/autorole.js";
 import { BiasService } from "./features/bias.js";
+import { BirthdayService } from "./features/birthday.js";
 import { parseTempVcPanelCustomId, tempVcPanelCustomId, TempVcService } from "./features/tempvc.js";
 
 import { MusicService, type MusicFilterPreset } from "./features/music.js";
@@ -114,6 +115,7 @@ export class SielaBot {
       welcome: new WelcomeService(settings, this.logger),
       autoRole: new AutoRoleService(settings, this.logger),
       bias: new BiasService(this.dbHandle.db),
+      birthday: new BirthdayService(this.dbHandle.db, settings, this.client, this.logger),
       tempVc: new TempVcService(this.client, this.dbHandle.db, settings, this.logger, this.config.adminRoleIds),
       privacy: new PrivacyService(counters),
       music,
@@ -214,6 +216,7 @@ export class SielaBot {
     await this.services.settings.ensure(guild.id);
     await this.registerCommands(guild);
     await this.services.tempVc.reconcile(guild).catch((error) => this.logger.warn({ err: error }, "temp VC reconcile failed"));
+    this.services.birthday.start();
     await this.client.user?.setPresence({
       activities: [{ name: `${guild.name} • ${DEFAULTS.prefix}help`, type: ActivityType.Watching }],
       status: "online",
@@ -783,6 +786,7 @@ export class SielaBot {
     this.stopping = true;
     await Promise.allSettled([this.controlServer.stop(), this.healthServer.stop()]);
     if (this.music) await this.music.shutdown().catch(() => undefined);
+    this.services.birthday.stop();
     this.client.destroy();
     await this.dbHandle.close();
   }

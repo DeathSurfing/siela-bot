@@ -8,7 +8,7 @@ A single-guild Discord bot with music, welcome/auto-role, social counters, tempo
 - **Welcomer** — join messages, generated welcome image cards (`welcome card on/off`), optional DMs, optional goodbye messages.
 - **Auto-role** — admin-configurable roles with hierarchy and dangerous-permission checks.
 - **Ephemeral music queue** — tracks live in memory only; disconnecting or restarting the bot clears the queue.
-- **Social** — `slap`, `kiss`, `hug`, `chodu`, `wuzu` with PostgreSQL pair counters, stats, leaderboard, and opt-out; plus a permanent pair-based `lovecalc` and a BTS `bias` command.
+- **Social** — `slap`, `kiss`, `hug`, `chodu`, `wuzu` with PostgreSQL pair counters, stats, leaderboard, and opt-out; plus a permanent pair-based `lovecalc`, a BTS `bias` command, and automatic birthday wishes.
 - **Temporary VC** — join-to-create private voice channels with a control panel in the channel's text chat for lock/unlock, rename, limit, kick, ownership transfer, and delete. Only the channel owner and admins can kick members. Empty temp VCs are removed immediately. `jointocreate #voice [template]` (alias `j2c`) auto-creates a **Temporary VCs** category and sets the default `{user}'s VC` template.
 - **Prefix** — global single-guild prefix with validation and audit.
 - **Hybrid commands** — prefix + slash + context menu + mention prefix.

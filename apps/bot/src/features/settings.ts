@@ -36,6 +36,21 @@ export class SettingsService {
     return row;
   }
 
+  async getBirthdayChannel(guildId: string): Promise<string | null> {
+    const row = await this.getGuild(guildId);
+    return row.birthdayChannelId ?? null;
+  }
+
+  async setBirthdayChannel(guildId: string, channelId: string | null, actorId: string): Promise<string | null> {
+    await this.ensure(guildId);
+    await this.db
+      .update(guildSettings)
+      .set({ birthdayChannelId: channelId, updatedAt: new Date(), updatedBy: actorId })
+      .where(eq(guildSettings.guildId, guildId));
+    this.prefixCache.delete(guildId);
+    return channelId;
+  }
+
   async getPrefix(guildId: string): Promise<string> {
     const cached = this.prefixCache.get(guildId);
     if (cached) return cached;

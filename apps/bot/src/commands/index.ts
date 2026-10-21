@@ -5,6 +5,7 @@ import { privacyCommand } from "./utility/privacy.js";
 import { prefixCommand } from "./admin/prefix.js";
 import { welcomeCommand } from "./admin/welcome.js";
 import { autoRoleCommand } from "./admin/autorole.js";
+import { birthdayCommand } from "./utility/birthday.js";
 import { biasCommand } from "./social/bias.js";
 import { tempVcCommand } from "./admin/tempvc.js";
 import { joinToCreateCommand } from "./admin/jointocreate.js";
@@ -29,6 +30,7 @@ export const commands: Command[] = [
   helpCommand,
   pingCommand,
   privacyCommand,
+  birthdayCommand,
   prefixCommand,
   welcomeCommand,
   autoRoleCommand,

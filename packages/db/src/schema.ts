@@ -17,6 +17,7 @@ export const guildSettings = pgTable("guild_settings", {
   guildId: text("guild_id").primaryKey(),
   prefix: varchar("prefix", { length: 5 }).notNull().default("!"),
   locale: varchar("locale", { length: 10 }).notNull().default("en"),
+  birthdayChannelId: text("birthday_channel_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   updatedBy: text("updated_by"),
@@ -115,6 +116,23 @@ export const interactionOptouts = pgTable(
   (table) => [primaryKey({ columns: [table.guildId, table.userId, table.kind] })],
 );
 
+export const userBirthdays = pgTable(
+  "user_birthdays",
+  {
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    month: integer("month").notNull(),
+    day: integer("day").notNull(),
+    birthYear: integer("birth_year"),
+    lastWishedDate: varchar("last_wished_date", { length: 10 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.guildId, table.userId] })],
+);
+
 export const tempVoiceChannels = pgTable(
   "temp_voice_channels",
   {
@@ -181,5 +199,6 @@ export type MusicSettingsRow = typeof musicSettings.$inferSelect;
 export type CounterRow = typeof interactionCounters.$inferSelect;
 export type UserBiasRow = typeof userBiases.$inferSelect;
 export type OptoutRow = typeof interactionOptouts.$inferSelect;
+export type UserBirthdayRow = typeof userBirthdays.$inferSelect;
 export type TempVoiceChannelRow = typeof tempVoiceChannels.$inferSelect;
 export type AuditRow = typeof auditLog.$inferSelect;
