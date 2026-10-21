@@ -41,6 +41,8 @@ export interface QueueTrack {
   artworkUrl: string | null;
 }
 
+export type MusicFilterPreset = "off" | "bassboost" | "nightcore" | "vaporwave";
+
 interface ResolvedTrack {
   url: string;
   title: string;
@@ -844,7 +846,7 @@ export class MusicService extends EventEmitter {
     gp.autoplay = enabled;
   }
 
-  async filters(guildId: string, preset: "off" | "bassboost" | "nightcore" | "vaporwave"): Promise<void> {
+  async filters(guildId: string, preset: MusicFilterPreset): Promise<void> {
     const gp = this.requirePlayer(guildId);
     gp.filterPreset = preset;
     if (gp.current) await gp.playNow(gp.current);

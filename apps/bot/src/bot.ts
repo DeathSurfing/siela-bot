@@ -10,6 +10,7 @@ import {
   GatewayIntentBits,
   ModalBuilder,
   Partials,
+  StringSelectMenuBuilder,
   TextInputBuilder,
   TextInputStyle,
   type ButtonInteraction,
@@ -50,7 +51,7 @@ import { WelcomeService } from "./features/welcome.js";
 import { AutoRoleService } from "./features/autorole.js";
 import { parseTempVcPanelCustomId, tempVcPanelCustomId, TempVcService } from "./features/tempvc.js";
 
-import { MusicService } from "./features/music.js";
+import { MusicService, type MusicFilterPreset } from "./features/music.js";
 import { buildMusicControls } from "./features/music-ui.js";
 import { PrivacyService } from "./features/privacy.js";
 import { buildHelpPayload } from "./features/help.js";
@@ -271,6 +272,10 @@ export class SielaBot {
         await this.onMusicButton(interaction);
         return;
       }
+      if (interaction.isStringSelectMenu() && interaction.customId.startsWith("music:filter:")) {
+        await this.onMusicFilterSelect(interaction);
+        return;
+      }
       if ((interaction.isButton() || interaction.isUserSelectMenu()) && interaction.customId.startsWith("tempvc:")) {
         await this.onTempVcComponent(interaction);
         return;
@@ -396,6 +401,26 @@ export class SielaBot {
         await interaction.update({ components: buildMusicControls(guild.id, music.state(guild.id)) });
         return;
       }
+      if (action === "filter") {
+        await interaction.reply({
+          content: "Choose a filter preset:",
+          ephemeral: true,
+          components: [
+            new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+              new StringSelectMenuBuilder()
+                .setCustomId(`music:filter:${guild.id}`)
+                .setPlaceholder("Choose a filter")
+                .addOptions(
+                  { label: "Off", value: "off", emoji: "🚫", description: "No audio filter" },
+                  { label: "Bass boost", value: "bassboost", emoji: "🔊", description: "Extra low end" },
+                  { label: "Nightcore", value: "nightcore", emoji: "🌙", description: "Faster and higher" },
+                  { label: "Vaporwave", value: "vaporwave", emoji: "🌴", description: "Slower and deeper" },
+                ),
+            ),
+          ],
+        });
+        return;
+      }
       if (action === "stop") {
         await music.stop(guild.id);
         await music.disconnect(guild.id);
@@ -405,6 +430,45 @@ export class SielaBot {
       await replyError("Unknown music control.");
     } catch (error) {
       await replyError(error instanceof UserError ? error.message : "That music control failed.");
+    }
+  }
+
+  private async onMusicFilterSelect(interaction: StringSelectMenuInteraction): Promise<void> {
+    const [prefix, kind, guildId] = interaction.customId.split(":");
+    if (prefix !== "music" || kind !== "filter" || !guildId || !this.guildId || guildId !== this.guildId) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+    const music = this.services.music;
+    const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+    if (!music || !member) return;
+
+    const errorReply = async (message: string): Promise<void> => {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: message, ephemeral: true }).catch(() => undefined);
+      } else {
+        await interaction.followUp({ content: message, ephemeral: true }).catch(() => undefined);
+      }
+    };
+
+    const channelId = music.channelId(guild.id);
+    if (!channelId) return errorReply("The bot is not in a voice channel.");
+    if (member.voice.channelId !== channelId) return errorReply("Join the bot's voice channel first.");
+    if (!music.state(guild.id)?.current) return errorReply("Nothing is playing.");
+
+    const value = interaction.values[0];
+    if (value !== "off" && value !== "bassboost" && value !== "nightcore" && value !== "vaporwave") {
+      return errorReply("Unknown filter preset.");
+    }
+
+    await interaction.deferUpdate();
+    try {
+      await music.filters(guild.id, value as MusicFilterPreset);
+      await interaction.editReply({ content: `Filter preset set to **${value}**.`, components: [] });
+    } catch (error) {
+      await interaction.editReply({
+        content: error instanceof UserError ? error.message : "That filter could not be applied.",
+        components: [],
+      });
     }
   }
 

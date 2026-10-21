@@ -60,6 +60,12 @@ export function buildMusicControls(
     .setEmoji("🔁")
     .setStyle(loop === "off" ? ButtonStyle.Secondary : ButtonStyle.Success)
     .setDisabled(!hasTrack);
+  const filterButton = new ButtonBuilder()
+    .setCustomId(buttonId(guildId, "filter"))
+    .setLabel("Filters")
+    .setEmoji("🎛️")
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(!hasTrack);
 
   return [
     new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
@@ -69,6 +75,6 @@ export function buildMusicControls(
       skip,
       stop,
     ),
-    new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(shuffle, loopButton),
+    new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(shuffle, loopButton, filterButton),
   ];
 }
