@@ -63,6 +63,7 @@ export const slapCommand = socialCommand("slap");
 export const kissCommand = socialCommand("kiss");
 export const hugCommand = socialCommand("hug");
 export const choduCommand = socialCommand("chodu");
+export const wuzuCommand = socialCommand("wuzu");
 
 export const socialStatsCommand: Command = {
   name: "socialstats",

@@ -31,7 +31,7 @@ export const CATEGORY_EMOJI: Record<CommandCategory, string> = {
   admin: "🛡️",
 };
 
-export const INTERACTION_KINDS: InteractionKind[] = ["slap", "kiss", "hug", "chodu"];
+export const INTERACTION_KINDS: InteractionKind[] = ["slap", "kiss", "hug", "chodu", "wuzu"];
 
 export const INTERACTION_META: Record<
   InteractionKind,
@@ -41,6 +41,7 @@ export const INTERACTION_META: Record<
   kiss: { label: "Kiss", verb: "kissed", emoji: "💋", gif: true },
   hug: { label: "Hug", verb: "hugged", emoji: "🤗", gif: true },
   chodu: { label: "Chodu", verb: "chodu'd", emoji: "💥", gif: false },
+  wuzu: { label: "Wuzu", verb: "wuzu'd", emoji: "💧", gif: false },
 };
 
 export const DEFAULTS = {

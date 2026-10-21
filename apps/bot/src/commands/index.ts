@@ -19,6 +19,7 @@ import {
   slapCommand,
   socialStatsCommand,
   socialTopCommand,
+  wuzuCommand,
 } from "./social/social.js";
 import { musicCommands } from "./music/music.js";
 
@@ -38,6 +39,7 @@ export const commands: Command[] = [
   kissCommand,
   hugCommand,
   choduCommand,
+  wuzuCommand,
   socialStatsCommand,
   socialTopCommand,
   optoutCommand,

@@ -16,7 +16,7 @@ export const prefixSchema = z
   .refine((value) => !/[\s@#/\\`]/.test(value), "Prefix contains a reserved character")
   .refine((value) => /[^A-Za-z0-9]/.test(value), "Prefix must contain a non-alphanumeric character");
 
-export const interactionKindSchema = z.enum(["slap", "kiss", "hug", "chodu"]);
+export const interactionKindSchema = z.enum(["slap", "kiss", "hug", "chodu", "wuzu"]);
 
 export const prefixSetSchema = z.object({ prefix: prefixSchema }).strict();
 

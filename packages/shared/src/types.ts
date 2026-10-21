@@ -1,4 +1,4 @@
-export type InteractionKind = "slap" | "kiss" | "hug" | "chodu";
+export type InteractionKind = "slap" | "kiss" | "hug" | "chodu" | "wuzu";
 
 export type CommandCategory = "music" | "social" | "voice" | "utility" | "admin";
 
