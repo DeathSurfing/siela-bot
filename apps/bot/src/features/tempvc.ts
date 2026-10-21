@@ -209,7 +209,7 @@ export class TempVcService {
   async ensurePanel(channelId: string): Promise<void> {
     const { channel, row } = await this.requireChannel(channelId);
     const payload = this.panelPayloadFor(channel, row);
-    const messages = await channel.messages.fetch({ limit: 50 }).catch((error) => {
+    const messages = await channel.messages.fetch({ limit: 100 }).catch((error) => {
       this.logger.debug({ err: error, channelId }, "temp VC panel history unavailable");
       return null;
     });
@@ -518,13 +518,12 @@ export class TempVcService {
       const channel = guild.channels.cache.get(row.channelId);
       if (!channel || channel.type !== ChannelType.GuildVoice) {
         await this.markDeleted(row.channelId);
-      } else if (channel.members.size === 0) {
-        this.scheduleCleanup(guild, row.channelId, 0, true);
       } else {
         await this.syncOverwrites(channel, row.ownerId);
         await this.ensurePanel(row.channelId).catch((error) => {
           this.logger.debug({ err: error, channelId: row.channelId }, "temp VC panel reconcile failed");
         });
+        if (channel.members.size === 0) this.scheduleCleanup(guild, row.channelId, 0, true);
       }
     }
   }
