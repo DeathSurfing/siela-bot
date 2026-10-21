@@ -56,8 +56,8 @@ services:
     container_name: siela-libretranslate
     environment:
       LT_LOAD_ONLY: en,es,fr,de,hi,ko
-      # Ensure newly added languages are installed in an existing model volume.
-      LT_UPDATE_MODELS: "true"
+      # Set LT_UPDATE_MODELS=true temporarily after adding a language.
+      LT_UPDATE_MODELS: "${LT_UPDATE_MODELS:-false}"
       LT_DISABLE_WEB_UI: "true"
       LT_CHAR_LIMIT: "2000"
       LT_REQ_LIMIT: "60"
