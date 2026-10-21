@@ -68,10 +68,10 @@ export interface CommandContext {
   source: CommandSource;
   interaction?: ChatInputCommandInteraction | MessageContextMenuCommandInteraction;
   message?: Message;
-  reply(payload: ReplyPayload): Promise<unknown>;
+  reply(payload: ReplyPayload): Promise<Message | null>;
   defer(ephemeral?: boolean): Promise<void>;
-  edit(payload: ReplyPayload): Promise<unknown>;
-  followUp(payload: ReplyPayload): Promise<unknown>;
+  edit(payload: ReplyPayload): Promise<Message | null>;
+  followUp(payload: ReplyPayload): Promise<Message | null>;
 }
 
 export type AnySlashBuilder =

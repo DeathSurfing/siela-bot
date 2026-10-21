@@ -370,8 +370,8 @@ export class ControlServer {
       return { volume: await this.requireMusic().volume(this.guildId(), body.volume) };
     });
     this.route("POST", "/v1/music/seek", async (request) => {
-      this.parse(musicSeekSchema, request.body);
-      await this.requireMusic().seek();
+      const body = this.parse(musicSeekSchema, request.body);
+      await this.requireMusic().seek(this.guildId(), body.positionMs);
       return { ok: true };
     });
     this.route("POST", "/v1/music/loop", async (request) => {

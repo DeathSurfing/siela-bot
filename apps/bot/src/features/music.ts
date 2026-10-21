@@ -16,7 +16,7 @@ import {
   type AudioResource,
   type VoiceConnection,
 } from "@discordjs/voice";
-import { ChannelType, type Client, type GuildMember } from "discord.js";
+import { ChannelType, type Client, type GuildMember, type Message } from "discord.js";
 import { eq } from "drizzle-orm";
 import { musicSessions, type Database } from "@siela/db";
 import type { MusicLoopMode, MusicQueueState, MusicTrackInfo } from "@siela/shared";
@@ -60,6 +60,8 @@ interface ResolvedTrack {
   isStream: boolean;
   artworkUrl: string | null;
 }
+
+export const MUSIC_CONTROL_EMOJIS = ["⏯️", "⏪", "⏩", "⏭️", "⏹️", "🔀", "🔁"] as const;
 
 function toInfo(track: QueueTrack): MusicTrackInfo {
   return {
@@ -193,7 +195,7 @@ class GuildPlayer {
     }
   }
 
-  private async startMpv(track: QueueTrack): Promise<AudioResource> {
+  private async startMpv(track: QueueTrack, startAtMs = 0): Promise<AudioResource> {
     const filter = this.audioFilter();
     const directUrl = await this.directAudioUrl(track);
     const fifoPath = `/tmp/siela-${this.guildId}-${randomUUID()}.pcm`;
@@ -215,6 +217,7 @@ class GuildPlayer {
         "--audio-samplerate=48000",
         "--audio-channels=stereo",
         "--ytdl=no",
+        ...(startAtMs > 0 ? [`--start=${(startAtMs / 1000).toFixed(3)}`] : []),
         ...(filter ? [`--af=${filter}`] : []),
         "--",
         directUrl,
@@ -255,7 +258,7 @@ class GuildPlayer {
     });
   }
 
-  private startFfmpeg(track: QueueTrack): AudioResource {
+  private startFfmpeg(track: QueueTrack, startAtMs = 0): AudioResource {
     const filter = this.audioFilter();
     const ytdlp = spawn(
       this.service.ytdlpPath,
@@ -283,6 +286,7 @@ class GuildPlayer {
         "error",
         "-i",
         "pipe:0",
+        ...(startAtMs > 0 ? ["-ss", (startAtMs / 1000).toFixed(3)] : []),
         ...(filter ? ["-af", filter] : []),
         "-f",
         "s16le",
@@ -327,15 +331,17 @@ class GuildPlayer {
     });
   }
 
-  async playNow(track: QueueTrack): Promise<void> {
+  async playNow(track: QueueTrack, startAtMs = 0): Promise<void> {
     this.killProcesses();
     this.current = track;
-    this.startedAt = Date.now();
+    this.startedAt = Date.now() - Math.max(0, startAtMs);
     this.pausedAt = null;
     this.paused = false;
 
     const resource =
-      this.service.backend === "ffmpeg" ? this.startFfmpeg(track) : await this.startMpv(track);
+      this.service.backend === "ffmpeg"
+        ? this.startFfmpeg(track, startAtMs)
+        : await this.startMpv(track, startAtMs);
     this.resource = resource;
     resource.volume?.setVolume(this.volume / 100);
     this.player.play(resource);
@@ -414,6 +420,7 @@ export class MusicService extends EventEmitter {
   readonly logger: Logger;
   private readonly players = new Map<string, GuildPlayer>();
   private readonly persistTimers = new Map<string, NodeJS.Timeout>();
+  private readonly controlMessages = new Map<string, string>();
   private binariesCheckedAt = 0;
   private binariesOk = false;
 
@@ -469,6 +476,55 @@ export class MusicService extends EventEmitter {
 
   channelId(guildId: string): string | null {
     return this.players.get(guildId)?.connection.joinConfig.channelId ?? null;
+  }
+
+  async registerControlMessage(message: Message): Promise<void> {
+    if (!message.guildId) return;
+    this.controlMessages.set(message.id, message.guildId);
+    if (this.controlMessages.size > 100) {
+      const oldest = this.controlMessages.keys().next().value;
+      if (oldest) this.controlMessages.delete(oldest);
+    }
+    for (const emoji of MUSIC_CONTROL_EMOJIS) {
+      await message.react(emoji).catch(() => undefined);
+    }
+  }
+
+  async handleControlReaction(messageId: string, emoji: string, member: GuildMember): Promise<boolean> {
+    const guildId = this.controlMessages.get(messageId);
+    if (!guildId || guildId !== member.guild.id) return false;
+    const player = this.players.get(guildId);
+    if (!player?.current) return false;
+    if (member.voice.channelId !== this.channelId(guildId)) return false;
+
+    switch (emoji) {
+      case "⏯️":
+        if (player.paused) await this.resume(guildId);
+        else await this.pause(guildId);
+        return true;
+      case "⏪":
+        await this.seek(guildId, Math.max(0, player.positionMs() - 10_000));
+        return true;
+      case "⏩":
+        await this.seek(guildId, player.positionMs() + 10_000);
+        return true;
+      case "⏭️":
+        await this.skip(guildId);
+        return true;
+      case "⏹️":
+        await this.stop(guildId);
+        await this.disconnect(guildId, false);
+        this.controlMessages.delete(messageId);
+        return true;
+      case "🔀":
+        await this.shuffle(guildId);
+        return true;
+      case "🔁":
+        await this.loop(guildId, player.loop === "off" ? "track" : player.loop === "track" ? "queue" : "off");
+        return true;
+      default:
+        return false;
+    }
   }
 
   schedulePersist(guildId: string): void {
@@ -792,8 +848,11 @@ export class MusicService extends EventEmitter {
     return value;
   }
 
-  async seek(): Promise<void> {
-    throw new UserError("Seek is not supported with the yt-dlp stream backend.");
+  async seek(guildId: string, positionMs: number): Promise<void> {
+    const gp = this.requirePlayer(guildId);
+    if (!gp.current) throw new UserError("Nothing is playing.");
+    const target = Math.max(0, Math.floor(positionMs));
+    await gp.playNow(gp.current, target);
   }
 
   async loop(guildId: string, mode: MusicLoopMode): Promise<void> {

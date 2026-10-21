@@ -65,7 +65,7 @@ export async function createPrefixContext(options: {
     },
     async followUp(payload) {
       const data = withDefaults(payload);
-      if (!options.channel.isTextBased()) return;
+      if (!options.channel.isTextBased()) return null;
       return options.channel.send({
         content: data.content,
         embeds: data.embeds,
@@ -125,7 +125,7 @@ export async function createSlashContext(options: {
         });
       }
       replied = true;
-      return interaction.reply({
+      await interaction.reply({
         content: data.content,
         embeds: data.embeds,
         components: data.components,
@@ -133,6 +133,7 @@ export async function createSlashContext(options: {
         ephemeral: data.ephemeral,
         allowedMentions: data.allowedMentions,
       });
+      return interaction.fetchReply();
     },
     async defer(ephemeral = false) {
       if (deferred || replied || interaction.replied) return;

@@ -4,7 +4,7 @@ A single-guild Discord bot with music, welcome/auto-role, social counters, tempo
 
 ## Features
 
-- **Music** — yt-dlp + mpv streaming: SoundCloud works out of the box; YouTube/YouTube Music playlists import into the queue; Spotify links are resolved through oEmbed metadata and searched on SoundCloud. Use `queue [page]` to inspect and `clearqueue` to empty upcoming tracks.
+- **Music** — yt-dlp + mpv streaming: SoundCloud works out of the box; YouTube/YouTube Music playlists import into the queue; Spotify links are resolved through oEmbed metadata and searched on SoundCloud. Use `queue [page]` to inspect and `clearqueue` to empty upcoming tracks. Now-playing messages support reactions: `⏯️` pause/resume, `⏪`/`⏩` seek, `⏭️` skip, `⏹️` stop/disconnect, `🔀` shuffle, `🔁` loop.
 - **Translation** — self-hosted LibreTranslate; no paid API key.
 - **Welcomer** — join messages, generated welcome image cards (`welcome card on/off`), optional DMs, optional goodbye messages.
 - **Auto-role** — admin-configurable roles with hierarchy and dangerous-permission checks.

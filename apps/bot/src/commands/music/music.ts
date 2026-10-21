@@ -67,17 +67,30 @@ const playCommand: Command = {
   async execute(ctx: CommandContext) {
     const query = ctx.args[0];
     if (!query) throw new UserError("Provide a search query or URL.");
-    await ctx.defer();
-    const result = await music(ctx).play(ctx.member, query, ctx.args[1]);
-    await ctx.edit({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(COLORS.music)
-          .setTitle("Added to queue")
-          .setDescription(trackLine(result.first))
-          .setFooter({ text: `${result.added} track${result.added === 1 ? "" : "s"} added` }),
-      ],
-    });
+    await ctx.reply({ content: "🔎 Loading…" });
+    try {
+      const result = await music(ctx).play(ctx.member, query, ctx.args[1]);
+      const message = await ctx.edit({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(COLORS.music)
+            .setTitle(result.added > 1 ? "Playlist added" : "Added to queue")
+            .setDescription(
+              [
+                trackLine(result.first),
+                "",
+                result.added > 1
+                  ? `**${result.added}** tracks imported. React below to control playback.`
+                  : "React below to control playback.",
+              ].join("\n"),
+            ),
+        ],
+      });
+      if (message) await music(ctx).registerControlMessage(message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "That play request failed.";
+      await ctx.edit({ content: message }).catch(() => undefined);
+    }
   },
 };
 
@@ -196,7 +209,8 @@ const nowPlayingCommand: Command = {
   examples: ["nowplaying"],
   slash: new SlashCommandBuilder().setName("nowplaying").setDescription("Show the current track"),
   async execute(ctx) {
-    await ctx.reply({ embeds: [stateEmbed(ctx)] });
+    const message = await ctx.reply({ embeds: [stateEmbed(ctx)] });
+    if (message) await music(ctx).registerControlMessage(message);
   },
 };
 
@@ -236,7 +250,7 @@ const seekCommand: Command = {
     await requireDj(ctx);
     const position = parseDuration(ctx.args[0] ?? "");
     if (position === null) throw new UserError("Use seconds or mm:ss.");
-    await music(ctx).seek();
+    await music(ctx).seek(ctx.guild.id, position);
     await ctx.reply({ content: `Seeked to ${formatDuration(position)}.`, ephemeral: true });
   },
 };

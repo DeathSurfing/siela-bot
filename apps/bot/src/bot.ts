@@ -14,8 +14,12 @@ import {
   type Interaction,
   type Message,
   type MessageContextMenuCommandInteraction,
+  type MessageReaction,
+  type PartialMessageReaction,
   type ChatInputCommandInteraction,
   type PartialGuildMember,
+  type PartialUser,
+  type User,
   type StringSelectMenuInteraction,
   type VoiceState,
 } from "discord.js";
@@ -76,7 +80,7 @@ export class SielaBot {
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildVoiceStates,
       ],
-      partials: [Partials.Channel, Partials.GuildMember],
+      partials: [Partials.Channel, Partials.GuildMember, Partials.Message, Partials.Reaction, Partials.User],
       allowedMentions: { parse: [], repliedUser: false },
     });
     this.registry = new CommandRegistry().register(...commands);
@@ -145,6 +149,7 @@ export class SielaBot {
       if (guild.id === this.guildId) this.logger.warn({ guildId: guild.id }, "bound guild removed");
     });
     this.client.on(Events.MessageCreate, (message) => void this.onMessage(message));
+    this.client.on(Events.MessageReactionAdd, (reaction, user) => void this.onReaction(reaction, user));
     this.client.on(Events.InteractionCreate, (interaction) => void this.onInteraction(interaction));
     this.client.on(Events.GuildMemberAdd, (member) => void this.onMemberAdd(member));
     this.client.on(Events.GuildMemberRemove, (member) => void this.onMemberRemove(member));
@@ -402,6 +407,28 @@ export class SielaBot {
       await (source as CommandContext).reply({ content, ephemeral: true }).catch(() => undefined);
     } else {
       await (source as Message).reply({ content, allowedMentions: { parse: [] } }).catch(() => undefined);
+    }
+  }
+
+  private async onReaction(
+    reaction: MessageReaction | PartialMessageReaction,
+    user: User | PartialUser,
+  ): Promise<void> {
+    if (user.bot) return;
+    try {
+      if (reaction.partial) await reaction.fetch();
+      const message = reaction.message.partial ? await reaction.message.fetch() : reaction.message;
+      if (!message.guildId || message.guildId !== this.guildId) return;
+      const member = await message.guild?.members.fetch(user.id).catch(() => null);
+      if (!member) return;
+      const handled = await this.services.music?.handleControlReaction(
+        message.id,
+        reaction.emoji.name ?? "",
+        member,
+      );
+      if (handled) await reaction.users.remove(user.id).catch(() => undefined);
+    } catch (error) {
+      this.logger.debug({ err: error, messageId: reaction.message.id }, "reaction control failed");
     }
   }
 

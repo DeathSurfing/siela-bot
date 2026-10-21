@@ -666,7 +666,8 @@ interface TranslationProvider {
 - `GuildPlayer` owns the queue, current track, loop mode, volume, autoplay, and the running yt-dlp/mpv processes.
 - Queue persistence is implemented in `music_sessions` (jsonb): current track, upcoming queue, volume, loop, and autoplay are saved after mutations and restored the next time the bot joins voice.
 - Max queue size (default 100), max volume 150, default volume 80.
-- `seek` is intentionally unsupported with the streaming backend and returns a clear error.
+- `seek` restarts the current mpv stream at the requested offset.
+- The now-playing message supports reaction controls: `⏯️` pause/resume, `⏪`/`⏩` seek 10s, `⏭️` skip, `⏹️` stop/disconnect, `🔀` shuffle, `🔁` loop.
 
 **Commands:**
 
