@@ -55,7 +55,7 @@ services:
     image: libretranslate/libretranslate:latest
     container_name: siela-libretranslate
     environment:
-      LT_LOAD_ONLY: en,es,fr,de,hi
+      LT_LOAD_ONLY: en,es,fr,de,hi,ko
       LT_DISABLE_WEB_UI: "true"
       LT_CHAR_LIMIT: "2000"
       LT_REQ_LIMIT: "60"

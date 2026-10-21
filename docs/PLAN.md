@@ -642,7 +642,7 @@ interface TranslationProvider {
 
 - Per-user 5 requests/minute and 100 requests/hour.
 - Global concurrent translation limit (default 2) to protect the CPU.
-- `LT_LOAD_ONLY` on the LibreTranslate container limits loaded language models and RAM; default a small set (for example `en,es,fr,de,hi`). Add languages by extending `LT_LOAD_ONLY` and restarting the container; each language adds model disk/RAM.
+- `LT_LOAD_ONLY` on the LibreTranslate container limits loaded language models and RAM; default `en,es,fr,de,hi,ko`. Add languages by extending `LT_LOAD_ONLY` and restarting the container; each language adds model disk/RAM.
 - No paid API budget is needed; the only cost is host RAM/CPU.
 
 **Privacy:** with LibreTranslate, message text stays on the Podman host (no third-party API). The model download is the only outbound traffic. The command is opt-in per use; no persistent content storage.
@@ -1438,7 +1438,7 @@ services:
     image: libretranslate/libretranslate:latest
     container_name: siela-libretranslate
     environment:
-      LT_LOAD_ONLY: en,es,fr,de,hi
+      LT_LOAD_ONLY: en,es,fr,de,hi,ko
       LT_DISABLE_WEB_UI: "true"
       LT_CHAR_LIMIT: "2000"
       LT_REQ_LIMIT: "60"
