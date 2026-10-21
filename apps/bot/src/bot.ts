@@ -119,7 +119,7 @@ export class SielaBot {
       welcome: new WelcomeService(settings, this.logger),
       autoRole: new AutoRoleService(settings, this.logger),
       tempVc: new TempVcService(this.client, this.dbHandle.db, settings, this.logger),
-      translation: new TranslationService(this.config.LIBRETRANSLATE_URL, undefined, this.logger),
+      translation: new TranslationService(this.config.TRANSLATOR_URL, this.logger),
       privacy: new PrivacyService(counters),
       music,
     };
@@ -359,7 +359,11 @@ export class SielaBot {
               { name: "Original", value: truncate(result.original, 1_000) },
               { name: "English", value: truncate(result.translated, 1_000) },
             )
-            .setFooter({ text: result.detectedSource ? `Detected: ${result.detectedSource}` : "LibreTranslate" }),
+            .setFooter({
+              text: result.detectedSource
+                ? `Detected: ${result.detectedSource} • ${result.provider}`
+                : result.provider,
+            }),
         ],
         allowedMentions: { parse: [] },
       });

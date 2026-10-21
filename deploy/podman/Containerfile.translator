@@ -1,0 +1,27 @@
+FROM docker.io/library/python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/models \
+    TRANSFORMERS_CACHE=/models \
+    TOKENIZERS_PARALLELISM=false
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends libgomp1 \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY apps/translator/requirements.txt ./requirements.txt
+RUN pip install --upgrade pip \
+  && pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu \
+  && pip install -r requirements.txt
+
+COPY apps/translator/app.py ./app.py
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=180s --retries=30 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)" || exit 1
+
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

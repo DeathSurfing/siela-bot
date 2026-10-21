@@ -23,7 +23,7 @@ export DISCORD_TOKEN="..."
 
 | File | Purpose |
 |---|---|
-| `compose.yaml` | Core stack: Postgres, LibreTranslate, bot (yt-dlp + mpv), one-shot migrate. |
+| `compose.yaml` | Core stack: Postgres, Hugging Face translator, bot (yt-dlp + mpv), one-shot migrate. |
 | `compose.mcp.yaml` | Optional MCP overlay. Enabled with `MCP_ENABLED=true`. |
 | `compose.host.yaml` | Optional override: publish MCP on `127.0.0.1:8080` for host-local clients. |
 | `compose.proxy.yaml` | Optional override: Caddy TLS front door for external MCP clients. |

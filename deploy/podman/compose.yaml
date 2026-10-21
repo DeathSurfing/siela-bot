@@ -21,7 +21,7 @@ networks:
 
 volumes:
   pgdata:
-  libretranslate_models:
+  translator_models:
 
 services:
   postgres:
@@ -51,28 +51,34 @@ services:
     restart: "no"
     command: ["node", "dist/scripts/migrate.js"]
 
-  libretranslate:
-    image: libretranslate/libretranslate:latest
-    container_name: siela-libretranslate
+  translator:
+    image: localhost/siela-translator:latest
+    build:
+      context: ../..
+      dockerfile: deploy/podman/Containerfile.translator
+    container_name: siela-translator
     environment:
-      LT_LOAD_ONLY: en,es,fr,de,hi,ko
-      # Set LT_UPDATE_MODELS=true temporarily after adding a language.
-      LT_UPDATE_MODELS: "${LT_UPDATE_MODELS:-false}"
-      LT_DISABLE_WEB_UI: "true"
-      LT_CHAR_LIMIT: "2000"
-      LT_REQ_LIMIT: "60"
-      LT_THREADS: "2"
+      TRANSLATOR_MODEL: facebook/nllb-200-distilled-600M
+      TRANSLATOR_THREADS: "4"
+      TRANSLATOR_BEAMS: "4"
+      HF_HOME: /models
+      TRANSFORMERS_CACHE: /models
+      TOKENIZERS_PARALLELISM: "false"
     volumes:
-      - libretranslate_models:/home/libretranslate/.local
+      - translator_models:/models
     networks: [edge]
     restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
     healthcheck:
-      test: ["CMD-SHELL", "./venv/bin/python scripts/healthcheck.py"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)\" || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 60
-      start_period: 60s
-    mem_limit: 2g
+      start_period: 180s
+    mem_limit: 3g
 
   bot:
     image: localhost/siela-bot:latest
@@ -89,7 +95,7 @@ services:
     depends_on:
       - postgres
       - migrate
-      - libretranslate
+      - translator
     restart: unless-stopped
     init: true
     read_only: true

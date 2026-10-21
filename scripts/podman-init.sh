@@ -75,7 +75,7 @@ MCP_ENABLED=${MCP_ENABLED:-false}
 MCP_TOKEN=${MCP_TOKEN}
 MCP_URL=http://mcp:8080/mcp
 
-LIBRETRANSLATE_URL=http://libretranslate:5000
+TRANSLATOR_URL=http://translator:8000
 CONTROL_API_URL=http://bot-control:3001
 DEFAULT_PREFIX=!
 LOG_LEVEL=info

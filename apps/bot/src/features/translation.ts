@@ -11,9 +11,10 @@ export interface TranslationResult {
   cached: boolean;
 }
 
-interface LibreTranslateResponse {
+interface TranslatorResponse {
   translatedText?: string;
-  detectedLanguage?: { language?: string; confidence?: number };
+  detectedLanguage?: string | null;
+  provider?: string;
 }
 
 export class TranslationService {
@@ -22,7 +23,6 @@ export class TranslationService {
 
   constructor(
     private readonly baseUrl: string,
-    private readonly apiKey: string | undefined,
     private readonly logger: { warn: (obj: unknown, msg?: string) => void },
   ) {}
 
@@ -45,44 +45,35 @@ export class TranslationService {
     const cached = this.cache.get(key);
     if (cached) return { ...cached, original, cached: true };
 
-    const controller = AbortSignal.timeout(10_000);
+    const controller = AbortSignal.timeout(60_000);
     let response: Response;
     try {
       response = await fetch(`${this.baseUrl.replace(/\/$/, "")}/translate`, {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}),
-        },
-        body: JSON.stringify({
-          q: protectedText.text,
-          source: "auto",
-          target: "en",
-          format: "text",
-          ...(this.apiKey ? { api_key: this.apiKey } : {}),
-        }),
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: protectedText.text }),
         signal: controller,
       });
     } catch (error) {
-      this.logger.warn({ err: error }, "LibreTranslate request failed");
+      this.logger.warn({ err: error }, "Translation request failed");
       throw new ServiceUnavailableError("Translation service is unavailable");
     }
 
     if (!response.ok) {
       const body = await response.text().catch(() => "");
-      this.logger.warn({ status: response.status, body: body.slice(0, 200) }, "LibreTranslate error");
+      this.logger.warn({ status: response.status, body: body.slice(0, 200) }, "Translation service error");
       throw new ServiceUnavailableError("Translation service returned an error");
     }
 
-    const data = (await response.json()) as LibreTranslateResponse;
+    const data = (await response.json()) as TranslatorResponse;
     const translatedText = data.translatedText;
     if (!translatedText) throw new ServiceUnavailableError("Translation service returned no text");
 
     const result: TranslationResult = {
       original,
       translated: protectedText.restore(translatedText),
-      detectedSource: data.detectedLanguage?.language ?? null,
-      provider: "libretranslate",
+      detectedSource: data.detectedLanguage ?? null,
+      provider: data.provider ?? "huggingface",
       cached: false,
     };
     this.cache.set(key, result);
@@ -116,15 +107,10 @@ export class TranslationService {
   }
 
   async health(): Promise<boolean> {
-    const base = this.baseUrl.replace(/\/$/, "");
     try {
-      const response = await fetch(`${base}/health`, { signal: AbortSignal.timeout(3_000) });
-      if (response.ok) return true;
-    } catch {
-      // fall through to /languages
-    }
-    try {
-      const response = await fetch(`${base}/languages`, { signal: AbortSignal.timeout(3_000) });
+      const response = await fetch(`${this.baseUrl.replace(/\/$/, "")}/health`, {
+        signal: AbortSignal.timeout(3_000),
+      });
       return response.ok;
     } catch {
       return false;

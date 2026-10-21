@@ -67,7 +67,7 @@ export const translateCommand: Command = {
         .setFooter({
           text: [
             result.detectedSource ? `Detected: ${result.detectedSource}` : null,
-            result.cached ? "cached" : "LibreTranslate",
+            result.cached ? "cached" : result.provider,
           ]
             .filter(Boolean)
             .join(" • "),

@@ -621,13 +621,13 @@ interface TranslationProvider {
 }
 ```
 
-- Default and only required provider: **LibreTranslate**, self-hosted in the Podman stack.
-- `LIBRETRANSLATE_URL` defaults to `http://libretranslate:5000`; no API key is required for an internal instance.
-- The adapter interface is kept so a paid provider can be added later, but no paid provider is configured by default.
-- Timeout 10s (CPU-only self-host may be slower than a cloud API), 1 retry, circuit breaker after repeated failures.
+- Default and only required provider: **Hugging Face `facebook/nllb-200-distilled-600M`**, self-hosted in the Podman `translator` container.
+- `TRANSLATOR_URL` defaults to `http://translator:8000`; no API key is required.
+- The adapter interface is kept so a different HF checkpoint or paid provider can be added later.
+- Timeout 60s. The translator serializes model inference and uses four CPU threads.
 - Max 2,000 characters per request (matches Discord message content).
 - In-memory LRU cache keyed by SHA-256 of `(text, target, provider)`; no DB persistence.
-- If the detected source is already English, return a clear "already English" response (still show the original).
+- Script detection maps Korean, Arabic, Japanese, Chinese, Hindi, and other scripts to NLLB language codes. A Hinglish word heuristic tags Romanized Hindi as Hindi before model inference. If the detected source is already English, return the original text without a model pass.
 
 **Formatting and safety:**
 
@@ -641,13 +641,13 @@ interface TranslationProvider {
 **Cost controls (resource, not money):**
 
 - Per-user 5 requests/minute and 100 requests/hour.
-- Global concurrent translation limit (default 2) to protect the CPU.
-- `LT_LOAD_ONLY` on the LibreTranslate container limits loaded language models and RAM; default `en,es,fr,de,hi,ko`. Add languages by extending `LT_LOAD_ONLY` and restarting the container; each language adds model disk/RAM. If the model volume already exists, set `LT_UPDATE_MODELS=true` for one restart so the new packages are downloaded, then return it to false.
+- Model inference is serialized inside the translator to protect CPU/RAM.
+- The NLLB model is cached in the `translator_models` volume; first boot downloads it. The model supports Korean, Arabic, Japanese, Chinese, Hindi, and many other languages.
 - No paid API budget is needed; the only cost is host RAM/CPU.
 
-**Privacy:** with LibreTranslate, message text stays on the Podman host (no third-party API). The model download is the only outbound traffic. The command is opt-in per use; no persistent content storage.
+**Privacy:** with the self-hosted HF translator, message text stays on the Podman host (no third-party API). The model download is the only outbound traffic. The command is opt-in per use; no persistent content storage.
 
-**Acceptance:** reply translation works; missing reply shows usage; long text is rejected cleanly; LibreTranslate outage returns a friendly error; mentions are not pinged; rate limits enforced.
+**Acceptance:** reply translation works for Hindi, Hinglish, Korean, Arabic, Japanese, Chinese, and English; missing reply shows usage; long text is rejected cleanly; translator outage returns a friendly error; mentions are not pinged; rate limits enforced.
 
 ### 5.8 Music
 
