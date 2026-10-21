@@ -574,6 +574,8 @@ RETURNING count;
 
 **Commands:** `vc lock`, `vc unlock`, `vc permit @user`, `vc deny @user`, `vc disconnect @user`, `vc rename <name>`, `vc limit <0-99>`, `vc claim`, `vc transfer @user`, `vc delete`, `vc info`.
 
+**Hub setup:** `jointocreate <#voice-channel> [#category]` (aliases `j2c`) sets the join-to-create hub, enables it, and warns about role-level `Connect` allows. `jointocreate status` shows the config; `jointocreate disable` turns it off. The existing `tempvc setup` remains available.
+
 **Lifecycle and reconciliation:**
 
 - Empty channel: wait `graceSeconds`, then delete.
@@ -755,7 +757,7 @@ interface TranslationProvider {
 - Auto-role rejects dangerous roles and roles above the bot.
 - Admin commands are not executable via mention prefix by non-admins, and help hides them.
 
-**Admin command inventory:** `prefix set/reset`, `welcome *`, `autorole *`, `tempvc setup/config`, `music djrole`, `music maxqueue`, `social reset` (optional), `privacy delete` (self or admin), `config` overview.
+**Admin command inventory:** `prefix set/reset`, `welcome *`, `autorole *`, `jointocreate *`, `tempvc setup/config`, `music djrole`, `music maxqueue`, `social reset` (optional), `privacy delete` (self or admin), `config` overview.
 
 ---
 
@@ -2247,6 +2249,7 @@ The big decisions are now confirmed: SoundCloud + optional Spotify, LibreTransla
 |---|---|
 | `welcome setup/channel/message/embed/ping/dm/test/disable/goodbye` | Welcome config. |
 | `autorole add/remove/list/enable/disable/validate/sync/minage/bots` | Auto-role config. |
+| `jointocreate <#voice> [#category]` / `jointocreate status` / `jointocreate disable` | Join-to-create hub. |
 | `tempvc setup/config` | Hub/category/limits/template. |
 | `music djrole` / `music maxqueue` | Music policy. |
 | `config` | Read-only config overview. |
