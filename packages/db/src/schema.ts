@@ -85,14 +85,6 @@ export const musicSettings = pgTable("music_settings", {
   updatedBy: text("updated_by"),
 });
 
-export const musicSessions = pgTable("music_sessions", {
-  guildId: text("guild_id")
-    .primaryKey()
-    .references(() => guildSettings.guildId, { onDelete: "cascade" }),
-  state: jsonb("state").notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
 export const interactionCounters = pgTable(
   "interaction_counters",
   {
@@ -172,7 +164,6 @@ export type WelcomeSettingsRow = typeof welcomeSettings.$inferSelect;
 export type AutoRoleSettingsRow = typeof autoroleSettings.$inferSelect;
 export type TempVcSettingsRow = typeof tempvcSettings.$inferSelect;
 export type MusicSettingsRow = typeof musicSettings.$inferSelect;
-export type MusicSessionRow = typeof musicSessions.$inferSelect;
 export type CounterRow = typeof interactionCounters.$inferSelect;
 export type OptoutRow = typeof interactionOptouts.$inferSelect;
 export type TempVoiceChannelRow = typeof tempVoiceChannels.$inferSelect;

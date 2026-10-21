@@ -664,7 +664,7 @@ interface TranslationProvider {
 - `yt-dlp --dump-single-json --default-search scsearch` resolves searches and direct URLs; Spotify links become `title + artist` searches.
 - `yt-dlp -g` resolves a fresh direct audio URL; `mpv --ao=pcm` decodes it and writes raw PCM (`s16le`, 48 kHz, stereo) to a named FIFO, which `@discordjs/voice` reads. Playlist URLs import every entry into the queue.
 - `GuildPlayer` owns the queue, current track, loop mode, volume, autoplay, and the running yt-dlp/mpv processes.
-- Queue persistence is implemented in `music_sessions` (jsonb): current track, upcoming queue, volume, loop, and autoplay are saved after mutations and restored the next time the bot joins voice.
+- The queue is intentionally in-memory only. Disconnecting, leaving voice, or restarting the bot clears the queue; nothing is restored on the next join.
 - Max queue size (default 100), max volume 150, default volume 80.
 - `seek` restarts the current mpv stream at the requested offset.
 - The now-playing message supports reaction controls: `⏯️` pause/resume, `⏪`/`⏩` seek 10s, `⏭️` skip, `⏹️` stop/disconnect, `🔀` shuffle, `🔁` loop.
@@ -681,7 +681,7 @@ interface TranslationProvider {
 | `queue [page]` | Paginated queue view with total duration and page number. |
 | `nowplaying` (aliases `current`, `currentlyplaying`, `cp`, `np`) | Current track + reaction controls. |
 | `volume <0-150>` | Set volume. |
-| `seek <mm:ss>` | Returns a clear "not supported" message. |
+| `seek <mm:ss>` | Seek the current track by restarting the stream at the offset. |
 | `loop <off/track/queue>` | Loop mode. |
 | `shuffle` | Shuffle the queue. |
 | `remove <index>` | Remove a track. |
@@ -699,8 +699,8 @@ interface TranslationProvider {
 
 - yt-dlp or mpv missing → music commands return a clear error; `bot_status` reports `music: down`.
 - Stream failure → skip and report; the queue continues.
-- Voice disconnect → clean up player state and notify.
-- Bot restart → queue state is restored from `music_sessions` on the next voice join.
+- Voice disconnect → attempt to resume; if that fails, clear the queue and player state.
+- Bot restart → queue starts empty; it is never restored from the database.
 
 **Legal/operational:** yt-dlp downloads from third-party services; respect their terms and do not operate as a public music service.
 
@@ -851,14 +851,6 @@ erDiagram
 | `music_channel_id` | `text` | Optional restriction. |
 | `alone_timeout_seconds` | `integer` | Default 120. |
 | `updated_at` / `updated_by` | | |
-
-#### `music_sessions`
-
-| Column | Type | Notes |
-|---|---|---|
-| `guild_id` | `text` PK/FK | Cascade. |
-| `state` | `jsonb` | Current track, queue, volume, loop, autoplay. |
-| `updated_at` | `timestamptz` | Debounced after queue mutations. |
 
 #### `interaction_counters`
 
@@ -1866,7 +1858,7 @@ Delivery: optional Discord admin webhook, email, or uptime service. Do not put t
 
 | Failure | Behavior |
 |---|---|
-| PostgreSQL down | DB-backed commands fail with a friendly error; `/readyz` fails; Podman restarts the bot. Music already playing may continue until the next state write. |
+| PostgreSQL down | DB-backed commands fail with a friendly error; `/readyz` fails; Podman restarts the bot. Music already playing continues from memory; the queue is not persisted. |
 | yt-dlp/mpv down | Music commands return a clear error; other features keep working. |
 | Discord API outage | discord.js retries/rate-limits; commands may be delayed; no silent data corruption. |
 | LibreTranslate down | Friendly error; circuit breaker prevents a retry storm; other features unaffected. |
@@ -2072,7 +2064,7 @@ This section separates **ambiguities in the brief** from **design gaps found whi
 | 15 | Help "clean UI" is subjective. | Component limits, mobile layout, admin visibility. | Components V2 + categories + pagination + ephemeral + permission-aware. | Resolved |
 | 16 | Single-guild enforcement is implicit. | Accidental multi-guild data or commands. | Resolve `GUILD_ID` explicitly or auto-detect it when only one guild exists; guild-scoped registration; reject other guilds; all queries scoped. | Resolved |
 | 17 | MCP exposure is unspecified. | Public control plane is dangerous. | Exposed on the Podman `mcp` network via `MCP_URL`; one `MCP_TOKEN`; host/public exposure is an optional override; no OAuth in v1. | Resolved |
-| 18 | Queue persistence is unspecified. | Music stops after restart. | Persist queue state in `music_sessions` and restore it on the next voice join. | Resolved |
+| 18 | Queue lifetime is unspecified. | Music stops after restart. | Keep the queue in memory only; clear it on disconnect or restart by design. | Resolved |
 | 19 | Data retention/privacy is unspecified. | User IDs, audit logs, translation text. | 90-day audit, no content logs, in-memory translation cache, `privacy delete`. | Resolved |
 | 20 | Hosting/scale is unspecified. | Resource sizing, voice latency, backups. | 2 vCPU / 8 GB RAM recommended (4 GB only with reduced limits) / 20 GB disk; Linux host near community; Podman rootless. | Needs confirmation |
 | 21 | Welcome image cards / invite tracking are not requested but often assumed. | Scope/CPU/assets. | Generated welcome card implemented; invite tracking explicitly out of scope. | Resolved |
@@ -2084,7 +2076,7 @@ This section separates **ambiguities in the brief** from **design gaps found whi
 ### 13.2 Design gaps found (and how the plan closes them)
 
 1. **Two sources of truth for settings.** If MCP writes directly to the DB, caches and Discord state diverge. **Closed:** MCP only calls the control API; the bot is the single writer.
-2. **Music state is ephemeral.** A restart loses the queue. **Partially closed:** documented limitation; optional snapshot design reserved.
+2. **Music state is ephemeral.** A restart loses the queue. **Closed by design:** the queue is memory-only and clears on disconnect or restart; no snapshot is restored.
 3. **Temp VC creation races.** Rapid rejoin/leave can create duplicates. **Closed:** advisory lock + partial unique index + idempotent reconciliation.
 4. **Counter races.** Read-modify-write loses increments. **Closed:** atomic `INSERT ... ON CONFLICT DO UPDATE`.
 5. **Prefix cache staleness.** **Closed:** write DB first, update cache, fallback read on miss.
@@ -2118,7 +2110,7 @@ This section separates **ambiguities in the brief** from **design gaps found whi
 | Voice latency | Host region | Choose VPS near community; monitor |
 | Discord API changes | Platform | Pin discord.js, test before upgrades |
 | Rootless Podman differences | Host distro | `podman compose` smoke test, runbook, version pin |
-| Queue loss on restart | In-memory v1 | Document; optional snapshot later |
+| Queue loss on restart | Intentional in-memory design | Queue clears on disconnect and restart |
 | Missed welcomes during downtime | Discord does not replay join events | Accept; auto-role has `sync`, welcome does not have a safe replay |
 
 ### 13.4 What I would cut or defer for v1
@@ -2144,7 +2136,7 @@ The big decisions are now confirmed: SoundCloud + optional Spotify, LibreTransla
 4. **Music DJ/permissions:** optional DJ roles (recommended) vs everyone can control.
 5. **Hosting:** Linux VPS specs/region? Recommended baseline 2 vCPU / 4 GB RAM (2 GB with a small LibreTranslate language set) / 20 GB disk, rootless Podman.
 6. **Audit retention:** 90 days recommended; any compliance requirement?
-7. **Queue persistence:** implemented with the `music_sessions` table and restored on the next voice join.
+7. **Queue lifetime:** memory-only; disconnect and restart clear it. No persistence or restore.
 8. **Spotify:** add the two optional Spotify values now, or start SoundCloud-only and add them later?
 
 ---

@@ -94,7 +94,6 @@ export class SielaBot {
         mpvPath: this.config.MPV_PATH,
         ffmpegPath: this.config.FFMPEG_PATH,
         settings,
-        db: this.dbHandle.db,
       },
       this.logger,
     );

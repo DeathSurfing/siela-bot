@@ -17,8 +17,6 @@ import {
   type VoiceConnection,
 } from "@discordjs/voice";
 import { ChannelType, type Client, type GuildMember, type Message } from "discord.js";
-import { eq } from "drizzle-orm";
-import { musicSessions, type Database } from "@siela/db";
 import type { MusicLoopMode, MusicQueueState, MusicTrackInfo } from "@siela/shared";
 import { UserError, ServiceUnavailableError } from "../lib/errors.js";
 import type { Logger } from "../lib/logger.js";
@@ -32,7 +30,6 @@ export interface MusicServiceOptions {
   mpvPath: string;
   ffmpegPath: string;
   settings: SettingsService;
-  db: Database;
 }
 
 export interface QueueTrack {
@@ -42,14 +39,6 @@ export interface QueueTrack {
   length: number;
   isStream: boolean;
   artworkUrl: string | null;
-}
-
-interface PersistedMusicState {
-  current: QueueTrack | null;
-  queue: QueueTrack[];
-  volume: number;
-  loop: MusicLoopMode;
-  autoplay: boolean;
 }
 
 interface ResolvedTrack {
@@ -129,7 +118,7 @@ class GuildPlayer {
           this.service.logger.info({ guildId: this.guildId }, "voice connection resumed");
         } catch (error) {
           this.service.logger.warn({ err: error, guildId: this.guildId }, "voice reconnect failed");
-          await this.service.disconnect(this.guildId, true);
+          await this.service.disconnect(this.guildId);
         }
       })();
     });
@@ -360,7 +349,6 @@ class GuildPlayer {
     resource.volume?.setVolume(this.volume / 100);
     this.player.play(resource);
     this.service.emit("trackStart", { guildId: this.guildId, track: toInfo(track) });
-    this.service.schedulePersist(this.guildId);
   }
 
   async advance(): Promise<void> {
@@ -404,7 +392,6 @@ class GuildPlayer {
           }
         }
       }
-      this.service.schedulePersist(this.guildId);
       this.service.emit("queueEnd", { guildId: this.guildId });
     } finally {
       this.advancing = false;
@@ -433,7 +420,6 @@ class GuildPlayer {
 export class MusicService extends EventEmitter {
   readonly logger: Logger;
   private readonly players = new Map<string, GuildPlayer>();
-  private readonly persistTimers = new Map<string, NodeJS.Timeout>();
   private readonly controlMessages = new Map<string, string>();
   private binariesCheckedAt = 0;
   private binariesOk = false;
@@ -527,7 +513,7 @@ export class MusicService extends EventEmitter {
         return true;
       case "⏹️":
         await this.stop(guildId);
-        await this.disconnect(guildId, false);
+        await this.disconnect(guildId);
         this.controlMessages.delete(messageId);
         return true;
       case "🔀":
@@ -538,62 +524,6 @@ export class MusicService extends EventEmitter {
         return true;
       default:
         return false;
-    }
-  }
-
-  schedulePersist(guildId: string): void {
-    const existing = this.persistTimers.get(guildId);
-    if (existing) clearTimeout(existing);
-    const timer = setTimeout(() => {
-      this.persistTimers.delete(guildId);
-      void this.persist(guildId);
-    }, 750);
-    timer.unref?.();
-    this.persistTimers.set(guildId, timer);
-  }
-
-  private async persist(guildId: string): Promise<void> {
-    const gp = this.players.get(guildId);
-    if (!gp) return;
-    const state: PersistedMusicState = {
-      current: gp.current,
-      queue: gp.queue,
-      volume: gp.volume,
-      loop: gp.loop,
-      autoplay: gp.autoplay,
-    };
-    try {
-      await this.options.db
-        .insert(musicSessions)
-        .values({ guildId, state, updatedAt: new Date() })
-        .onConflictDoUpdate({
-          target: musicSessions.guildId,
-          set: { state, updatedAt: new Date() },
-        });
-    } catch (error) {
-      this.logger.warn({ err: error, guildId }, "failed to persist music state");
-    }
-  }
-
-  private async clearPersisted(guildId: string): Promise<void> {
-    try {
-      await this.options.db.delete(musicSessions).where(eq(musicSessions.guildId, guildId));
-    } catch (error) {
-      this.logger.debug({ err: error, guildId }, "failed to clear music state");
-    }
-  }
-
-  private async loadPersisted(guildId: string): Promise<PersistedMusicState | null> {
-    try {
-      const [row] = await this.options.db
-        .select()
-        .from(musicSessions)
-        .where(eq(musicSessions.guildId, guildId))
-        .limit(1);
-      return (row?.state as PersistedMusicState | undefined) ?? null;
-    } catch (error) {
-      this.logger.debug({ err: error, guildId }, "failed to load music state");
-      return null;
     }
   }
 
@@ -703,11 +633,7 @@ export class MusicService extends EventEmitter {
     return tracks;
   }
 
-  private async ensurePlayer(
-    member: GuildMember,
-    voiceChannelId?: string,
-    restore = true,
-  ): Promise<GuildPlayer> {
+  private async ensurePlayer(member: GuildMember, voiceChannelId?: string): Promise<GuildPlayer> {
     const channelId = voiceChannelId ?? member.voice.channelId;
     if (!channelId) throw new UserError("Join a voice channel first.");
     const channel = member.guild.channels.cache.get(channelId);
@@ -720,7 +646,7 @@ export class MusicService extends EventEmitter {
       existingStatus !== VoiceConnectionStatus.Disconnected &&
       existing.connection.joinConfig.channelId === channelId;
     if (usable) return existing;
-    if (existing) await this.disconnect(member.guild.id, true);
+    if (existing) await this.disconnect(member.guild.id);
 
     const connection = joinVoiceChannel({
       channelId,
@@ -769,29 +695,13 @@ export class MusicService extends EventEmitter {
     });
     const guildPlayer = new GuildPlayer(member.guild.id, connection, player, this);
     const musicSettings = await this.options.settings.getMusic(member.guild.id);
-    const persisted = restore ? await this.loadPersisted(member.guild.id) : null;
-    if (persisted) {
-      guildPlayer.queue.push(...(persisted.queue ?? []));
-      guildPlayer.loop = persisted.loop ?? "off";
-      guildPlayer.autoplay = persisted.autoplay ?? false;
-      guildPlayer.volume = persisted.volume ?? musicSettings.defaultVolume;
-    } else {
-      guildPlayer.volume = musicSettings.defaultVolume;
-    }
+    guildPlayer.volume = musicSettings.defaultVolume;
     this.players.set(member.guild.id, guildPlayer);
-    if (persisted?.current) {
-      await guildPlayer.playNow(persisted.current).catch(async (error) => {
-        this.logger.warn({ err: error, guildId: member.guild.id }, "failed to restore persisted track; clearing stale queue");
-        guildPlayer.current = null;
-        guildPlayer.queue.length = 0;
-        await this.clearPersisted(member.guild.id);
-      });
-    }
     return guildPlayer;
   }
 
   async join(member: GuildMember, voiceChannelId?: string): Promise<string> {
-    const guildPlayer = await this.ensurePlayer(member, voiceChannelId, false);
+    const guildPlayer = await this.ensurePlayer(member, voiceChannelId);
     const channelId = guildPlayer.connection.joinConfig.channelId;
     if (!channelId) throw new ServiceUnavailableError("Could not determine the voice channel.");
     return channelId;
@@ -825,7 +735,6 @@ export class MusicService extends EventEmitter {
       }
       throw new UserError("None of those tracks could be played.");
     }
-    this.schedulePersist(member.guild.id);
     return { added: queueTracks.length, first: toInfo(queueTracks[0]!) };
   }
 
@@ -876,20 +785,16 @@ export class MusicService extends EventEmitter {
     gp.autoplay = false;
     gp.stopProcess();
     gp.player.stop(true);
-    this.schedulePersist(guildId);
   }
 
-  async disconnect(guildId: string, preserveQueue = false): Promise<void> {
+  async disconnect(guildId: string): Promise<void> {
     const gp = this.players.get(guildId);
-    if (preserveQueue) {
-      this.schedulePersist(guildId);
-    } else if (gp) {
+    if (gp) {
       gp.queue.length = 0;
       gp.current = null;
       gp.stopProcess();
       gp.player.stop(true);
       gp.connection.destroy();
-      await this.clearPersisted(guildId);
     }
     this.players.delete(guildId);
   }
@@ -899,7 +804,6 @@ export class MusicService extends EventEmitter {
     const value = Math.max(0, Math.min(150, Math.trunc(volume)));
     gp.volume = value;
     gp.resource?.volume?.setVolume(value / 100);
-    this.schedulePersist(guildId);
     return value;
   }
 
@@ -913,7 +817,6 @@ export class MusicService extends EventEmitter {
   async loop(guildId: string, mode: MusicLoopMode): Promise<void> {
     const gp = this.requirePlayer(guildId);
     gp.loop = mode;
-    this.schedulePersist(guildId);
   }
 
   async shuffle(guildId: string): Promise<void> {
@@ -922,21 +825,18 @@ export class MusicService extends EventEmitter {
       const j = Math.floor(Math.random() * (i + 1));
       [gp.queue[i], gp.queue[j]] = [gp.queue[j]!, gp.queue[i]!];
     }
-    this.schedulePersist(guildId);
   }
 
   async remove(guildId: string, index: number): Promise<QueueTrack> {
     const gp = this.requirePlayer(guildId);
     const [removed] = gp.queue.splice(index - 1, 1);
     if (!removed) throw new UserError("Invalid queue index.");
-    this.schedulePersist(guildId);
     return removed;
   }
 
   async clear(guildId: string): Promise<void> {
     const gp = this.requirePlayer(guildId);
     gp.queue.length = 0;
-    this.schedulePersist(guildId);
   }
 
   async move(guildId: string, from: number, to: number): Promise<void> {
@@ -945,7 +845,6 @@ export class MusicService extends EventEmitter {
     if (!track) throw new UserError("Invalid source index.");
     const target = Math.max(0, Math.min(gp.queue.length, to - 1));
     gp.queue.splice(target, 0, track);
-    this.schedulePersist(guildId);
   }
 
   async jump(guildId: string, index: number): Promise<void> {
@@ -958,14 +857,12 @@ export class MusicService extends EventEmitter {
   async autoplay(guildId: string, enabled: boolean): Promise<void> {
     const gp = this.requirePlayer(guildId);
     gp.autoplay = enabled;
-    this.schedulePersist(guildId);
   }
 
   async filters(guildId: string, preset: "off" | "bassboost" | "nightcore" | "vaporwave"): Promise<void> {
     const gp = this.requirePlayer(guildId);
     gp.filterPreset = preset;
     if (gp.current) await gp.playNow(gp.current);
-    this.schedulePersist(guildId);
   }
 
   state(guildId: string): MusicQueueState | null {
@@ -978,7 +875,7 @@ export class MusicService extends EventEmitter {
 
   async shutdown(): Promise<void> {
     for (const guildId of [...this.players.keys()]) {
-      await this.disconnect(guildId, true).catch(() => undefined);
+      await this.disconnect(guildId).catch(() => undefined);
     }
   }
 }

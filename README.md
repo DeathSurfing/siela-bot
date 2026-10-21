@@ -8,7 +8,7 @@ A single-guild Discord bot with music, welcome/auto-role, social counters, tempo
 - **Translation** — self-hosted LibreTranslate; no paid API key.
 - **Welcomer** — join messages, generated welcome image cards (`welcome card on/off`), optional DMs, optional goodbye messages.
 - **Auto-role** — admin-configurable roles with hierarchy and dangerous-permission checks.
-- **Music queue persistence** — the queue, volume, loop, and autoplay state survive bot restarts and are restored on the next voice join.
+- **Ephemeral music queue** — tracks live in memory only; disconnecting or restarting the bot clears the queue.
 - **Social** — `slap`, `kiss`, `hug`, `chodu` with PostgreSQL pair counters, stats, leaderboard, and opt-out.
 - **Temporary VC** — join-to-create private voice channels with lock/permit/deny/disconnect/claim/transfer. `jointocreate #voice [template]` (alias `j2c`) auto-creates a **Temporary VCs** category and sets the default `{user}'s VC` template.
 - **Prefix** — global single-guild prefix with validation and audit.
