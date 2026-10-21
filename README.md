@@ -10,7 +10,7 @@ A single-guild Discord bot with music, welcome/auto-role, social counters, tempo
 - **Auto-role** — admin-configurable roles with hierarchy and dangerous-permission checks.
 - **Ephemeral music queue** — tracks live in memory only; disconnecting or restarting the bot clears the queue.
 - **Social** — `slap`, `kiss`, `hug`, `chodu` with PostgreSQL pair counters, stats, leaderboard, and opt-out.
-- **Temporary VC** — join-to-create private voice channels with lock/permit/deny/disconnect/claim/transfer. `jointocreate #voice [template]` (alias `j2c`) auto-creates a **Temporary VCs** category and sets the default `{user}'s VC` template.
+- **Temporary VC** — join-to-create private voice channels with a control panel in the channel's text chat for lock/unlock, rename, limit, kick, ownership transfer, and delete. Empty temp VCs are removed immediately. `jointocreate #voice [template]` (alias `j2c`) auto-creates a **Temporary VCs** category and sets the default `{user}'s VC` template.
 - **Prefix** — global single-guild prefix with validation and audit.
 - **Hybrid commands** — prefix + slash + context menu + mention prefix.
 - **MCP** — 50+ tools exposed on the Podman `mcp` network via `MCP_URL` and one `MCP_TOKEN`.

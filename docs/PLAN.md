@@ -555,6 +555,7 @@ RETURNING count;
 - If the user already owns an active channel, move them there instead of creating a new one.
 - Create the channel with a marker in the topic if the channel type supports it (`siela-tempvc:<ownerId>`); the DB row is the source of truth for reconciliation.
 - Apply overwrites, move the member, insert the DB row.
+- Post a persistent control panel in the voice channel's text chat: lock/unlock, rename, user limit, kick, transfer ownership, open chat, and delete. The owner receives text-chat permissions for that channel.
 - If creation fails, reply/log with a safe error and do not leave a half-created row.
 
 **Permission matrix:**
@@ -572,14 +573,16 @@ RETURNING count;
 - `vc deny` sets `Connect: false`; `vc permit` sets `Connect: true`.
 - Owner can use the Discord UI because of `Manage Channels`; the bot re-asserts its own required overwrites if they are removed.
 
-**Commands:** `vc lock`, `vc unlock`, `vc permit @user`, `vc deny @user`, `vc disconnect @user`, `vc rename <name>`, `vc limit <0-99>`, `vc claim`, `vc transfer @user`, `vc delete`, `vc info`.
+**Commands:** `vc lock`, `vc unlock`, `vc permit @user`, `vc deny @user`, `vc disconnect @user`, `vc rename <name>`, `vc limit <0-99>`, `vc claim`, `vc transfer @user`, `vc delete`, `vc panel`, `vc info`.
+
+**Control panel:** each new temp VC gets a pinned-or-visible panel in its text chat. It shows owner/status/limit and provides Lock/Unlock, Rename, Limit, Open chat, Delete, Kick (member select), and Transfer ownership (member select). Only the owner or an admin can use it.
 
 **Hub setup:** `jointocreate <#voice-channel> [template]` (aliases `j2c`) sets the join-to-create hub, auto-creates a **Temporary VCs** category if none is configured, sets the default `{user}'s VC` template, enables the feature, and warns about role-level `Connect` allows. `jointocreate template <text>`, `jointocreate category <#category>`, `jointocreate status`, and `jointocreate disable` are also available. The existing `tempvc setup` remains available.
 
 **Lifecycle and reconciliation:**
 
-- Empty channel: wait `graceSeconds`, then delete.
-- Owner leaves the guild: delete after grace (or transfer if configured).
+- Empty channel: delete immediately.
+- Owner leaves the guild: delete immediately if the channel is empty; otherwise leave the channel controllable by admins/claiming.
 - Channel manually deleted: mark DB row deleted.
 - Bot restart: fetch active rows, compare to Discord; delete orphans, adopt marker-matching channels, close stale rows.
 - Hub/category deleted: disable creation, alert admins, keep existing channels.
@@ -595,7 +598,7 @@ RETURNING count;
 
 **Important privacy caveat:** a role with an explicit `Connect` allow can bypass an `@everyone` deny. True privacy requires either (a) a dedicated category where no other role explicitly allows `Connect`, or (b) adding deny overwrites for every role that allows it, which is bounded by Discord's overwrite limit. The plan uses (a) by default and documents the limitation. `tempvc setup` warns if any role grants `Connect` in the configured category. The owner can always make the channel public via the Discord UI; that is their choice.
 
-**Acceptance:** join hub creates one channel; rapid rejoin does not duplicate; owner can lock/permit/deny/disconnect; non-owner cannot manage; empty channel is removed; restart reconciliation leaves no orphans; owner never receives guild kick/ban.
+**Acceptance:** join hub creates one channel and posts the control panel; rapid rejoin does not duplicate; owner can lock/permit/deny/disconnect/kick/rename/limit/delete; non-owner cannot use the panel; an empty channel is removed immediately; restart reconciliation leaves no orphans; owner never receives guild kick/ban.
 
 ### 5.7 Translation
 
