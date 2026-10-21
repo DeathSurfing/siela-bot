@@ -40,8 +40,8 @@ export const INTERACTION_META: Record<
   slap: { label: "Slap", verb: "slapped", emoji: "👋", gif: true },
   kiss: { label: "Kiss", verb: "kissed", emoji: "💋", gif: true },
   hug: { label: "Hug", verb: "hugged", emoji: "🤗", gif: true },
-  chodu: { label: "Chodu", verb: "chodu'd", emoji: "💥", gif: false },
-  wuzu: { label: "Wuzu", verb: "wuzu'd", emoji: "💧", gif: false },
+  chodu: { label: "Chodu", verb: "chodu'd", emoji: "💥", gif: true },
+  wuzu: { label: "Wuzu", verb: "wuzu'd", emoji: "💧", gif: true },
 };
 
 export const DEFAULTS = {
