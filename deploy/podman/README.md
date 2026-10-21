@@ -23,10 +23,9 @@ podman compose -p siela -f compose.yaml up -d --build
 
 | File | Purpose |
 |---|---|
-| `compose.yaml` | Core stack: Postgres, Lavalink, LibreTranslate, bot, MCP, one-shot migrate. |
+| `compose.yaml` | Core stack: Postgres, LibreTranslate, bot (yt-dlp + ffmpeg), MCP, one-shot migrate. |
 | `compose.host.yaml` | Optional override: publish MCP on `127.0.0.1:8080` for host-local clients. |
 | `compose.proxy.yaml` | Optional override: Caddy TLS front door for external MCP clients. |
-| `lavalink/application.yml` | SoundCloud (zero tokens) + optional Spotify via LavaSrc; YouTube disabled. |
 | `Caddyfile` | Optional TLS proxy config. |
 | `.env.example` | Full config surface; prefer `scripts/podman-init.sh`. |
 

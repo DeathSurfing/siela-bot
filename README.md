@@ -4,7 +4,7 @@ A single-guild Discord bot with music, welcome/auto-role, social counters, tempo
 
 ## Features
 
-- **Music** — Lavalink 4 + LavaSrc: SoundCloud streaming with zero tokens; optional Spotify search via `SPOTIFY_CLIENT_ID`/`SPOTIFY_CLIENT_SECRET`; no YouTube.
+- **Music** — yt-dlp + ffmpeg streaming: SoundCloud works out of the box; Spotify links are resolved through oEmbed metadata and searched on SoundCloud.
 - **Translation** — self-hosted LibreTranslate; no paid API key.
 - **Welcomer** — join messages, generated welcome image cards (`welcome card on/off`), optional DMs, optional goodbye messages.
 - **Auto-role** — admin-configurable roles with hierarchy and dangerous-permission checks.
@@ -14,7 +14,7 @@ A single-guild Discord bot with music, welcome/auto-role, social counters, tempo
 - **Prefix** — global single-guild prefix with validation and audit.
 - **Hybrid commands** — prefix + slash + context menu + mention prefix.
 - **MCP** — 50+ tools exposed on the Podman `mcp` network via `MCP_URL` and one `MCP_TOKEN`.
-- **Podman** — `podman compose`-compatible stack: Postgres, Lavalink, LibreTranslate, bot, MCP, and a one-shot migrate service.
+- **Podman** — `podman compose`-compatible stack: Postgres, LibreTranslate, bot, MCP, and a one-shot migrate service. The bot image includes yt-dlp and ffmpeg.
 
 ## Quickstart
 
@@ -25,7 +25,7 @@ podman compose -p siela -f deploy/podman/compose.yaml up -d --build
 podman compose -p siela -f deploy/podman/compose.yaml run --rm migrate
 ```
 
-Only `DISCORD_TOKEN` is required. The init script derives the client ID, prints an invite URL, generates the internal Postgres/Lavalink/MCP secrets, and writes a 600-permission `.env`. `GUILD_ID` is auto-detected when the bot is in exactly one guild.
+Only `DISCORD_TOKEN` is required. The init script derives the client ID, prints an invite URL, generates the internal Postgres/MCP secrets, and writes a 600-permission `.env`. `GUILD_ID` is auto-detected when the bot is in exactly one guild.
 
 ## Repository
 
@@ -34,7 +34,7 @@ Only `DISCORD_TOKEN` is required. The init script derives the client ID, prints 
 - `packages/shared` — Zod schemas, types, constants, utilities.
 - `packages/db` — Drizzle schema, migrations, Postgres client.
 - `packages/config` — environment validation.
-- `deploy/podman` — compose, Containerfiles, Lavalink config, optional host/proxy overrides.
+- `deploy/podman` — compose, Containerfiles, optional host/proxy overrides.
 - `docs/PLAN.md` — full architecture, security, and delivery plan.
 - `docs/RUNBOOK.md`, `docs/MCP.md`, `docs/THREAT-MODEL.md`.
 

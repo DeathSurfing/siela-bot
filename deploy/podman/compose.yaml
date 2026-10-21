@@ -21,7 +21,6 @@ networks:
 
 volumes:
   pgdata:
-  lavalink_plugins:
   libretranslate_models:
 
 services:
@@ -51,18 +50,6 @@ services:
       - postgres
     restart: "no"
     command: ["node", "dist/scripts/migrate.js"]
-
-  lavalink:
-    image: ghcr.io/lavalink-devs/lavalink:4
-    container_name: siela-lavalink
-    env_file: .env
-    volumes:
-      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro,Z
-      - lavalink_plugins:/opt/Lavalink/plugins
-    networks: [edge]
-    restart: unless-stopped
-    mem_limit: 2g
-    # No published ports. The bot reaches lavalink:2333 on the edge network.
 
   libretranslate:
     image: libretranslate/libretranslate:latest
@@ -100,7 +87,6 @@ services:
     depends_on:
       - postgres
       - migrate
-      - lavalink
       - libretranslate
     restart: unless-stopped
     init: true

@@ -37,8 +37,8 @@ const botSchema = z.object({
   GUILD_ID: optionalSnowflake,
   DISCORD_CLIENT_ID: optionalSnowflake,
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
-  LAVALINK_URL: z.string().url().default("http://127.0.0.1:2333"),
-  LAVALINK_PASSWORD: z.string().min(1, "LAVALINK_PASSWORD is required"),
+  YTDLP_PATH: z.string().default("yt-dlp"),
+  FFMPEG_PATH: z.string().default("ffmpeg"),
   MCP_TOKEN: z.string().min(16, "MCP_TOKEN must be at least 16 characters"),
   CONTROL_API_HOST: z.string().default("0.0.0.0"),
   CONTROL_API_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
@@ -82,7 +82,6 @@ export function loadBotConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     ...env,
     DISCORD_TOKEN: readSecret("DISCORD_TOKEN", env) ?? env.DISCORD_TOKEN,
     DATABASE_URL: readSecret("DATABASE_URL", env) ?? env.DATABASE_URL,
-    LAVALINK_PASSWORD: readSecret("LAVALINK_PASSWORD", env) ?? env.LAVALINK_PASSWORD,
     MCP_TOKEN: readSecret("MCP_TOKEN", env) ?? env.MCP_TOKEN,
   });
   if (!parsed.success) {

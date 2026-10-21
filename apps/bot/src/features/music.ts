@@ -1,150 +1,251 @@
 import { EventEmitter } from "node:events";
-import { ChannelType, Events, type Client, type GuildMember } from "discord.js";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { promisify } from "node:util";
+import {
+  AudioPlayerStatus,
+  NoSubscriberBehavior,
+  StreamType,
+  VoiceConnectionStatus,
+  createAudioPlayer,
+  createAudioResource,
+  entersState,
+  joinVoiceChannel,
+  type AudioPlayer,
+  type AudioResource,
+  type VoiceConnection,
+} from "@discordjs/voice";
+import { ChannelType, type Client, type GuildMember } from "discord.js";
 import { eq } from "drizzle-orm";
 import { musicSessions, type Database } from "@siela/db";
-import {
-  Connector,
-  Constants,
-  LoadType,
-  Shoukaku,
-  type NodeOption,
-  type Player,
-  type Track,
-} from "shoukaku";
+import type { MusicLoopMode, MusicQueueState, MusicTrackInfo } from "@siela/shared";
 import { UserError, ServiceUnavailableError } from "../lib/errors.js";
 import type { Logger } from "../lib/logger.js";
 import type { SettingsService } from "./settings.js";
-import type { MusicLoopMode, MusicQueueState, MusicTrackInfo } from "@siela/shared";
+
+const execFileAsync = promisify(execFile);
 
 export interface MusicServiceOptions {
-  url: string;
-  password: string;
+  ytdlpPath: string;
+  ffmpegPath: string;
   settings: SettingsService;
   db: Database;
 }
 
+export interface QueueTrack {
+  url: string;
+  title: string;
+  author: string;
+  length: number;
+  isStream: boolean;
+  artworkUrl: string | null;
+}
+
 interface PersistedMusicState {
-  current: Track | null;
-  queue: Track[];
+  current: QueueTrack | null;
+  queue: QueueTrack[];
   volume: number;
   loop: MusicLoopMode;
   autoplay: boolean;
 }
 
-/**
- * Shoukaku's built-in discord.js connector listens for the v15 `clientReady`
- * event. This connector listens for discord.js v14's `Events.ClientReady`
- * instead, so the Lavalink node connects reliably.
- */
-class SielaDiscordConnector extends Connector {
-  override sendPacket(shardId: number, payload: unknown, important: boolean): void {
-    this.client.ws.shards.get(shardId)?.send(payload, important);
-  }
-
-  override getId(): string {
-    return this.client.user?.id ?? "";
-  }
-
-  override listen(nodes: NodeOption[]): void {
-    this.client.once(Events.ClientReady, () => this.ready(nodes));
-    this.client.on("raw", (packet: unknown) => this.raw(packet));
-  }
+interface ResolvedTrack {
+  url: string;
+  title: string;
+  author: string;
+  length: number;
+  isStream: boolean;
+  artworkUrl: string | null;
 }
 
-function trackInfo(track: Track): MusicTrackInfo {
+function toInfo(track: QueueTrack): MusicTrackInfo {
   return {
-    title: track.info.title,
-    author: track.info.author,
-    length: track.info.length,
-    uri: track.info.uri ?? null,
-    artworkUrl: track.info.artworkUrl ?? null,
-    isStream: track.info.isStream,
+    title: track.title,
+    author: track.author,
+    length: track.length,
+    uri: track.url,
+    artworkUrl: track.artworkUrl,
+    isStream: track.isStream,
   };
 }
 
+function trackInfo(track: QueueTrack | null): MusicTrackInfo | null {
+  return track ? toInfo(track) : null;
+}
+
 class GuildPlayer {
-  readonly queue: Track[] = [];
-  current: Track | null = null;
+  readonly queue: QueueTrack[] = [];
+  current: QueueTrack | null = null;
   loop: MusicLoopMode = "off";
   autoplay = false;
   volume = 80;
+  paused = false;
+  filterPreset: "off" | "bassboost" | "nightcore" | "vaporwave" = "off";
+  private ytdlpProcess: ChildProcess | null = null;
+  private ffmpegProcess: ChildProcess | null = null;
+  resource: AudioResource | null = null;
+  private startedAt = 0;
+  private pausedAt: number | null = null;
+  private advancing = false;
 
   constructor(
     readonly guildId: string,
-    readonly player: Player,
+    readonly connection: VoiceConnection,
+    readonly player: AudioPlayer,
     private readonly service: MusicService,
   ) {
-    player.on("start", (data) => {
-      this.current = data.track;
-      this.service.emit("trackStart", { guildId: this.guildId, track: data.track });
+    this.player.on(AudioPlayerStatus.Idle, () => {
+      if (!this.advancing) void this.advance();
     });
-    player.on("end", (data) => {
-      if (data.reason === "replaced" || data.reason === "stopped" || data.reason === "cleanup") return;
-      void this.advance();
+    this.player.on("error", (error) => {
+      this.service.logger.warn({ err: error, guildId: this.guildId }, "audio player error");
+      if (!this.advancing) void this.advance();
     });
-    player.on("exception", (data) => {
-      this.service.logger.warn({ guildId: this.guildId, exception: data.exception }, "track exception");
-      this.service.emit("error", { guildId: this.guildId, error: data.exception.message });
-      void this.advance();
+    this.connection.on(VoiceConnectionStatus.Disconnected, () => {
+      this.service.logger.warn({ guildId: this.guildId }, "voice connection disconnected");
+      void this.service.disconnect(this.guildId, false);
     });
-    player.on("stuck", (data) => {
-      this.service.logger.warn({ guildId: this.guildId, track: data.track.info.title }, "track stuck");
-      void this.advance();
-    });
-    player.on("closed", (data) => {
-      this.service.logger.warn({ guildId: this.guildId, code: data.code, reason: data.reason }, "voice websocket closed");
+    this.connection.on(VoiceConnectionStatus.Destroyed, () => {
+      this.stopProcess();
     });
   }
 
-  async playNow(track: Track): Promise<void> {
+  private killProcesses(): void {
+    this.ytdlpProcess?.kill("SIGKILL");
+    this.ffmpegProcess?.kill("SIGKILL");
+    this.ytdlpProcess = null;
+    this.ffmpegProcess = null;
+    this.resource = null;
+  }
+
+  stopProcess(): void {
+    this.killProcesses();
+  }
+
+  async playNow(track: QueueTrack): Promise<void> {
+    this.killProcesses();
     this.current = track;
-    await this.player.playTrack({ track: { encoded: track.encoded }, volume: this.volume });
+    this.startedAt = Date.now();
+    this.pausedAt = null;
+    this.paused = false;
+
+    const ytdlp = spawn(
+      this.service.ytdlpPath,
+      ["-f", "bestaudio/best", "-o", "-", "--no-playlist", "--no-warnings", "--quiet", track.url],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    const filterArgs: string[] =
+      this.filterPreset === "bassboost"
+        ? ["-af", "bass=g=6"]
+        : this.filterPreset === "nightcore"
+          ? ["-af", "asetrate=48000*1.2,aresample=48000"]
+          : this.filterPreset === "vaporwave"
+            ? ["-af", "asetrate=48000*0.8,aresample=48000"]
+            : [];
+    const ffmpeg = spawn(
+      this.service.ffmpegPath,
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        "pipe:0",
+        ...filterArgs,
+        "-f",
+        "s16le",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        "pipe:1",
+      ],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+
+    this.ytdlpProcess = ytdlp;
+    this.ffmpegProcess = ffmpeg;
+    ytdlp.stdout?.pipe(ffmpeg.stdin!);
+    ytdlp.stderr?.on("data", (chunk: Buffer) => {
+      const text = chunk.toString().trim();
+      if (text) this.service.logger.debug({ guildId: this.guildId, ytdlp: text.slice(0, 200) }, "yt-dlp");
+    });
+    ffmpeg.stderr?.on("data", (chunk: Buffer) => {
+      const text = chunk.toString().trim();
+      if (text) this.service.logger.debug({ guildId: this.guildId, ffmpeg: text.slice(0, 200) }, "ffmpeg");
+    });
+    ytdlp.on("error", (error) => {
+      this.service.logger.warn({ err: error, guildId: this.guildId }, "yt-dlp spawn failed");
+    });
+    ffmpeg.on("error", (error) => {
+      this.service.logger.warn({ err: error, guildId: this.guildId }, "ffmpeg spawn failed");
+    });
+
+    this.resource = createAudioResource(ffmpeg.stdout!, {
+      inputType: StreamType.Raw,
+      inlineVolume: true,
+    });
+    this.resource.volume?.setVolume(this.volume / 100);
+    this.player.play(this.resource);
+    this.service.emit("trackStart", { guildId: this.guildId, track: toInfo(track) });
     this.service.schedulePersist(this.guildId);
   }
 
   async advance(): Promise<void> {
-    if (this.loop === "track" && this.current) {
-      await this.playNow(this.current);
-      return;
-    }
-    if (this.loop === "queue" && this.current) this.queue.push(this.current);
-    const next = this.queue.shift();
-    if (next) {
-      await this.playNow(next);
-      return;
-    }
-    const previous = this.current;
-    this.current = null;
-    if (this.autoplay) {
-      const related = await this.service.autoplayTrack(this.guildId, previous);
-      if (related) {
-        await this.playNow(related);
+    if (this.advancing) return;
+    this.advancing = true;
+    try {
+      if (this.loop === "track" && this.current) {
+        await this.playNow(this.current);
         return;
       }
+      if (this.loop === "queue" && this.current) this.queue.push(this.current);
+      const next = this.queue.shift();
+      if (next) {
+        await this.playNow(next);
+        return;
+      }
+      const previous = this.current;
+      this.current = null;
+      this.killProcesses();
+      this.player.stop(true);
+      if (this.autoplay && previous) {
+        const related = await this.service.autoplayTrack(previous);
+        if (related) {
+          await this.playNow(related);
+          return;
+        }
+      }
+      this.service.schedulePersist(this.guildId);
+      this.service.emit("queueEnd", { guildId: this.guildId });
+    } finally {
+      this.advancing = false;
     }
-    await this.player.stopTrack().catch(() => undefined);
-    this.service.schedulePersist(this.guildId);
-    this.service.emit("queueEnd", { guildId: this.guildId });
+  }
+
+  positionMs(): number {
+    if (!this.current) return 0;
+    if (this.pausedAt) return this.pausedAt - this.startedAt;
+    return Date.now() - this.startedAt;
   }
 
   state(): MusicQueueState {
     return {
-      playing: Boolean(this.current),
-      paused: this.player.paused,
+      playing: Boolean(this.current) && !this.paused,
+      paused: this.paused,
       volume: this.volume,
       loop: this.loop,
-      position: this.player.position,
-      current: this.current ? trackInfo(this.current) : null,
-      upcoming: this.queue.map(trackInfo),
+      position: this.positionMs(),
+      current: trackInfo(this.current),
+      upcoming: this.queue.map(toInfo),
     };
   }
 }
 
 export class MusicService extends EventEmitter {
   readonly logger: Logger;
-  readonly shoukaku: Shoukaku;
   private readonly players = new Map<string, GuildPlayer>();
   private readonly persistTimers = new Map<string, NodeJS.Timeout>();
+  private binariesCheckedAt = 0;
+  private binariesOk = false;
 
   constructor(
     private readonly client: Client,
@@ -154,28 +255,40 @@ export class MusicService extends EventEmitter {
     super();
     this.logger = logger;
     this.on("error", () => undefined);
-    const parsed = new URL(options.url);
-    const nodeUrl = parsed.host;
-    this.shoukaku = new Shoukaku(
-      new SielaDiscordConnector(client),
-      [{ name: "siela", url: nodeUrl, auth: options.password, secure: parsed.protocol === "https:" }],
-      {
-        resume: true,
-        resumeTimeout: 60,
-        reconnectTries: 10,
-        reconnectInterval: 5_000,
-        moveOnDisconnect: true,
-        restTimeout: 15_000,
-      },
-    );
-    this.shoukaku.on("ready", (name) => this.logger.info({ node: name }, "Lavalink node ready"));
-    this.shoukaku.on("error", (name, error) => this.logger.error({ node: name, err: error }, "Lavalink node error"));
-    this.shoukaku.on("close", (name, code, reason) => this.logger.warn({ node: name, code, reason }, "Lavalink node closed"));
-    this.shoukaku.on("disconnect", (name, count) => this.logger.warn({ node: name, count }, "Lavalink node disconnected"));
   }
 
-  isUp(): boolean {
-    return [...this.shoukaku.nodes.values()].some((node) => node.state === Constants.State.CONNECTED);
+  get ytdlpPath(): string {
+    return this.options.ytdlpPath;
+  }
+
+  get ffmpegPath(): string {
+    return this.options.ffmpegPath;
+  }
+
+  async isUp(): Promise<boolean> {
+    if (Date.now() - this.binariesCheckedAt < 60_000) return this.binariesOk;
+    this.binariesCheckedAt = Date.now();
+    try {
+      await execFileAsync(this.options.ytdlpPath, ["--version"], { timeout: 10_000 });
+      await execFileAsync(this.options.ffmpegPath, ["-version"], { timeout: 10_000 });
+      this.binariesOk = true;
+    } catch (error) {
+      this.logger.warn({ err: error }, "yt-dlp/ffmpeg not available");
+      this.binariesOk = false;
+    }
+    return this.binariesOk;
+  }
+
+  activePlayers(): number {
+    return this.players.size;
+  }
+
+  isConnected(guildId: string): boolean {
+    return this.players.has(guildId);
+  }
+
+  channelId(guildId: string): string | null {
+    return this.players.get(guildId)?.connection.joinConfig.channelId ?? null;
   }
 
   schedulePersist(guildId: string): void {
@@ -226,38 +339,79 @@ export class MusicService extends EventEmitter {
     }
   }
 
-  async autoplayTrack(guildId: string, previous: Track | null): Promise<Track | null> {
-    if (!previous) return null;
+  private async spotifyToSearch(url: string): Promise<string | null> {
     try {
-      const node = this.shoukaku.getIdealNode();
-      if (!node) return null;
-      const response = await node.rest.resolve(`scsearch:${previous.info.author} ${previous.info.title}`);
-      if (!response || response.loadType !== LoadType.SEARCH) return null;
-      return response.data[0] ?? null;
-    } catch (error) {
-      this.logger.debug({ err: error, guildId }, "autoplay search failed");
+      const response = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`, {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!response.ok) return null;
+      const data = (await response.json()) as { title?: string; author_name?: string };
+      if (!data.title) return null;
+      return [data.title, data.author_name].filter(Boolean).join(" ");
+    } catch {
       return null;
     }
   }
 
-  private async resolve(query: string): Promise<Track[]> {
-    const node = this.shoukaku.getIdealNode();
-    if (!node) throw new ServiceUnavailableError("The music service is not available right now.");
-    let identifier = query.trim();
-    if (!/^https?:\/\//i.test(identifier) && !/^(scsearch|spsearch|ytsearch|ytmsearch):/i.test(identifier)) {
-      identifier = `scsearch:${identifier}`;
+  private async resolve(query: string): Promise<ResolvedTrack[]> {
+    let target = query.trim();
+    if (/open\.spotify\.com\//i.test(target)) {
+      const search = await this.spotifyToSearch(target);
+      if (!search) {
+        throw new UserError("Could not read that Spotify link. Try a SoundCloud link or a search.");
+      }
+      target = search;
     }
-    const response = await node.rest.resolve(identifier);
-    if (!response || response.loadType === LoadType.EMPTY) {
+    const isUrl = /^https?:\/\//i.test(target);
+    const args = isUrl
+      ? ["--dump-single-json", "--no-playlist", "--no-warnings", "--quiet", target]
+      : [
+          "--dump-single-json",
+          "--no-playlist",
+          "--no-warnings",
+          "--quiet",
+          "--default-search",
+          "scsearch",
+          "--playlist-end",
+          "5",
+          target,
+        ];
+    let stdout: string;
+    try {
+      const result = await execFileAsync(this.options.ytdlpPath, args, {
+        timeout: 30_000,
+        maxBuffer: 16 * 1024 * 1024,
+      });
+      stdout = result.stdout;
+    } catch (error) {
+      this.logger.warn({ err: error, query }, "yt-dlp resolve failed");
+      throw new ServiceUnavailableError("Music search failed. Try again in a moment.");
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(stdout);
+    } catch {
       throw new UserError("No tracks found for that search.", "no_tracks");
     }
-    if (response.loadType === LoadType.ERROR) {
-      throw new UserError(response.data.message || "Lavalink could not load that track.", "load_failed");
+    const root = parsed as {
+      entries?: Array<Record<string, unknown>>;
+    } & Record<string, unknown>;
+    const entries = Array.isArray(root.entries) ? root.entries : [root];
+    const tracks: ResolvedTrack[] = [];
+    for (const entry of entries) {
+      const url = (entry.webpage_url ?? entry.url) as string | undefined;
+      if (!url) continue;
+      tracks.push({
+        url,
+        title: (entry.title as string) ?? "Unknown title",
+        author: ((entry.uploader ?? entry.channel ?? entry.artist) as string) ?? "Unknown artist",
+        length: Number(entry.duration ?? 0) * 1000,
+        isStream: Boolean(entry.is_live),
+        artworkUrl: (entry.thumbnail as string) ?? null,
+      });
     }
-    if (response.loadType === LoadType.TRACK) return [response.data];
-    if (response.loadType === LoadType.PLAYLIST) return response.data.tracks;
-    if (response.loadType === LoadType.SEARCH) return response.data;
-    return [];
+    if (!tracks.length) throw new UserError("No tracks found for that search.", "no_tracks");
+    return tracks;
   }
 
   private async ensurePlayer(member: GuildMember, voiceChannelId?: string): Promise<GuildPlayer> {
@@ -266,19 +420,25 @@ export class MusicService extends EventEmitter {
     const channel = member.guild.channels.cache.get(channelId);
     if (!channel || channel.type !== ChannelType.GuildVoice) throw new UserError("That is not a voice channel.");
     const existing = this.players.get(member.guild.id);
-    if (existing) {
-      const currentChannel = this.shoukaku.connections.get(member.guild.id)?.channelId;
-      if (currentChannel === channelId) return existing;
-      await this.shoukaku.leaveVoiceChannel(member.guild.id).catch(() => undefined);
-      this.players.delete(member.guild.id);
-    }
-    const player = await this.shoukaku.joinVoiceChannel({
-      guildId: member.guild.id,
+    if (existing && existing.connection.joinConfig.channelId === channelId) return existing;
+    if (existing) await this.disconnect(member.guild.id, false);
+
+    const connection = joinVoiceChannel({
       channelId,
-      shardId: member.guild.shardId,
-      deaf: true,
+      guildId: member.guild.id,
+      adapterCreator: member.guild.voiceAdapterCreator,
+      selfDeaf: true,
     });
-    const guildPlayer = new GuildPlayer(member.guild.id, player, this);
+    try {
+      await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
+    } catch (error) {
+      connection.destroy();
+      this.logger.warn({ err: error, guildId: member.guild.id }, "voice connection failed");
+      throw new ServiceUnavailableError("Could not join the voice channel.");
+    }
+    const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Pause } });
+    connection.subscribe(player);
+    const guildPlayer = new GuildPlayer(member.guild.id, connection, player, this);
     const musicSettings = await this.options.settings.getMusic(member.guild.id);
     const persisted = await this.loadPersisted(member.guild.id);
     if (persisted) {
@@ -286,63 +446,79 @@ export class MusicService extends EventEmitter {
       guildPlayer.loop = persisted.loop ?? "off";
       guildPlayer.autoplay = persisted.autoplay ?? false;
       guildPlayer.volume = persisted.volume ?? musicSettings.defaultVolume;
-      await player.setGlobalVolume(guildPlayer.volume);
-      this.players.set(member.guild.id, guildPlayer);
-      if (persisted.current) {
-        await guildPlayer.playNow(persisted.current).catch((error) => {
-          this.logger.warn({ err: error, guildId: member.guild.id }, "failed to restore persisted track");
-        });
-      }
     } else {
       guildPlayer.volume = musicSettings.defaultVolume;
-      await player.setGlobalVolume(musicSettings.defaultVolume);
-      this.players.set(member.guild.id, guildPlayer);
+    }
+    this.players.set(member.guild.id, guildPlayer);
+    if (persisted?.current) {
+      await guildPlayer.playNow(persisted.current).catch((error) => {
+        this.logger.warn({ err: error, guildId: member.guild.id }, "failed to restore persisted track");
+      });
     }
     return guildPlayer;
   }
 
-  async play(member: GuildMember, query: string, voiceChannelId?: string, next = false): Promise<{ added: number; first: MusicTrackInfo }> {
+  async play(
+    member: GuildMember,
+    query: string,
+    voiceChannelId?: string,
+    next = false,
+  ): Promise<{ added: number; first: MusicTrackInfo }> {
     const guildPlayer = await this.ensurePlayer(member, voiceChannelId);
-    const tracks = await this.resolve(query);
-    if (!tracks.length) throw new UserError("No tracks found for that search.", "no_tracks");
+    const resolved = await this.resolve(query);
     const settings = await this.options.settings.getMusic(member.guild.id);
     const available = Math.max(0, settings.maxQueueSize - guildPlayer.queue.length - (guildPlayer.current ? 1 : 0));
-    const accepted = tracks.slice(0, available);
+    const accepted = resolved.slice(0, available);
     if (!accepted.length) throw new UserError("The queue is full.");
-    if (next) {
-      guildPlayer.queue.unshift(...accepted);
-    } else {
-      guildPlayer.queue.push(...accepted);
-    }
+    const queueTracks: QueueTrack[] = accepted.map((track) => ({ ...track }));
+    if (next) guildPlayer.queue.unshift(...queueTracks);
+    else guildPlayer.queue.push(...queueTracks);
     if (!guildPlayer.current) {
       const first = guildPlayer.queue.shift()!;
       await guildPlayer.playNow(first);
-      return { added: accepted.length, first: trackInfo(first) };
+      return { added: queueTracks.length, first: toInfo(first) };
     }
     this.schedulePersist(member.guild.id);
-    return { added: accepted.length, first: trackInfo(accepted[0]!) };
+    return { added: queueTracks.length, first: toInfo(queueTracks[0]!) };
+  }
+
+  async autoplayTrack(previous: QueueTrack): Promise<QueueTrack | null> {
+    try {
+      const tracks = await this.resolve(`${previous.author} ${previous.title}`);
+      const first = tracks[0];
+      return first ? { ...first } : null;
+    } catch (error) {
+      this.logger.debug({ err: error }, "autoplay search failed");
+      return null;
+    }
+  }
+
+  private requirePlayer(guildId: string): GuildPlayer {
+    const gp = this.players.get(guildId);
+    if (!gp) throw new UserError("The bot is not playing anything.");
+    return gp;
   }
 
   async pause(guildId: string): Promise<void> {
-    const gp = this.players.get(guildId);
-    if (!gp?.current) throw new UserError("Nothing is playing.");
-    await gp.player.setPaused(true);
+    const gp = this.requirePlayer(guildId);
+    if (!gp.current) throw new UserError("Nothing is playing.");
+    gp.paused = true;
+    gp.player.pause();
   }
 
   async resume(guildId: string): Promise<void> {
-    const gp = this.players.get(guildId);
-    if (!gp?.current) throw new UserError("Nothing is playing.");
-    await gp.player.setPaused(false);
+    const gp = this.requirePlayer(guildId);
+    if (!gp.current) throw new UserError("Nothing is playing.");
+    gp.paused = false;
+    gp.player.unpause();
   }
 
   async skip(guildId: string, count = 1): Promise<void> {
-    const gp = this.players.get(guildId);
-    if (!gp?.current) throw new UserError("Nothing is playing.");
-    if (count > 1) {
-      gp.queue.splice(0, Math.max(0, count - 1));
-    }
+    const gp = this.requirePlayer(guildId);
+    if (!gp.current) throw new UserError("Nothing is playing.");
+    if (count > 1) gp.queue.splice(0, Math.max(0, count - 1));
+    gp.stopProcess();
     await gp.advance();
-    this.schedulePersist(guildId);
   }
 
   async stop(guildId: string): Promise<void> {
@@ -351,42 +527,43 @@ export class MusicService extends EventEmitter {
     gp.queue.length = 0;
     gp.current = null;
     gp.autoplay = false;
-    await gp.player.stopTrack().catch(() => undefined);
+    gp.stopProcess();
+    gp.player.stop(true);
     this.schedulePersist(guildId);
   }
 
-  async disconnect(guildId: string): Promise<void> {
-    this.schedulePersist(guildId);
+  async disconnect(guildId: string, persist = true): Promise<void> {
+    const gp = this.players.get(guildId);
+    if (persist) this.schedulePersist(guildId);
+    if (gp) {
+      gp.stopProcess();
+      gp.player.stop(true);
+      gp.connection.destroy();
+    }
     this.players.delete(guildId);
-    await this.shoukaku.leaveVoiceChannel(guildId).catch(() => undefined);
   }
 
   async volume(guildId: string, volume: number): Promise<number> {
-    const gp = this.players.get(guildId);
-    if (!gp) throw new UserError("The bot is not playing anything.");
+    const gp = this.requirePlayer(guildId);
     const value = Math.max(0, Math.min(150, Math.trunc(volume)));
     gp.volume = value;
-    await gp.player.setGlobalVolume(value);
+    gp.resource?.volume?.setVolume(value / 100);
     this.schedulePersist(guildId);
     return value;
   }
 
-  async seek(guildId: string, positionMs: number): Promise<void> {
-    const gp = this.players.get(guildId);
-    if (!gp?.current) throw new UserError("Nothing is playing.");
-    await gp.player.seekTo(Math.max(0, Math.trunc(positionMs)));
+  async seek(): Promise<void> {
+    throw new UserError("Seek is not supported with the yt-dlp stream backend.");
   }
 
   async loop(guildId: string, mode: MusicLoopMode): Promise<void> {
-    const gp = this.players.get(guildId);
-    if (!gp) throw new UserError("The bot is not playing anything.");
+    const gp = this.requirePlayer(guildId);
     gp.loop = mode;
     this.schedulePersist(guildId);
   }
 
   async shuffle(guildId: string): Promise<void> {
-    const gp = this.players.get(guildId);
-    if (!gp) throw new UserError("The bot is not playing anything.");
+    const gp = this.requirePlayer(guildId);
     for (let i = gp.queue.length - 1; i > 0; i -= 1) {
       const j = Math.floor(Math.random() * (i + 1));
       [gp.queue[i], gp.queue[j]] = [gp.queue[j]!, gp.queue[i]!];
@@ -394,9 +571,8 @@ export class MusicService extends EventEmitter {
     this.schedulePersist(guildId);
   }
 
-  async remove(guildId: string, index: number): Promise<Track> {
-    const gp = this.players.get(guildId);
-    if (!gp) throw new UserError("The bot is not playing anything.");
+  async remove(guildId: string, index: number): Promise<QueueTrack> {
+    const gp = this.requirePlayer(guildId);
     const [removed] = gp.queue.splice(index - 1, 1);
     if (!removed) throw new UserError("Invalid queue index.");
     this.schedulePersist(guildId);
@@ -404,15 +580,13 @@ export class MusicService extends EventEmitter {
   }
 
   async clear(guildId: string): Promise<void> {
-    const gp = this.players.get(guildId);
-    if (!gp) throw new UserError("The bot is not playing anything.");
+    const gp = this.requirePlayer(guildId);
     gp.queue.length = 0;
     this.schedulePersist(guildId);
   }
 
   async move(guildId: string, from: number, to: number): Promise<void> {
-    const gp = this.players.get(guildId);
-    if (!gp) throw new UserError("The bot is not playing anything.");
+    const gp = this.requirePlayer(guildId);
     const [track] = gp.queue.splice(from - 1, 1);
     if (!track) throw new UserError("Invalid source index.");
     const target = Math.max(0, Math.min(gp.queue.length, to - 1));
@@ -421,40 +595,22 @@ export class MusicService extends EventEmitter {
   }
 
   async jump(guildId: string, index: number): Promise<void> {
-    const gp = this.players.get(guildId);
-    if (!gp) throw new UserError("The bot is not playing anything.");
+    const gp = this.requirePlayer(guildId);
     const [track] = gp.queue.splice(index - 1, 1);
     if (!track) throw new UserError("Invalid queue index.");
     await gp.playNow(track);
-    this.schedulePersist(guildId);
   }
 
   async autoplay(guildId: string, enabled: boolean): Promise<void> {
-    const gp = this.players.get(guildId);
-    if (!gp) throw new UserError("The bot is not playing anything.");
+    const gp = this.requirePlayer(guildId);
     gp.autoplay = enabled;
     this.schedulePersist(guildId);
   }
 
   async filters(guildId: string, preset: "off" | "bassboost" | "nightcore" | "vaporwave"): Promise<void> {
-    const gp = this.players.get(guildId);
-    if (!gp) throw new UserError("The bot is not playing anything.");
-    await gp.player.setEqualizer([]);
-    await gp.player.setTimescale({});
-    await gp.player.setTremolo({});
-    await gp.player.setVibrato({});
-    if (preset === "bassboost") {
-      await gp.player.setEqualizer([
-        { band: 0, gain: 0.2 },
-        { band: 1, gain: 0.15 },
-        { band: 2, gain: 0.1 },
-        { band: 3, gain: 0.05 },
-      ]);
-    } else if (preset === "nightcore") {
-      await gp.player.setTimescale({ speed: 1.2, pitch: 1.2, rate: 1 });
-    } else if (preset === "vaporwave") {
-      await gp.player.setTimescale({ speed: 0.8, pitch: 0.8, rate: 1 });
-    }
+    const gp = this.requirePlayer(guildId);
+    gp.filterPreset = preset;
+    if (gp.current) await gp.playNow(gp.current);
     this.schedulePersist(guildId);
   }
 
@@ -464,5 +620,11 @@ export class MusicService extends EventEmitter {
 
   async health(): Promise<boolean> {
     return this.isUp();
+  }
+
+  async shutdown(): Promise<void> {
+    for (const guildId of [...this.players.keys()]) {
+      await this.disconnect(guildId, false).catch(() => undefined);
+    }
   }
 }

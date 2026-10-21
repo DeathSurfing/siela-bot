@@ -17,7 +17,8 @@ RUN pnpm --filter @siela/bot build
 RUN pnpm --filter @siela/bot deploy --prod /out
 
 FROM node:24-alpine AS runtime
-RUN apk add --no-cache fontconfig ttf-dejavu
+RUN apk add --no-cache ffmpeg python3 py3-pip fontconfig ttf-dejavu \
+  && pip install --no-cache-dir --break-system-packages yt-dlp
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /out/ ./

@@ -34,7 +34,7 @@
 
 ## 0. Executive summary
 
-Build a TypeScript monorepo with a Discord bot, a separate MCP control server, PostgreSQL, and Lavalink, packaged as OCI containers and deployed with rootless Podman.
+Build a TypeScript monorepo with a Discord bot, a separate MCP control server, PostgreSQL, and yt-dlp/ffmpeg, packaged as OCI containers and deployed with rootless Podman.
 
 ```
 Discord users ── prefix / slash / context menu ──┐
@@ -47,7 +47,7 @@ Discord users ── prefix / slash / context menu ──┐
                                          └───┬───────┬─────┘
                                              │       │
                                    ┌─────────▼──┐  ┌─▼──────────────┐
-                                   │ PostgreSQL │  │   Lavalink     │
+                                   │ PostgreSQL │  │ yt-dlp/ffmpeg  │
                                    └────────────┘  │  (voice/music) │
                                                    └────────┬───────┘
                                                             │
@@ -61,7 +61,7 @@ Discord users ── prefix / slash / context menu ──┐
 | Runtime | Node.js 24 LTS + TypeScript |
 | Discord library | discord.js v14.x, pinned |
 | Database | PostgreSQL 17 + Drizzle ORM |
-| Music | Lavalink 4 + Shoukaku + LavaSrc: SoundCloud streaming (zero tokens) with optional Spotify search (2 optional values) |
+| Music | yt-dlp + ffmpeg: SoundCloud streaming out of the box; Spotify links resolve through oEmbed metadata and SoundCloud search |
 | Translation | Self-hosted LibreTranslate container (zero API tokens, free) |
 | Command UX | **Hybrid (confirmed):** prefix + slash + context menu + mention prefix |
 | Admin model | `Manage Guild` permission, server owner, optional `ADMIN_ROLE_IDS`; runtime checks on every admin action |
@@ -76,13 +76,13 @@ Discord users ── prefix / slash / context menu ──┐
 
 | Decision | Choice |
 |---|---|
-| Music sources | Lavalink + LavaSrc; SoundCloud is the zero-token primary; Spotify is optional metadata + SoundCloud mirror; YouTube disabled |
+| Music sources | yt-dlp + ffmpeg; SoundCloud is the zero-token default; Spotify links resolve through oEmbed metadata and SoundCloud search |
 | Translation | Self-hosted LibreTranslate; no paid API key |
 | MCP exposure | Exposed on the Podman `mcp` network via `MCP_URL=http://mcp:8080/mcp`; one generated `MCP_TOKEN`; optional host/TLS overrides |
 | Social action | `chodu` (renamed from `fuck`), opt-out-aware, cooldown-limited, text-only; optional NSFW gate |
 | Command UX | Hybrid: prefix + slash + context menu + mention prefix |
 | Compose | Restricted to the `podman compose`-compatible subset; `-p siela` for deterministic network names |
-| Config | Only `DISCORD_TOKEN` is required; client ID is derived, guild ID is auto-detected, Postgres/Lavalink/MCP secrets are generated; Spotify is the only optional credential |
+| Config | Only `DISCORD_TOKEN` is required; client ID is derived, guild ID is auto-detected, Postgres/MCP secrets are generated; Spotify is the only optional credential |
 
 ### What this plan deliberately closes
 
@@ -91,14 +91,14 @@ Discord users ── prefix / slash / context menu ──┐
 - Consent/opt-out and cooldown handling for the `chodu` action.
 - Custom-VC permission boundaries and lifecycle reconciliation.
 - MCP audit trail, confirmation for destructive tools, network isolation, and one-token simplicity.
-- Lavalink SSRF isolation and a zero-token music-source policy (SoundCloud; Spotify optional).
+- yt-dlp URL isolation and a zero-token music-source policy (SoundCloud; Spotify links resolve through metadata search).
 - Podman rootless constraints, SELinux, healthchecks, backups, and migrations.
 - Privacy/retention for counters, audit logs, and translation content.
 - Minimal configuration: one required Discord token; internal secrets auto-generated.
 
 ### Biggest risks
 
-1. **Music source reliability and legality** — SoundCloud search can be inconsistent, and Spotify playback is metadata + mirror only. Lavalink + LavaSrc helps, but does not remove third-party terms-of-service risk.
+1. **Music source reliability and legality** — yt-dlp depends on third-party services; SoundCloud search can be inconsistent and Spotify playback is metadata search only. Respect third-party terms.
 2. **"Private" voice channels are not absolute** — Discord role-level permission allows can bypass an `@everyone` deny. The plan mitigates this but cannot make it mathematically private without controlling all roles.
 3. **MCP is an admin control plane** — even on the private Podman network, one leaked `MCP_TOKEN` can change guild configuration. The plan keeps the network private, requires confirmation for destructive tools, and audits every mutation.
 4. **LibreTranslate resource usage** — self-hosted translation is free but costs RAM/CPU and needs a model volume; first boot downloads models.
@@ -168,7 +168,7 @@ Discord users ── prefix / slash / context menu ──┐
 
 | Req | Feature | Primary implementation | User commands | Admin commands | MCP tools |
 |---|---|---|---|---|---|
-| G1 | Music | Lavalink player + queue service | `play`, `pause`, `skip`, `queue`, `nowplaying`, etc. | DJ role / queue config | `music_*` |
+| G1 | Music | yt-dlp/ffmpeg player + queue service | `play`, `pause`, `skip`, `queue`, `nowplaying`, etc. | DJ role / queue config | `music_*` |
 | G2 | MCP control | `apps/mcp` + bot control API | — | — | All tools |
 | G3 | Welcomer | `welcome` service + `guildMemberAdd` | — | `welcome ...` | `welcome_get`, `welcome_update`, `welcome_test` |
 | G4 | Auto-role | `autorole` service + `guildMemberAdd` | — | `autorole ...` | `autorole_get`, `autorole_update`, `autorole_validate`, `autorole_sync` |
@@ -191,7 +191,7 @@ flowchart LR
   U[Discord users] -->|prefix, slash, context menu| D[Discord API/Gateway]
   D <--> B[Bot process]
   B --> DB[(PostgreSQL)]
-  B <--> L[Lavalink]
+  B --> L[yt-dlp + ffmpeg]
   L <--> V[Discord Voice]
   B --> T[LibreTranslate container]
   B --> G[GIF API]
@@ -215,7 +215,7 @@ flowchart LR
 | Bot gateway | Discord login, events, command routing, voice state tracking | Accept arbitrary guild IDs |
 | Command framework | Parse prefix/slash, check permissions, cooldowns, errors | Trust client-side permission hints |
 | Feature services | Welcome, autorole, counters, temp VC, translate, prefix, music | Bypass validation or audit |
-| Lavalink | Music search/streaming, voice UDP | Reach PostgreSQL or control API |
+| yt-dlp + ffmpeg | Music search/streaming and voice encoding | Reach PostgreSQL or control API |
 | Control API | Private, typed API over bot services | Be publicly exposed without auth |
 | MCP server | Translate tool calls into control API calls; require `MCP_TOKEN` on HTTP | Connect to Discord gateway, hold DB credentials, run SQL/shell |
 | LibreTranslate | Self-hosted English translation | Be exposed outside `edge`, hold DB/control access |
@@ -242,7 +242,7 @@ flowchart LR
 │   │   │   ├── framework/               # command metadata, parser, context, cooldowns
 │   │   │   ├── features/                # welcome, autorole, counters, tempvc, translate, music, prefix
 │   │   │   ├── control/                 # Fastify control API, auth, routes
-│   │   │   ├── music/                   # Shoukaku client, queue, player
+│   │   │   ├── music/                   # yt-dlp/ffmpeg player, queue, voice
 │   │   │   └── lib/                     # logger, errors, permissions, mentions, time
 │   │   └── package.json
 │   └── mcp/
@@ -267,7 +267,6 @@ flowchart LR
 │       ├── compose.proxy.yaml           # optional Caddy/TLS override
 │       ├── README.md                    # Podman quickstart
 │       ├── .env.example
-│       ├── lavalink/application.yml     # SoundCloud + optional LavaSrc Spotify
 │       ├── Caddyfile                    # optional remote MCP
 │       └── quadlet/                     # production systemd units
 ├── docs/
@@ -294,8 +293,8 @@ flowchart LR
 | MCP client → MCP server | Untrusted, authenticated | One `MCP_TOKEN`, Podman-network exposure, rate limits, audit |
 | MCP server → control API | Private service | Private network, same `MCP_TOKEN`, request IDs, schema validation |
 | Bot → PostgreSQL | Trusted | Parameterized ORM, least-privilege DB user, no public port |
-| Bot → Lavalink | Trusted service | Private network, password, no host port |
-| Lavalink → internet | Untrusted content | Source allowlist (SoundCloud/Spotify), private-IP blocking, network isolation |
+| Bot → yt-dlp/ffmpeg | Local subprocess | Timeouts, URL allowlist, private-IP blocking |
+| yt-dlp → internet | Untrusted content | http(s)-only URLs, private-IP/loopback/link-local blocking |
 | Bot → LibreTranslate | Trusted local service | `edge` network only, timeouts, circuit breaker, no content logging |
 | Bot → GIF API | Third-party, no key | Fixed endpoint, timeout, text-only fallback |
 
@@ -354,10 +353,10 @@ flowchart LR
 
 1. User runs `play <query>`.
 2. Bot validates voice channel and permissions.
-3. Shoukaku asks Lavalink to load the SoundCloud track (or resolve a Spotify URL via SoundCloud mirror).
+3. yt-dlp resolves the SoundCloud search (or Spotify link via oEmbed + SoundCloud search).
 4. Bot joins voice, enqueues, and starts playback.
 5. On empty/alone timeout, bot stops and disconnects.
-6. On Lavalink disconnect, bot reconnects with backoff and reports status.
+6. On voice disconnect, the player cleans up and reports status.
 
 ---
 
@@ -373,13 +372,13 @@ flowchart LR
 | Validation | Zod | Shared input/output schemas, JSON Schema for MCP | Valibot, io-ts |
 | HTTP | Fastify | Fast, schema-friendly, small | Express, Hono |
 | MCP | `@modelcontextprotocol/sdk` | Official SDK, stdio + Streamable HTTP | Custom JSON-RPC |
-| Music | Lavalink 4 + Shoukaku + LavaSrc | SoundCloud streams directly with zero tokens; Spotify is metadata + mirror and optional | YouTube plugin (block/ToS risk), yt-dlp (fragile) |
+| Music | yt-dlp + ffmpeg + @discordjs/voice | Zero-token SoundCloud; Spotify metadata search; no JVM | Lavalink (extra service/JVM) |
 | Translation | LibreTranslate container | Free, self-hosted, no API token; text stays on the host | DeepL/Google (paid keys) |
 | GIFs | Adapter: nekos.best default | Simple SFW API with no key for slap/kiss/hug | Tenor (key/policy), local assets |
 | Logs | Pino | JSON logs, redaction, low overhead | Winston |
 | Metrics | prom-client | Prometheus-compatible | OpenTelemetry-only |
 | Tests | Vitest | Fast, TS-native | Jest |
-| Cache/queues | In-process maps; Lavalink queue | Single guild/process; no Redis to operate | Redis |
+| Cache/queues | In-process maps; yt-dlp/ffmpeg player queue | Single guild/process; no Redis to operate | Redis |
 | Containers | Podman + Buildah | Rootless, daemonless, systemd-native | Docker |
 | Compose compatibility | `podman compose`-safe compose subset | Works with both Docker Compose provider and `podman-compose` | Docker-only compose features |
 | Secrets | One required Discord token; internal secrets generated by `scripts/podman-init.sh` | Minimal config, no copy-pasting random passwords | Hand-managed `.env` with many secrets |
@@ -647,111 +646,60 @@ interface TranslationProvider {
 
 ### 5.8 Music
 
-**Topology:** Lavalink 4 runs as a separate container with **SoundCloud enabled** (built-in source, zero tokens) and the **LavaSrc** plugin for optional Spotify metadata/search. YouTube is disabled. The bot connects to Lavalink over the private `edge` network; Lavalink connects to Discord Voice. No Lavalink port is published.
+**Topology:** the bot plays audio directly with **yt-dlp + ffmpeg**. There is no Lavalink container and no Java process. The bot image installs `yt-dlp`, `ffmpeg`, `fontconfig`, and DejaVu fonts. Voice is handled by `@discordjs/voice` with `libsodium-wrappers` for encryption and `opusscript` for Opus encoding.
 
-**Source policy (zero-token by default):**
+**Source policy:**
 
-| Source | Playback | Token requirement | Notes |
-|---|---|---|---|
-| SoundCloud | Direct | None | Primary streaming source. |
-| Spotify | Mirror | Optional `SPOTIFY_CLIENT_ID` + `SPOTIFY_CLIENT_SECRET` | `spsearch:` and Spotify URLs; LavaSrc mirrors to SoundCloud search. Disabled if the two values are absent. |
-| YouTube | Disabled | — | Avoided for block/ToS reasons. |
-| Direct URLs | Depends on host | None | Only supported hosts; private-IP/SSRF checks apply. |
+| Source | Playback | Notes |
+|---|---|---|
+| SoundCloud | Direct | `yt-dlp` search and stream; zero tokens. |
+| Spotify | Metadata + search | Spotify links are resolved through `https://open.spotify.com/oembed` and then searched on SoundCloud. |
+| Direct URLs | yt-dlp supported | Only http(s) URLs; private-IP/loopback/link-local URLs are rejected. |
+| YouTube | Supported by yt-dlp | Not the default search; SoundCloud is used first. |
 
-- Spotify is **metadata + mirror**: LavaSrc resolves the Spotify track, then searches SoundCloud (`scsearch:%QUERY%`) for a playable track. Some tracks may not match.
-- SoundCloud preview tracks are filtered out (`soundcloudFilterOutPreviewTracks: true`).
-- SoundCloud uses Lavalink's built-in source with no token. Some Lavalink builds may ask for a SoundCloud `clientId`; it is optional and only needed if the built-in source returns auth errors.
-- If `SPOTIFY_CLIENT_ID`/`SPOTIFY_CLIENT_SECRET` are not set, `spsearch:` is rejected with a friendly message and SoundCloud still works.
+**Resolution and playback:**
 
-**Minimal Lavalink config sketch:**
-
-```yaml
-server:
-  password: ${LAVALINK_PASSWORD}
-  sources:
-    youtube: false
-    soundcloud: true
-    bandcamp: false
-    twitch: false
-    vimeo: false
-    http: false
-    local: false
-  soundcloudFilterOutPreviewTracks: true
-
-plugins:
-  lavasrc:
-    providers:
-      - "scsearch:%QUERY%"
-    sources:
-      spotify: ${SPOTIFY_ENABLED:false}
-      youtube: false
-      applemusic: false
-      deezer: false
-      yandexmusic: false
-      tidal: false
-      qobuz: false
-      vkmusic: false
-      ytdlp: false
-      jiosaavn: false
-    spotify:
-      clientId: ${SPOTIFY_CLIENT_ID:}
-      clientSecret: ${SPOTIFY_CLIENT_SECRET:}
-      countryCode: "US"
-
-lavalink:
-  plugins:
-    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.3"
-      repository: "https://maven.lavalink.dev/releases"
-```
-
-`scripts/podman-init.sh` sets `SPOTIFY_ENABLED=true` only when both Spotify values are present, so the default stack starts with zero Spotify config and SoundCloud works immediately. If the Lavalink build does not resolve `${...}` placeholders, render `application.yml` with `envsubst` in a tiny entrypoint before starting Lavalink.
-
-**Player model:**
-
-- One player per guild (single guild anyway).
-- `GuildPlayer` owns the queue, current track, loop mode, volume, and timeout timers.
-- Shoukaku handles node reconnection; the player reports state changes to the music channel.
+- `yt-dlp --dump-single-json --default-search scsearch` resolves searches and direct URLs; Spotify links become `title + artist` searches.
+- `yt-dlp -f bestaudio/best -o - <url>` pipes audio into `ffmpeg`, which outputs raw PCM (`s16le`, 48 kHz, stereo) for `@discordjs/voice`.
+- `GuildPlayer` owns the queue, current track, loop mode, volume, autoplay, and the running yt-dlp/ffmpeg processes.
 - Queue persistence is implemented in `music_sessions` (jsonb): current track, upcoming queue, volume, loop, and autoplay are saved after mutations and restored the next time the bot joins voice.
 - Max queue size (default 100), max volume 150, default volume 80.
+- `seek` is intentionally unsupported with the streaming backend and returns a clear error.
 
 **Commands:**
 
 | Command | Description |
 |---|---|
-| `play <query/url>` | Search SoundCloud or enqueue a SoundCloud/Spotify URL; joins the user's voice channel if needed. |
+| `play <query/url>` | Search SoundCloud or enqueue a URL; joins the user's voice channel if needed. |
 | `pause` / `resume` | Toggle playback. |
 | `skip [n]` | Skip current or n tracks. |
 | `stop` | Stop and clear the queue. |
 | `queue [page]` | Paginated queue view. |
 | `nowplaying` | Current track + controls. |
 | `volume <0-150>` | Set volume. |
-| `seek <mm:ss>` | Seek. |
+| `seek <mm:ss>` | Returns a clear "not supported" message. |
 | `loop <off/track/queue>` | Loop mode. |
 | `shuffle` | Shuffle the queue. |
 | `remove <index>` | Remove a track. |
 | `clear` | Clear queued tracks. |
 | `move <from> <to>` | Reorder. |
 | `jump <index>` | Jump to a queue position. |
-| `disconnect` | Leave voice and clear. |
-| `autoplay` | Optional related-track autoplay. |
-| `filters` | Optional presets (bassboost, nightcore, etc.). |
+| `disconnect` | Leave voice and clear the live process. |
+| `autoplay` | Optional related-track autoplay via yt-dlp search. |
+| `filters` | `off`, `bassboost`, `nightcore`, `vaporwave` via ffmpeg filters. |
 
-**Voice checks:** user must be in a voice channel; bot must have `Connect`/`Speak`; channel must not be full; bot must not be alone for long.
-
-**Timeouts:** leave when the channel is empty (30s) or the bot is alone (2 min, configurable). Cancel timers on activity.
-
-**DJ roles:** optional `music.djRoleIds`. If set, destructive controls (`stop`, `disconnect`, `clear`, `volume`, `skip` when not requester) require a DJ role or admin. Default is everyone, documented.
+**Voice checks:** user must be in a voice channel; the bot must have `Connect`/`Speak`; the bot leaves when the channel is empty or the bot is alone for the configured timeout.
 
 **Reliability:**
 
-- Lavalink node down → bot replies with a clear error, keeps the queue if possible, retries with backoff.
-- Track exception → skip and report; do not stall the queue.
-- Voice disconnect → clean up player state, notify channel.
-- Bot restart → queue is lost; document this. Optional snapshot later.
+- yt-dlp or ffmpeg missing → music commands return a clear error; `bot_status` reports `music: down`.
+- Stream failure → skip and report; the queue continues.
+- Voice disconnect → clean up player state and notify.
+- Bot restart → queue state is restored from `music_sessions` on the next voice join.
 
-**Legal/operational:** SoundCloud and Spotify each have their own terms of service; Spotify playback is a metadata + mirror workaround, not an official streaming integration. The source list is config-driven so it can be changed without code changes. Do not advertise or operate as a public music service.
+**Legal/operational:** yt-dlp downloads from third-party services; respect their terms and do not operate as a public music service.
 
-**Acceptance:** SoundCloud search/play works with zero tokens; Spotify URLs work when the two optional values are set and a SoundCloud match exists; `spsearch:` fails cleanly when Spotify is unconfigured; bot leaves empty channel; Lavalink outage is handled; no port 2333 exposure; MCP can control the same player.
+**Acceptance:** SoundCloud search/play works with zero tokens; Spotify links resolve through metadata search; empty-channel leave works; missing binaries are reported cleanly; MCP can control the same player.
 
 ### 5.9 Help UI
 
@@ -1044,7 +992,7 @@ All tool names are lowercase snake case. No tool accepts a `guildId`; the config
 
 | Tool | Tier | Mutating | Purpose |
 |---|---|---|---|
-| `bot_status` | read | no | Gateway, DB, Lavalink, uptime, version. |
+| `bot_status` | read | no | Gateway, DB, music, translation, uptime, version. |
 | `commands_list` | read | no | Command metadata for help/automation. |
 | `prefix_get` | read | no | Current prefix. |
 | `prefix_set` | admin | yes | Validate and set prefix. |
@@ -1250,7 +1198,7 @@ For a host-local client, use the optional `compose.host.yaml` override and `http
 | DoS | Command/queue/channel spam | Cooldowns, caps, rate limits, queue limits | Medium |
 | Data loss | DB volume lost | Podman volume, nightly backups, restore drill | Low |
 | Supply chain | Compromised image/dependency | Pin digests, lockfile, Trivy, SBOM | Medium |
-| Lavalink exposure | Public 2333 port | No published port, password, private network | Low |
+
 | Discord rate-limit ban | Burst API calls | discord.js rate limiter, queues, backoff | Low |
 
 ### 8.2 Security controls checklist
@@ -1266,7 +1214,6 @@ For a host-local client, use the optional `compose.host.yaml` override and `http
 - [ ] Snowflake/ID validation; no arbitrary guild IDs.
 - [ ] Prefix validation and DB constraint.
 - [ ] Music URL allowlist + private-IP blocking.
-- [ ] Lavalink not published; strong password.
 - [ ] Postgres not published; strong password; least-privilege user.
 - [ ] Control API on the private `control` network; one `MCP_TOKEN`.
 - [ ] MCP exposed only on the Podman `mcp` network by default; TLS is an optional front door.
@@ -1307,7 +1254,6 @@ Do **not** grant: Administrator, Kick Members, Ban Members, Manage Guild, Manage
 |---|---|---|
 | Discord bot token | Yes | `.env` (600) or Podman secret |
 | Postgres password | Generated | `scripts/podman-init.sh` writes it to `.env` |
-| Lavalink password | Generated | Same script |
 | `MCP_TOKEN` | Generated | Same script |
 | Spotify client ID/secret | Optional | Add to `.env` only if Spotify search is wanted |
 | LibreTranslate API key | Not used | Internal instance has no API key |
@@ -1359,7 +1305,7 @@ Do **not** grant: Administrator, Kick Members, Ban Members, Manage Guild, Manage
                     └───────┬───────────┘
                             │ mcp + edge
 ┌───────────────┐   ┌───────▼────────┐   ┌──────────────┐   ┌────────────────┐
-│  PostgreSQL   │◀──│   Bot process  │──▶│   Lavalink   │   │ LibreTranslate │
+│  PostgreSQL   │◀──│   Bot process  │──▶│ yt-dlp/ffmpeg│   │ LibreTranslate │
 │  data network │   │ control+data+  │   │ edge network │   │  edge network  │
 └───────────────┘   │ edge networks  │   └──────┬───────┘   └────────────────┘
                     └───┬────────┬───┘          │
@@ -1377,15 +1323,14 @@ Do **not** grant: Administrator, Kick Members, Ban Members, Manage Guild, Manage
 
 | Network | Members | Internet | Purpose |
 |---|---|---|---|
-| `edge` | bot, lavalink, libretranslate | yes | Discord, Lavalink, SoundCloud/Spotify, model downloads, GIF API |
+| `edge` | bot, libretranslate | yes | Discord, yt-dlp downloads, LibreTranslate model downloads, GIF API |
 | `data` | bot, postgres | no (internal) | Database only |
 | `control` | bot, mcp | no (internal) | MCP → bot control API only |
 | `mcp` | mcp, optional Caddy, optional client containers | no (internal) by default | MCP HTTP exposed on the Podman network via `MCP_URL` |
 
-- Lavalink cannot reach PostgreSQL.
-- MCP cannot reach PostgreSQL or Lavalink.
-- The control API listens on `0.0.0.0:3001` inside the bot container and is protected by the generated `MCP_TOKEN`. Because the bot also joins `edge`, Lavalink could reach the port but has no token. For defense in depth, bind to the `control` interface or a Unix socket via the optional `CONTROL_API_HOST` setting.
-- Postgres and Lavalink publish no host ports.
+- MCP cannot reach PostgreSQL.
+- The control API listens on `0.0.0.0:3001` inside the bot container and is protected by the generated `MCP_TOKEN`. For defense in depth, bind to the `control` interface or a Unix socket via the optional `CONTROL_API_HOST` setting.
+- Postgres publishes no host ports.
 - LibreTranslate is reachable only on `edge`; it does not need DB or control access.
 - MCP is reachable only on the `mcp` network by default. A host-local client can use the optional `compose.host.yaml` override; a public client needs an optional TLS proxy outside the default compose.
 
@@ -1397,7 +1342,6 @@ Do **not** grant: Administrator, Kick Members, Ban Members, Manage Guild, Manage
 | 5000 | LibreTranslate | `edge` network only |
 | 8443 | Caddy HTTPS | Optional, only if you add the proxy override |
 | 5432 | PostgreSQL | `data` network only |
-| 2333 | Lavalink | `edge` network only |
 
 ### 9.2 Container images
 
@@ -1419,21 +1363,20 @@ Build rules:
 - `.containerignore` excludes `.git`, `node_modules`, tests, docs, local volumes.
 - Healthchecks live in compose/Quadlet, not the image, so they can vary per environment.
 - Migrations run from the bot image (`node apps/bot/dist/scripts/migrate.js`); there is no separate migrate image.
-- Verify the Lavalink image is available for the target architecture (amd64 VPS vs arm64 Mac/ARM VPS). Build bot/MCP for `linux/amd64` and `linux/arm64` or pin a working architecture.
+- Verify the bot image contains working `yt-dlp` and `ffmpeg` binaries for the target architecture (amd64 VPS vs arm64 Mac/ARM VPS).
 
 **Resource baseline:**
 
 | Service | Memory guidance | CPU guidance |
 |---|---|---|
 | Bot | 512 MiB–1 GiB | 0.5–1 vCPU |
-| Lavalink | 1–2 GiB | 1 vCPU |
 | LibreTranslate | 1–2 GiB | 1 vCPU |
 | PostgreSQL | 256–512 MiB | 0.25–0.5 vCPU |
 | MCP | 128–256 MiB | 0.1–0.25 vCPU |
 | Caddy (optional) | 64–128 MiB | 0.1 vCPU |
-| **Host** | **8 GiB recommended; 4 GiB only with reduced Lavalink/LibreTranslate limits** | **2 vCPU minimum** |
+| **Host** | **4 GiB recommended; 2 GiB minimum with a small `LT_LOAD_ONLY` set** | **2 vCPU minimum** |
 
-Lavalink and LibreTranslate are the largest consumers. Tune the Lavalink JVM heap and `LT_LOAD_ONLY` together; loading fewer languages reduces LibreTranslate RAM and disk. The first LibreTranslate boot downloads models, so allow time and disk.
+LibreTranslate is the largest consumer. Loading fewer languages reduces its RAM and disk; the first boot downloads models, so allow time and disk. yt-dlp/ffmpeg add CPU during playback but no permanent service.
 
 ### 9.3 Compose for development/staging
 
@@ -1459,7 +1402,6 @@ networks:
 
 volumes:
   pgdata:
-  lavalink_plugins:
   libretranslate_models:
 
 services:
@@ -1490,17 +1432,6 @@ services:
     restart: "no"
     command: ["node", "dist/scripts/migrate.js"]
 
-  lavalink:
-    image: ghcr.io/lavalink-devs/lavalink:4
-    container_name: siela-lavalink
-    env_file: .env
-    volumes:
-      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro,Z
-      - lavalink_plugins:/opt/Lavalink/plugins
-    networks: [edge]
-    restart: unless-stopped
-    mem_limit: 2g
-    # No published ports. Bot reaches lavalink:2333 on the edge network.
 
   libretranslate:
     image: libretranslate/libretranslate:latest
@@ -1538,7 +1469,6 @@ services:
     depends_on:
       - postgres
       - migrate
-      - lavalink
       - libretranslate
     restart: unless-stopped
     init: true
@@ -1625,7 +1555,7 @@ Only needed when clients outside the Podman network must reach MCP. Set `MCP_URL
 - `:Z` is for SELinux hosts (Fedora/RHEL); harmless on others.
 - Named volumes avoid rootless bind-mount ownership problems.
 - `internal: true` networks have no default route. The bot joins `edge` for internet and `data`/`control` for internal services; MCP joins `control` and `mcp`.
-- `depends_on` is a plain list; startup order is best-effort and both compose providers may start services before dependencies are ready. The app retries DB/Lavalink/LibreTranslate connections.
+- `depends_on` is a plain list; startup order is best-effort and both compose providers may start services before dependencies are ready. The app retries DB and LibreTranslate connections.
 - `migrate` is a one-shot compose service (`restart: "no"`). `podman compose up -d` runs it once; it retries until Postgres is ready and then exits. You can also run it explicitly:
   ```bash
   podman compose -p siela -f deploy/podman/compose.yaml run --rm migrate
@@ -1659,10 +1589,8 @@ siela-data.network
 siela-control.network
 siela-mcp.network
 siela-pgdata.volume
-siela-lavalink-plugins.volume
 siela-libretranslate-models.volume
 siela-postgres.container
-siela-lavalink.container
 siela-libretranslate.container
 siela-bot.container
 siela-mcp.container
@@ -1674,8 +1602,8 @@ Example `siela-bot.container`:
 ```ini
 [Unit]
 Description=Siela Discord bot
-After=siela-postgres.service siela-lavalink.service siela-libretranslate.service
-Wants=siela-postgres.service siela-lavalink.service siela-libretranslate.service
+After=siela-postgres.service siela-libretranslate.service
+Wants=siela-postgres.service siela-libretranslate.service
 
 [Container]
 ContainerName=siela-bot
@@ -1734,7 +1662,7 @@ Notes:
 
 - The default `.env` is generated by `scripts/podman-init.sh` with 600 permissions; Podman secrets are optional, not required. If you use secrets, `Secret=...,type=env,target=...` is supported by Podman 4.6+; verify on the target version.
 - Do **not** enable `AutoUpdate=registry` for bot/MCP unless migrations are guaranteed to run first. A new bot image with pending migrations can fail at boot. Use the deploy script (pull → migrate → restart), or add a one-shot `siela-migrate.service` that runs the bot image's `migrate.js` and that the bot unit `Requires=`/`After=`.
-- `AutoUpdate=registry` is safer for stateless images, but pin major versions (for example Postgres/Lavalink) rather than auto-updating blindly.
+- `AutoUpdate=registry` is safer for stateless images, but pin major versions (for example Postgres) rather than auto-updating blindly.
 - If you build locally instead, use `podman compose build` + `systemctl --user restart`.
 - Use a `.network` unit per network; `Internal=true` for `data` and `control`.
 - `After=`/`Wants=` only orders starts; healthchecks are still needed.
@@ -1782,11 +1710,10 @@ podman compose -p siela -f deploy/podman/compose.yaml up -d --build
 #    It derives DISCORD_CLIENT_ID from the token via /oauth2/applications/@me and prints an invite URL.
 #    GUILD_ID is optional; the bot auto-detects it when it is in exactly one guild,
 #    or binds to the first guild it joins when it is in none.
-# 2. Generates POSTGRES_PASSWORD, LAVALINK_PASSWORD, and MCP_TOKEN with openssl rand.
+# 2. Generates POSTGRES_PASSWORD and MCP_TOKEN with openssl rand.
 # 3. Writes deploy/podman/.env with mode 600, including fixed defaults:
 #    POSTGRES_USER=siela, POSTGRES_DB=siela,
 #    DATABASE_URL=postgres://siela:<generated>@postgres:5432/siela,
-#    LAVALINK_URL=http://lavalink:2333,
 #    LIBRETRANSLATE_URL=http://libretranslate:5000,
 #    CONTROL_API_URL=http://bot-control:3001,
 #    MCP_URL=http://mcp:8080/mcp.
@@ -1802,7 +1729,7 @@ export DISCORD_TOKEN="..."
 - `GUILD_ID` is optional; the bot auto-detects it when it is in exactly one guild, or binds to the first guild it joins when it is in none. Set it explicitly only if the bot is ever in more than one guild.
 - Spotify is the only optional music credential; omit it and SoundCloud still works.
 - LibreTranslate needs no API key on the internal network.
-- Podman secrets are optional; if you prefer them, create `discord_token`, `database_password`, `lavalink_password`, and `mcp_token` and reference them with `Secret=`.
+- Podman secrets are optional; if you prefer them, create `discord_token`, `database_password`, and `mcp_token` and reference them with `Secret=`.
 - The app config loader supports `*_FILE` variables (for example `DISCORD_TOKEN_FILE`) so secrets can be mounted as files if env secrets are not available.
 - Rotate a generated secret by re-running the bootstrap script (or updating the Podman secret) and restarting the affected units.
 
@@ -1841,7 +1768,7 @@ gunzip -c siela-YYYY-MM-DD.dump.gz | podman exec -i siela-postgres \
 ```
 
 - Back up the Postgres volume only as a secondary method; logical dumps are portable across versions.
-- Store a copy of the Lavalink config and `.env.example` (not secrets) in the repo.
+- Store a copy of `.env.example` (not secrets) in the repo.
 
 ### 9.9 Updates
 
@@ -1875,7 +1802,7 @@ No Docker daemon is required. If the runner lacks rootless Podman, use a dedicat
 | Permission denied on a bind mount | SELinux label or UID mismatch | Add `:Z`; use a named volume; `podman unshare chown` if needed. |
 | `exec format error` | Image built for the wrong architecture | Build/pull `linux/amd64` or `linux/arm64` for the host. |
 | `no such service` / compose command missing | No compose provider installed | Install `podman-compose` or Docker Compose v2 as the Podman provider. |
-| `depends_on` ignored | Older compose provider | Let the app retry DB/Lavalink; use healthchecks + restart policies. |
+| `depends_on` ignored | Older compose provider | Let the app retry DB/LibreTranslate; use healthchecks + restart policies. |
 | Service cannot reach `bot-control` | Missing network alias / wrong network | Attach MCP and bot to `control`; add `aliases: [bot-control]` to the bot. |
 | Secret not found | Secret created in a different user namespace | Create secrets as the same rootless user; verify `podman secret ls`. |
 | Healthcheck fails | `wget`/`curl` missing in the image | Use a tool present in the image, or a TCP check; keep the app health endpoint. |
@@ -1902,7 +1829,7 @@ No Docker daemon is required. If the runner lacks rootless Podman, use a dedicat
 - Commands total/errors/duration by command.
 - MCP tool calls total/errors/duration by tool/tier.
 - DB pool size, query errors.
-- Lavalink node status, active players, queue length.
+- yt-dlp/ffmpeg availability, active players, queue length.
 - Temp VC active count, creation failures.
 - LibreTranslate requests/characters, errors, in-flight count, model-load state.
 - Rate-limit hits.
@@ -1911,7 +1838,7 @@ No Docker daemon is required. If the runner lacks rootless Podman, use a dedicat
 
 - Health listener: `127.0.0.1:3002` inside the bot container (not published).
 - `/healthz`: process alive.
-- `/readyz`: DB reachable + Discord gateway ready; Lavalink reported separately (music degraded, bot still ready).
+- `/readyz`: DB reachable + Discord gateway ready; music reported separately (music degraded, bot still ready).
 - Podman healthchecks use `/healthz`; monitoring uses `/readyz`.
 - MCP `/healthz` is process-only; MCP `/readyz` also checks control API reachability.
 - `bot_status` MCP tool returns component states.
@@ -1920,7 +1847,7 @@ No Docker daemon is required. If the runner lacks rootless Podman, use a dedicat
 ### 10.4 Alerts
 
 - Bot offline > 2 minutes.
-- Lavalink disconnected > 2 minutes.
+- yt-dlp/ffmpeg unavailable > 5 minutes.
 - DB errors > 5/minute.
 - Command/MCP error rate > 5%.
 - LibreTranslate unhealthy > 5 minutes.
@@ -1934,7 +1861,7 @@ Delivery: optional Discord admin webhook, email, or uptime service. Do not put t
 | Failure | Behavior |
 |---|---|
 | PostgreSQL down | DB-backed commands fail with a friendly error; `/readyz` fails; Podman restarts the bot. Music already playing may continue until the next state write. |
-| Lavalink down | Music commands return a clear outage message; queue is held if possible; bot reconnects with backoff. Other features keep working. |
+| yt-dlp/ffmpeg down | Music commands return a clear error; other features keep working. |
 | Discord API outage | discord.js retries/rate-limits; commands may be delayed; no silent data corruption. |
 | LibreTranslate down | Friendly error; circuit breaker prevents a retry storm; other features unaffected. |
 | MCP server down | Discord bot and music are unaffected; Podman-network automation unavailable. |
@@ -1946,7 +1873,7 @@ Delivery: optional Discord admin webhook, email, or uptime service. Do not put t
 - Start/stop/restart with Podman/Quadlet.
 - Bot token rotation.
 - DB restore.
-- Lavalink outage and node reconfiguration.
+- yt-dlp/ffmpeg outage or upgrade.
 - Temp VC orphan reconciliation.
 - MCP token rotation.
 - LibreTranslate outage / model volume reset / disable command.
@@ -2002,7 +1929,7 @@ E2E is not in the default PR CI because it needs a real guild and token; run it 
 - Control API: missing/invalid `MCP_TOKEN`, oversized payload, invalid ID.
 - Music URL: `file://`, `http://127.0.0.1`, `http://169.254.169.254`, private IP, unsupported host, `spsearch:` without Spotify credentials.
 - Rate limits: social, translate, temp VC, MCP.
-- Container: non-root, read-only rootfs, no extra caps, no published DB/Lavalink ports.
+- Container: non-root, read-only rootfs, no extra caps, no published DB ports.
 
 ### 11.5 Load tests
 
@@ -2025,14 +1952,14 @@ E2E is not in the default PR CI because it needs a real guild and token; run it 
 
 ## 12. Delivery roadmap
 
-Estimates assume one experienced developer, part-time review, and no major Discord/Lavalink surprises.
+Estimates assume one experienced developer, part-time review, and no major Discord/yt-dlp surprises.
 
 ### Phase 0 — Decisions and accounts (1–2 days)
 
 - Confirm remaining defaults (hosting size, admin model, welcome card, audit retention).
 - Create Discord application; enable intents; invite bot to the test guild with minimal permissions.
 - Provision Linux host with Podman 5+, or Podman machine locally.
-- Run `scripts/podman-init.sh` with `DISCORD_TOKEN`; it generates DB/Lavalink/MCP secrets.
+- Run `scripts/podman-init.sh` with `DISCORD_TOKEN`; it generates DB/MCP secrets.
 - Optional: add Spotify client ID/secret only if `spsearch:` is wanted.
 - Create GHCR repo and GitHub Actions secrets.
 - Write `docs/THREAT-MODEL.md` and `docs/RUNBOOK.md` skeletons.
@@ -2066,14 +1993,14 @@ Estimates assume one experienced developer, part-time review, and no major Disco
 
 ### Phase 3 — Music (4–6 days)
 
-- Lavalink container/config with SoundCloud enabled and LavaSrc loaded; no YouTube.
+- yt-dlp/ffmpeg installed in the bot image; SoundCloud search default; Spotify links via oEmbed.
 - Optional Spotify credentials path; `spsearch:` disabled cleanly when absent.
-- Shoukaku client, voice join/leave, queue/player.
+- @discordjs/voice connection, queue/player, yt-dlp/ffmpeg processes.
 - Music commands, now-playing UI, timeouts, reconnection.
 - DJ roles/queue limits config.
-- Music tests (unit + Lavalink integration where practical).
+- Music tests (unit + resolver/binary checks where practical).
 
-**Exit:** SoundCloud search/play works with zero tokens; Spotify URLs work when configured; empty-channel leave; Lavalink outage handled.
+**Exit:** SoundCloud search/play works with zero tokens; Spotify links resolve via metadata search; empty-channel leave; missing binaries handled.
 
 ### Phase 4 — MCP (4–5 days)
 
@@ -2104,7 +2031,7 @@ Estimates assume one experienced developer, part-time review, and no major Disco
 - Fix launch issues; finalize docs.
 - Handover: command reference, MCP examples, runbook.
 
-**Total:** roughly 23–32 development days (4.5–6.5 weeks), depending on music/Lavalink friction.
+**Total:** roughly 22–30 development days (4.5–6 weeks), depending on yt-dlp friction.
 
 ### Critical path
 
@@ -2158,7 +2085,7 @@ This section separates **ambiguities in the brief** from **design gaps found whi
 6. **Auto-role partial failures.** Some roles may be above the bot. **Closed:** pre-validate, filter at runtime, log partial failures, sync command.
 7. **Welcome autorole ordering.** Both run on join. **Closed:** independent handlers with `allSettled`; neither blocks the other.
 8. **MCP destructive operations.** An LLM can issue them. **Closed:** one `MCP_TOKEN`, `confirm: true`, dry-run defaults, audit.
-9. **Lavalink SSRF.** A URL could hit internal services. **Closed:** host allowlist, private-IP/loopback/link-local block, network segmentation.
+9. **Music URL SSRF.** A URL could hit internal services. **Closed:** http(s)-only URLs, private-IP/loopback/link-local blocking, yt-dlp runs in the bot container.
 10. **Custom VC overwrite tampering.** Owner can remove the bot's permissions. **Closed:** `channelUpdate` guard re-asserts bot overwrites; audit.
 11. **Help UI component limits.** Too many commands/rows. **Closed:** categories, pagination, 25-option select cap, 5-row cap.
 12. **Podman secret handling in Compose.** Compose secret support is inconsistent, and hand-managed tokens are easy to get wrong. **Closed:** `scripts/podman-init.sh` generates internal secrets; `.env` is the default; Podman secrets are optional; compose avoids `secrets`/`profiles`/`build.target`.
@@ -2209,7 +2136,7 @@ The big decisions are now confirmed: SoundCloud + optional Spotify, LibreTransla
 2. **Auto-role policy:** which roles, skip bots, minimum account age? Recommended: skip bots, 0-day default, reject Administrator/managed/above-bot.
 3. **Welcome extras:** generated image card is implemented and toggled with `welcome card on/off`; DM/goodbye remain optional and off by default.
 4. **Music DJ/permissions:** optional DJ roles (recommended) vs everyone can control.
-5. **Hosting:** Linux VPS specs/region? Recommended baseline 2 vCPU / 8 GB RAM (4 GB only with reduced Lavalink/LibreTranslate limits) / 20 GB disk, rootless Podman.
+5. **Hosting:** Linux VPS specs/region? Recommended baseline 2 vCPU / 4 GB RAM (2 GB with a small LibreTranslate language set) / 20 GB disk, rootless Podman.
 6. **Audit retention:** 90 days recommended; any compliance requirement?
 7. **Queue persistence:** implemented with the `music_sessions` table and restored on the next voice join.
 8. **Spotify:** add the two optional Spotify values now, or start SoundCloud-only and add them later?
@@ -2239,10 +2166,10 @@ The big decisions are now confirmed: SoundCloud + optional Spotify, LibreTransla
 
 ### Runtime
 
-- [ ] Lavalink config valid; SoundCloud source enabled; LavaSrc loaded; YouTube disabled.
+- [ ] `podman exec siela-bot yt-dlp --version` and `ffmpeg -version` succeed.
 - [ ] Spotify credentials present only if `spsearch:` is wanted; `spsearch:` fails cleanly when absent.
 - [ ] LibreTranslate healthy; model volume populated; sample translation works.
-- [ ] Bot connects to Lavalink; voice join tested.
+- [ ] Voice join tested; SoundCloud search/play tested.
 - [ ] Control API reachable only on `control` network.
 - [ ] MCP reachable at `MCP_URL=http://mcp:8080/mcp` on the `mcp` network; `MCP_TOKEN` enforced.
 - [ ] Healthchecks green; restart/reboot tested.
@@ -2311,7 +2238,7 @@ The big decisions are now confirmed: SoundCloud + optional Spotify, LibreTransla
 | `prefix set <new>` | Admin | Global single-guild prefix. |
 | `prefix reset` | Admin | Restore `!`. |
 | `help [command/category]` | Everyone | Components V2 help. |
-| `ping` | Everyone | Gateway/DB/Lavalink latency. |
+| `ping` | Everyone | Gateway/DB/music/translation status. |
 | `privacy` | Everyone | Data summary; `privacy delete` deletes caller data. |
 
 ### Admin
@@ -2354,8 +2281,6 @@ Aliases: `p`, `s`, `q`, `np`, `dc`.
 | `POSTGRES_PASSWORD` | Internal database password. |
 | `DATABASE_URL` | `postgres://siela:<generated>@postgres:5432/siela`. |
 | `POSTGRES_USER` / `POSTGRES_DB` | Fixed to `siela`. |
-| `LAVALINK_PASSWORD` | Internal Lavalink password. |
-| `LAVALINK_URL` | `http://lavalink:2333`. |
 | `MCP_TOKEN` | MCP HTTP + control API token. |
 
 **Optional (defaults are fine):**
@@ -2436,8 +2361,8 @@ podman exec siela-postgres pg_dump -U siela -Fc siela \
 | Control API | Private HTTP API exposed by the bot for MCP. |
 | MCP | Model Context Protocol; tool interface for AI clients. |
 | Quadlet | systemd-native Podman container unit format. |
-| Lavalink | External JVM service that handles Discord voice/music streaming. |
-| LavaSrc | Lavalink plugin that resolves Spotify metadata and mirrors it to a playable source. |
+| yt-dlp | Media resolver/downloader used for music search and streaming. |
+| ffmpeg | Transcodes yt-dlp audio into raw PCM for Discord voice. |
 | LibreTranslate | Self-hosted, free translation service used for the `translate` command. |
 | Temp VC | Join-to-create temporary voice channel owned by a member. |
 | Atomic upsert | Single SQL statement that inserts or increments without a race. |
@@ -2457,7 +2382,7 @@ podman exec siela-postgres pg_dump -U siela -Fc siela \
 - [x] Consent/opt-out for social actions is addressed.
 - [x] Translation privacy and resource use are addressed (LibreTranslate, zero API keys).
 - [x] MCP has a trust boundary, one token, confirmations, and audit.
-- [x] Lavalink is isolated and SSRF is addressed; SoundCloud is zero-token and Spotify is optional.
+- [x] Music uses yt-dlp + ffmpeg; SoundCloud is zero-token and Spotify links resolve via metadata search.
 - [x] Podman rootless constraints, generated secrets, `podman compose` compatibility, Quadlet, migrations, and backups are addressed.
 - [x] Observability, testing, and launch checklist are present.
 - [ ] Remaining smaller decisions in §14 confirmed by the product owner.

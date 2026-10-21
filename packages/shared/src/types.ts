@@ -101,7 +101,7 @@ export interface BotStatus {
   gatewayPing: number | null;
   guildId: string | null;
   database: "up" | "down";
-  lavalink: "up" | "down" | "unknown";
+  music: "up" | "down" | "unknown";
   translation: "up" | "down" | "unknown";
   activePlayers: number;
   activeTempVcs: number;

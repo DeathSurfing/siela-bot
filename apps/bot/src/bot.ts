@@ -85,8 +85,8 @@ export class SielaBot {
     const music = new MusicService(
       this.client,
       {
-        url: this.config.LAVALINK_URL,
-        password: this.config.LAVALINK_PASSWORD,
+        ytdlpPath: this.config.YTDLP_PATH,
+        ffmpegPath: this.config.FFMPEG_PATH,
         settings,
         db: this.dbHandle.db,
       },
@@ -429,6 +429,7 @@ export class SielaBot {
   async status(): Promise<BotStatus> {
     const database = (await pingDatabase(this.dbHandle.db)) ? "up" : "down";
     const translation = (await this.services.translation.health().catch(() => false)) ? "up" : "down";
+    const music = this.music ? await this.music.isUp().catch(() => false) : false;
     const activeTempVcs = this.guildId ? await this.services.tempVc.activeCount(this.guildId).catch(() => 0) : 0;
     return {
       ready: Boolean(this.client.isReady() && this.guildId),
@@ -436,9 +437,9 @@ export class SielaBot {
       gatewayPing: this.client.ws.ping >= 0 ? this.client.ws.ping : null,
       guildId: this.guildId,
       database,
-      lavalink: this.music ? (this.music.isUp() ? "up" : "down") : "unknown",
+      music: this.music ? (music ? "up" : "down") : "unknown",
       translation,
-      activePlayers: this.music ? this.music.shoukaku.players.size : 0,
+      activePlayers: this.music ? this.music.activePlayers() : 0,
       activeTempVcs,
       version: APP_VERSION,
     };
@@ -448,7 +449,7 @@ export class SielaBot {
     if (this.stopping) return;
     this.stopping = true;
     await Promise.allSettled([this.controlServer.stop(), this.healthServer.stop()]);
-    if (this.guildId && this.music) await this.music.disconnect(this.guildId).catch(() => undefined);
+    if (this.music) await this.music.shutdown().catch(() => undefined);
     this.client.destroy();
     await this.dbHandle.close();
   }

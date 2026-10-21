@@ -370,8 +370,8 @@ export class ControlServer {
       return { volume: await this.requireMusic().volume(this.guildId(), body.volume) };
     });
     this.route("POST", "/v1/music/seek", async (request) => {
-      const body = this.parse(musicSeekSchema, request.body);
-      await this.requireMusic().seek(this.guildId(), body.positionMs);
+      this.parse(musicSeekSchema, request.body);
+      await this.requireMusic().seek();
       return { ok: true };
     });
     this.route("POST", "/v1/music/loop", async (request) => {
@@ -386,7 +386,7 @@ export class ControlServer {
     this.route("POST", "/v1/music/remove", async (request) => {
       const body = this.parse(musicRemoveSchema, request.body);
       const removed = await this.requireMusic().remove(this.guildId(), body.index);
-      return { removed: removed.info.title };
+      return { removed: removed.title };
     });
     this.route("POST", "/v1/music/clear", async () => {
       await this.requireMusic().clear(this.guildId());

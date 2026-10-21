@@ -236,7 +236,7 @@ export const botStatusSchema = z.object({
   gatewayPing: z.number().nullable(),
   guildId: z.string().nullable(),
   database: z.enum(["up", "down"]),
-  lavalink: z.enum(["up", "down", "unknown"]),
+  music: z.enum(["up", "down", "unknown"]),
   translation: z.enum(["up", "down", "unknown"]),
   activePlayers: z.number(),
   activeTempVcs: z.number(),

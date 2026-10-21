@@ -81,7 +81,7 @@ export function registerTools(server: McpServer, client: ControlClient, logger: 
     return fn();
   };
 
-  register(server, "bot_status", "Gateway, database, Lavalink, translation, uptime, and version.", {}, READ, () =>
+  register(server, "bot_status", "Gateway, database, music, translation, uptime, and version.", {}, READ, () =>
     call(() => client.get("/v1/status")),
   );
   register(server, "commands_list", "Metadata for every bot command.", {}, READ, () =>
@@ -259,7 +259,7 @@ export function registerTools(server: McpServer, client: ControlClient, logger: 
   register(server, "music_volume", "Set volume (0-150).", musicVolumeSchema.shape, OPERATE, (args) =>
     call(() => client.post("/v1/music/volume", args)),
   );
-  register(server, "music_seek", "Seek the current track.", musicSeekSchema.shape, OPERATE, (args) =>
+  register(server, "music_seek", "Seek is not supported by the yt-dlp stream backend.", musicSeekSchema.shape, OPERATE, (args) =>
     call(() => client.post("/v1/music/seek", args)),
   );
   register(server, "music_loop", "Set loop mode.", musicLoopSchema.shape, OPERATE, (args) =>

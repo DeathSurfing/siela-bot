@@ -18,9 +18,9 @@ async function requireDj(ctx: CommandContext): Promise<void> {
 }
 
 function requireSameVoice(ctx: CommandContext): void {
-  const connection = music(ctx).shoukaku.connections.get(ctx.guild.id);
-  if (!connection?.channelId) throw new UserError("The bot is not in a voice channel.");
-  if (ctx.member.voice.channelId !== connection.channelId) {
+  const channelId = music(ctx).channelId(ctx.guild.id);
+  if (!channelId) throw new UserError("The bot is not in a voice channel.");
+  if (ctx.member.voice.channelId !== channelId) {
     throw new UserError("Join the bot's voice channel first.");
   }
 }
@@ -219,7 +219,7 @@ const seekCommand: Command = {
     await requireDj(ctx);
     const position = parseDuration(ctx.args[0] ?? "");
     if (position === null) throw new UserError("Use seconds or mm:ss.");
-    await music(ctx).seek(ctx.guild.id, position);
+    await music(ctx).seek();
     await ctx.reply({ content: `Seeked to ${formatDuration(position)}.`, ephemeral: true });
   },
 };
@@ -277,7 +277,7 @@ const removeCommand: Command = {
     requireSameVoice(ctx);
     await requireDj(ctx);
     const removed = await music(ctx).remove(ctx.guild.id, Number(ctx.args[0]));
-    await ctx.reply({ content: `Removed **${removed.info.title}**.`, ephemeral: true });
+    await ctx.reply({ content: `Removed **${removed.title}**.`, ephemeral: true });
   },
 };
 

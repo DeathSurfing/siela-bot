@@ -10,7 +10,7 @@
 #   SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET  (both or neither)
 #   FORCE=1            (overwrite an existing .env)
 #
-# The script generates POSTGRES_PASSWORD, LAVALINK_PASSWORD, and MCP_TOKEN,
+# The script generates POSTGRES_PASSWORD and MCP_TOKEN,
 # then writes deploy/podman/.env with mode 600.
 
 set -euo pipefail
@@ -58,7 +58,6 @@ if [[ -z "${CLIENT_ID}" ]]; then
 fi
 
 POSTGRES_PASSWORD="$(rand_secret)"
-LAVALINK_PASSWORD="$(rand_secret)"
 MCP_TOKEN="$(rand_secret)"
 
 SPOTIFY_ENABLED="false"
@@ -79,8 +78,6 @@ POSTGRES_USER=siela
 POSTGRES_DB=siela
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 DATABASE_URL=postgres://siela:${POSTGRES_PASSWORD}@postgres:5432/siela
-LAVALINK_PASSWORD=${LAVALINK_PASSWORD}
-LAVALINK_URL=http://lavalink:2333
 MCP_TOKEN=${MCP_TOKEN}
 MCP_URL=http://mcp:8080/mcp
 
@@ -100,7 +97,7 @@ chmod 600 "${ENV_FILE}"
 echo "wrote ${ENV_FILE} (mode 600)"
 echo "client id: ${CLIENT_ID}"
 echo "guild id: ${GUILD_ID:-auto-detect}"
-echo "generated: POSTGRES_PASSWORD, LAVALINK_PASSWORD, MCP_TOKEN"
+echo "generated: POSTGRES_PASSWORD, MCP_TOKEN"
 echo "spotify: ${SPOTIFY_ENABLED}"
 echo "invite: https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&scope=bot%20applications.commands"
 echo "next: podman compose -p siela -f deploy/podman/compose.yaml up -d --build"
