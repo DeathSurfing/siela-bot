@@ -210,7 +210,7 @@ export class TempVcService {
     const { channel, row } = await this.requireChannel(channelId);
     const payload = this.panelPayloadFor(channel, row);
     const messages = await channel.messages.fetch({ limit: 100 }).catch((error) => {
-      this.logger.debug({ err: error, channelId }, "temp VC panel history unavailable");
+      this.logger.warn({ err: error, channelId }, "temp VC panel history unavailable");
       return null;
     });
     const existing = messages?.find(
@@ -219,10 +219,16 @@ export class TempVcService {
         message.embeds.some((embed) => embed.footer?.text?.startsWith(TEMP_VC_PANEL_MARKER)),
     );
     if (existing) {
-      await existing.edit(payload);
+      await existing.edit(payload).catch((error) => {
+        this.logger.warn({ err: error, channelId }, "temp VC panel edit failed");
+        throw error;
+      });
       return;
     }
-    const sent = await channel.send(payload);
+    const sent = await channel.send(payload).catch((error) => {
+      this.logger.warn({ err: error, channelId }, "temp VC panel send failed");
+      throw error;
+    });
     await sent.pin().catch((error) => {
       this.logger.debug({ err: error, channelId }, "temp VC panel could not be pinned");
     });
@@ -521,7 +527,7 @@ export class TempVcService {
       } else {
         await this.syncOverwrites(channel, row.ownerId);
         await this.ensurePanel(row.channelId).catch((error) => {
-          this.logger.debug({ err: error, channelId: row.channelId }, "temp VC panel reconcile failed");
+          this.logger.warn({ err: error, channelId: row.channelId }, "temp VC panel reconcile failed");
         });
         if (channel.members.size === 0) this.scheduleCleanup(guild, row.channelId, 0, true);
       }
