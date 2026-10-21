@@ -574,7 +574,7 @@ RETURNING count;
 
 **Commands:** `vc lock`, `vc unlock`, `vc permit @user`, `vc deny @user`, `vc disconnect @user`, `vc rename <name>`, `vc limit <0-99>`, `vc claim`, `vc transfer @user`, `vc delete`, `vc info`.
 
-**Hub setup:** `jointocreate <#voice-channel> [#category]` (aliases `j2c`) sets the join-to-create hub, enables it, and warns about role-level `Connect` allows. `jointocreate status` shows the config; `jointocreate disable` turns it off. The existing `tempvc setup` remains available.
+**Hub setup:** `jointocreate <#voice-channel> [template]` (aliases `j2c`) sets the join-to-create hub, auto-creates a **Temporary VCs** category if none is configured, sets the default `{user}'s VC` template, enables the feature, and warns about role-level `Connect` allows. `jointocreate template <text>`, `jointocreate category <#category>`, `jointocreate status`, and `jointocreate disable` are also available. The existing `tempvc setup` remains available.
 
 **Lifecycle and reconciliation:**
 
@@ -662,7 +662,7 @@ interface TranslationProvider {
 **Resolution and playback:**
 
 - `yt-dlp --dump-single-json --default-search scsearch` resolves searches and direct URLs; Spotify links become `title + artist` searches.
-- `yt-dlp -f bestaudio/best -o - <url>` pipes audio into `mpv`, which outputs raw PCM (`s16le`, 48 kHz, stereo) for `@discordjs/voice`.
+- `yt-dlp -g` resolves a fresh direct audio URL; `mpv --ao=pcm` decodes it and writes raw PCM (`s16le`, 48 kHz, stereo) to a named FIFO, which `@discordjs/voice` reads. Playlist URLs import every entry into the queue.
 - `GuildPlayer` owns the queue, current track, loop mode, volume, autoplay, and the running yt-dlp/mpv processes.
 - Queue persistence is implemented in `music_sessions` (jsonb): current track, upcoming queue, volume, loop, and autoplay are saved after mutations and restored the next time the bot joins voice.
 - Max queue size (default 100), max volume 150, default volume 80.
