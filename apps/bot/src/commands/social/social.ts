@@ -51,8 +51,7 @@ function socialCommand(kind: InteractionKind): Command {
         .setColor(COLORS.social)
         .setDescription(
           `${meta.emoji} **${ctx.member.displayName}** ${meta.verb} **${target.displayName}**!\nThat makes **${count}** ${meta.label.toLowerCase()} interaction${count === 1 ? "" : "s"}.`,
-        )
-        .setFooter({ text: "Counter stored in PostgreSQL" });
+        );
       if (gif) embed.setImage(gif);
       await ctx.reply({ embeds: [embed] });
     },
