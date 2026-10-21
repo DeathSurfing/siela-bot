@@ -2252,9 +2252,9 @@ The big decisions are now confirmed: SoundCloud + optional Spotify, LibreTransla
 
 ### Music
 
-`play`, `pause`, `resume`, `skip`, `stop`, `queue`, `nowplaying`, `volume`, `seek`, `loop`, `shuffle`, `remove`, `clear`, `move`, `jump`, `disconnect`, `autoplay`, `filters`.
+`join`, `play`, `pause`, `resume`, `skip`, `stop`, `queue`, `nowplaying`, `volume`, `seek`, `loop`, `shuffle`, `remove`, `clear`, `clearqueue`, `move`, `jump`, `disconnect`, `autoplay`, `filters`.
 
-Aliases: `p`, `s`, `q`, `np`, `dc`.
+Aliases: `j`/`summon` for `join`; `p`, `s`, `q`; `np`/`current`/`currentlyplaying`/`cp` for `nowplaying`; `cq`/`emptyqueue` for `clearqueue`; `dc`.
 
 ---
 
