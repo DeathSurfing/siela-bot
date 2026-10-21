@@ -430,10 +430,10 @@ export class SielaBot {
   ): Promise<void> {
     const message = error instanceof UserError ? error.message : "That VC action failed.";
     this.logger.warn({ err: error, customId: interaction.customId }, "temp VC panel action failed");
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: message, ephemeral: true }).catch(() => undefined);
-    } else {
+    if (interaction.replied || interaction.deferred) {
       await interaction.followUp({ content: message, ephemeral: true }).catch(() => undefined);
+    } else {
+      await interaction.reply({ content: message, ephemeral: true }).catch(() => undefined);
     }
   }
 
@@ -465,10 +465,11 @@ export class SielaBot {
     const { action, channelId, row, channel } = context;
     try {
       if (action === "lock") {
+        await interaction.deferUpdate();
         if (row.locked) await this.services.tempVc.unlock(channelId, interaction.user.id);
         else await this.services.tempVc.lock(channelId, interaction.user.id);
         await this.auditTempVcPanel(interaction, "vc.panel.lock", channelId, { locked: !row.locked });
-        await interaction.update(await this.services.tempVc.panelPayload(channelId));
+        await interaction.editReply(await this.services.tempVc.panelPayload(channelId));
         return;
       }
 
@@ -549,9 +550,10 @@ export class SielaBot {
         if (!interaction.isUserSelectMenu()) throw new UserError("Select a member to kick.");
         const targetId = interaction.values[0];
         if (!targetId) throw new UserError("Select a member to kick.");
+        await interaction.deferReply({ ephemeral: true });
         await this.services.tempVc.disconnect(channelId, targetId);
         await this.auditTempVcPanel(interaction, "vc.panel.kick", channelId, { targetId });
-        await interaction.reply({ content: `Kicked <@${targetId}> from the VC.`, ephemeral: true });
+        await interaction.editReply({ content: `Kicked <@${targetId}> from the VC.` });
         await this.services.tempVc.refreshPanel(channelId).catch(() => undefined);
         return;
       }
@@ -560,9 +562,10 @@ export class SielaBot {
         if (!interaction.isUserSelectMenu()) throw new UserError("Select the new owner.");
         const targetId = interaction.values[0];
         if (!targetId) throw new UserError("Select the new owner.");
+        await interaction.deferUpdate();
         await this.services.tempVc.transfer(channelId, targetId);
         await this.auditTempVcPanel(interaction, "vc.panel.transfer", channelId, { targetId });
-        await interaction.update(await this.services.tempVc.panelPayload(channelId));
+        await interaction.editReply(await this.services.tempVc.panelPayload(channelId));
         return;
       }
 
@@ -577,13 +580,14 @@ export class SielaBot {
     if (!context) return;
     const { action, channelId } = context;
     try {
+      await interaction.deferReply({ ephemeral: true });
       if (action === "rename-modal") {
         const name = interaction.fields.getTextInputValue("name").trim();
         if (!name) throw new UserError("Provide a channel name.");
         await this.services.tempVc.rename(channelId, name);
         await this.auditTempVcPanel(interaction, "vc.panel.rename", channelId, { name });
         await this.services.tempVc.refreshPanel(channelId);
-        await interaction.reply({ content: "Temporary VC renamed.", ephemeral: true });
+        await interaction.editReply({ content: "Temporary VC renamed." });
         return;
       }
 
@@ -595,7 +599,7 @@ export class SielaBot {
         await this.services.tempVc.setLimit(channelId, limit);
         await this.auditTempVcPanel(interaction, "vc.panel.limit", channelId, { limit });
         await this.services.tempVc.refreshPanel(channelId);
-        await interaction.reply({ content: `User limit set to **${limit === 0 ? "unlimited" : limit}**.`, ephemeral: true });
+        await interaction.editReply({ content: `User limit set to **${limit === 0 ? "unlimited" : limit}**.` });
         return;
       }
 
