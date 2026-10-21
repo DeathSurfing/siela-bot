@@ -822,7 +822,7 @@ export class SielaBot {
     this.stopping = true;
     await Promise.allSettled([this.controlServer.stop(), this.healthServer.stop()]);
     if (this.music) await this.music.shutdown().catch(() => undefined);
-    this.services.activity.stop();
+    await this.services.activity.stop();
     this.services.birthday.stop();
     this.client.destroy();
     await this.dbHandle.close();

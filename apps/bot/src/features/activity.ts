@@ -353,12 +353,12 @@ export class ActivityService {
     }, 10_000).unref?.();
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
     }
-    void this.flush().catch(() => undefined);
+    await this.flush().catch(() => undefined);
   }
 
   private async tick(): Promise<void> {
