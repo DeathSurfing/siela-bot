@@ -37,7 +37,7 @@ async function connectivityWarning(ctx: CommandContext): Promise<string | null> 
 
 export const joinToCreateCommand: Command = {
   name: "jointocreate",
-  aliases: ["j2c", "jointocreate"],
+  aliases: ["j2c", "jtc"],
   category: "admin",
   description: "Set the voice channel members join to get their own temporary VC.",
   usage: "<#voice-channel> [#category] | status | disable",
