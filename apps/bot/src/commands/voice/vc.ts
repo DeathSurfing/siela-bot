@@ -47,7 +47,7 @@ export const vcCommand: Command = {
   name: "vc",
   category: "voice",
   description: "Control your temporary voice channel.",
-  usage: "<lock|unlock|permit|deny|disconnect|rename|limit|claim|transfer|delete|info>",
+  usage: "<lock|unlock|permit|deny|disconnect|rename|limit|claim|transfer|delete|panel|info>",
   examples: ["vc lock", "vc permit @user", "vc rename Chill Zone", "vc limit 10", "vc claim"],
   cooldownMs: 2_000,
   slash: new SlashCommandBuilder()
@@ -87,15 +87,24 @@ export const vcCommand: Command = {
       ),
     )
     .addSubcommand((sub) => sub.setName("delete").setDescription("Delete the channel"))
+    .addSubcommand((sub) => sub.setName("panel").setDescription("Post or refresh the VC control panel"))
     .addSubcommand((sub) => sub.setName("info").setDescription("Show channel info")),
   async execute(ctx: CommandContext) {
     const action = ctx.args[0]?.toLowerCase();
     if (!action) {
-      await ctx.reply({ content: "Usage: `vc <lock|unlock|permit|deny|disconnect|rename|limit|claim|transfer|delete|info>`", ephemeral: true });
+      await ctx.reply({ content: "Usage: `vc <lock|unlock|permit|deny|disconnect|rename|limit|claim|transfer|delete|panel|info>`", ephemeral: true });
       return;
     }
 
     try {
+      if (action === "panel") {
+        const { channel } = await requireOwned(ctx);
+        await ctx.services.tempVc.ensurePanel(channel.id);
+        await audit(ctx, "vc.panel", channel.id);
+        await ctx.reply({ content: "VC control panel refreshed.", ephemeral: true });
+        return;
+      }
+
       if (action === "info") {
         const channel = currentChannel(ctx);
         const row = await ctx.services.tempVc.getRow(channel.id);

@@ -1,13 +1,20 @@
 import { randomUUID } from "node:crypto";
 import {
+  ActionRowBuilder,
   ActivityType,
   ApplicationCommandType,
+  ButtonBuilder,
+  ButtonStyle,
   ChannelType,
   Client,
   EmbedBuilder,
   Events,
   GatewayIntentBits,
+  ModalBuilder,
   Partials,
+  TextInputBuilder,
+  TextInputStyle,
+  type ButtonInteraction,
   type Guild,
   type GuildBasedChannel,
   type GuildMember,
@@ -15,16 +22,19 @@ import {
   type Message,
   type MessageContextMenuCommandInteraction,
   type MessageReaction,
+  type ModalSubmitInteraction,
   type PartialMessageReaction,
   type ChatInputCommandInteraction,
   type PartialGuildMember,
   type PartialUser,
   type User,
   type StringSelectMenuInteraction,
+  type UserSelectMenuInteraction,
+  type VoiceChannel,
   type VoiceState,
 } from "discord.js";
 import { APP_VERSION, DEFAULTS, truncate, type BotStatus } from "@siela/shared";
-import { pingDatabase, type DatabaseHandle } from "@siela/db";
+import { pingDatabase, type DatabaseHandle, type TempVoiceChannelRow } from "@siela/db";
 import type { BotConfig } from "@siela/config";
 import { commands } from "./commands/index.js";
 import { CommandRegistry } from "./framework/registry.js";
@@ -32,6 +42,7 @@ import { CooldownManager } from "./framework/cooldowns.js";
 import { parsePrefixCommand } from "./framework/prefix.js";
 import { argsFromInteraction, rawArgsFromInteraction } from "./framework/slash.js";
 import {
+  canManageTempVc,
   hasBotPermissions,
   hasUserPermissions,
   isAdmin,
@@ -44,7 +55,7 @@ import { AuditService } from "./features/audit.js";
 import { CounterService } from "./features/counters.js";
 import { WelcomeService } from "./features/welcome.js";
 import { AutoRoleService } from "./features/autorole.js";
-import { TempVcService } from "./features/tempvc.js";
+import { parseTempVcPanelCustomId, tempVcPanelCustomId, TempVcService } from "./features/tempvc.js";
 import { TranslationService } from "./features/translation.js";
 import { MusicService } from "./features/music.js";
 import { PrivacyService } from "./features/privacy.js";
@@ -275,6 +286,14 @@ export class SielaBot {
         await this.onMessageContextMenu(interaction);
         return;
       }
+      if ((interaction.isButton() || interaction.isUserSelectMenu()) && interaction.customId.startsWith("tempvc:")) {
+        await this.onTempVcComponent(interaction);
+        return;
+      }
+      if (interaction.isModalSubmit() && interaction.customId.startsWith("tempvc:")) {
+        await this.onTempVcModal(interaction);
+        return;
+      }
       if (interaction.isStringSelectMenu() && interaction.customId === "help:category") {
         await this.onHelpSelect(interaction);
         return;
@@ -366,6 +385,224 @@ export class SielaBot {
       embeds: payload.embeds,
       components: payload.components,
     });
+  }
+
+  private async requireTempVcPanelAccess(
+    interaction: ButtonInteraction | UserSelectMenuInteraction | ModalSubmitInteraction,
+  ): Promise<{
+    action: string;
+    channelId: string;
+    row: TempVoiceChannelRow;
+    channel: VoiceChannel;
+    member: GuildMember;
+  } | null> {
+    const parsed = parseTempVcPanelCustomId(interaction.customId);
+    const guild = interaction.guild;
+    if (!parsed || !guild) return null;
+    if (interaction.channelId !== parsed.channelId) {
+      await interaction
+        .reply({ content: "That control panel does not belong to this channel.", ephemeral: true })
+        .catch(() => undefined);
+      return null;
+    }
+    const row = await this.services.tempVc.getRow(parsed.channelId);
+    const channel = await guild.channels.fetch(parsed.channelId).catch(() => null);
+    if (!row || row.status !== "active" || !channel || channel.type !== ChannelType.GuildVoice) {
+      await interaction
+        .reply({ content: "That temporary VC is no longer active.", ephemeral: true })
+        .catch(() => undefined);
+      return null;
+    }
+    const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+    if (!member) return null;
+    if (!canManageTempVc(member, row.ownerId, this.config)) {
+      await interaction
+        .reply({ content: "Only the channel owner or an admin can use these controls.", ephemeral: true })
+        .catch(() => undefined);
+      return null;
+    }
+    return { action: parsed.action, channelId: parsed.channelId, row, channel, member };
+  }
+
+  private async replyTempVcError(
+    interaction: ButtonInteraction | UserSelectMenuInteraction | ModalSubmitInteraction,
+    error: unknown,
+  ): Promise<void> {
+    const message = error instanceof UserError ? error.message : "That VC action failed.";
+    this.logger.warn({ err: error, customId: interaction.customId }, "temp VC panel action failed");
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: message, ephemeral: true }).catch(() => undefined);
+    } else {
+      await interaction.followUp({ content: message, ephemeral: true }).catch(() => undefined);
+    }
+  }
+
+  private auditTempVcPanel(
+    interaction: ButtonInteraction | UserSelectMenuInteraction | ModalSubmitInteraction,
+    action: string,
+    channelId: string,
+    after?: unknown,
+  ): Promise<void> {
+    return this.services.audit
+      .log({
+        guildId: interaction.guildId ?? this.guildId ?? "",
+        actorId: interaction.user.id,
+        actorType: "user",
+        source: "discord",
+        action,
+        targetType: "tempvc",
+        targetId: channelId,
+        after,
+      })
+      .catch((error) => this.logger.debug({ err: error, action, channelId }, "temp VC panel audit failed"));
+  }
+
+  private async onTempVcComponent(
+    interaction: ButtonInteraction | UserSelectMenuInteraction,
+  ): Promise<void> {
+    const context = await this.requireTempVcPanelAccess(interaction);
+    if (!context) return;
+    const { action, channelId, row, channel } = context;
+    try {
+      if (action === "lock") {
+        if (row.locked) await this.services.tempVc.unlock(channelId, interaction.user.id);
+        else await this.services.tempVc.lock(channelId, interaction.user.id);
+        await this.auditTempVcPanel(interaction, "vc.panel.lock", channelId, { locked: !row.locked });
+        await interaction.update(await this.services.tempVc.panelPayload(channelId));
+        return;
+      }
+
+      if (action === "rename") {
+        await interaction.showModal(
+          new ModalBuilder()
+            .setCustomId(tempVcPanelCustomId("rename-modal", channelId))
+            .setTitle("Rename temporary VC")
+            .addComponents(
+              new ActionRowBuilder<TextInputBuilder>().addComponents(
+                new TextInputBuilder()
+                  .setCustomId("name")
+                  .setLabel("Channel name")
+                  .setStyle(TextInputStyle.Short)
+                  .setRequired(true)
+                  .setMaxLength(100)
+                  .setValue(channel.name.slice(0, 100)),
+              ),
+            ),
+        );
+        return;
+      }
+
+      if (action === "limit") {
+        await interaction.showModal(
+          new ModalBuilder()
+            .setCustomId(tempVcPanelCustomId("limit-modal", channelId))
+            .setTitle("Set VC user limit")
+            .addComponents(
+              new ActionRowBuilder<TextInputBuilder>().addComponents(
+                new TextInputBuilder()
+                  .setCustomId("limit")
+                  .setLabel("User limit (0 = unlimited)")
+                  .setStyle(TextInputStyle.Short)
+                  .setRequired(true)
+                  .setMaxLength(2)
+                  .setValue(String(row.userLimit)),
+              ),
+            ),
+        );
+        return;
+      }
+
+      if (action === "delete") {
+        await interaction.reply({
+          content: `Delete **${channel.name}** and disconnect everyone in it?`,
+          ephemeral: true,
+          components: [
+            new ActionRowBuilder<ButtonBuilder>().addComponents(
+              new ButtonBuilder()
+                .setCustomId(tempVcPanelCustomId("delete-confirm", channelId))
+                .setLabel("Delete")
+                .setStyle(ButtonStyle.Danger),
+              new ButtonBuilder()
+                .setCustomId(tempVcPanelCustomId("delete-cancel", channelId))
+                .setLabel("Cancel")
+                .setStyle(ButtonStyle.Secondary),
+            ),
+          ],
+        });
+        return;
+      }
+
+      if (action === "delete-confirm") {
+        await interaction.deferReply({ ephemeral: true });
+        await this.services.tempVc.delete(channelId, "Owner deleted temporary VC from panel");
+        await this.auditTempVcPanel(interaction, "vc.panel.delete", channelId);
+        await interaction.editReply({ content: "Temporary VC deleted.", components: [] }).catch(() => undefined);
+        return;
+      }
+
+      if (action === "delete-cancel") {
+        await interaction.update({ content: "Delete cancelled.", embeds: [], components: [] });
+        return;
+      }
+
+      if (action === "kick") {
+        if (!interaction.isUserSelectMenu()) throw new UserError("Select a member to kick.");
+        const targetId = interaction.values[0];
+        if (!targetId) throw new UserError("Select a member to kick.");
+        await this.services.tempVc.disconnect(channelId, targetId);
+        await this.auditTempVcPanel(interaction, "vc.panel.kick", channelId, { targetId });
+        await interaction.reply({ content: `Kicked <@${targetId}> from the VC.`, ephemeral: true });
+        await this.services.tempVc.refreshPanel(channelId).catch(() => undefined);
+        return;
+      }
+
+      if (action === "transfer") {
+        if (!interaction.isUserSelectMenu()) throw new UserError("Select the new owner.");
+        const targetId = interaction.values[0];
+        if (!targetId) throw new UserError("Select the new owner.");
+        await this.services.tempVc.transfer(channelId, targetId);
+        await this.auditTempVcPanel(interaction, "vc.panel.transfer", channelId, { targetId });
+        await interaction.update(await this.services.tempVc.panelPayload(channelId));
+        return;
+      }
+
+      throw new UserError("Unknown VC control.");
+    } catch (error) {
+      await this.replyTempVcError(interaction, error);
+    }
+  }
+
+  private async onTempVcModal(interaction: ModalSubmitInteraction): Promise<void> {
+    const context = await this.requireTempVcPanelAccess(interaction);
+    if (!context) return;
+    const { action, channelId } = context;
+    try {
+      if (action === "rename-modal") {
+        const name = interaction.fields.getTextInputValue("name").trim();
+        if (!name) throw new UserError("Provide a channel name.");
+        await this.services.tempVc.rename(channelId, name);
+        await this.auditTempVcPanel(interaction, "vc.panel.rename", channelId, { name });
+        await this.services.tempVc.refreshPanel(channelId);
+        await interaction.reply({ content: "Temporary VC renamed.", ephemeral: true });
+        return;
+      }
+
+      if (action === "limit-modal") {
+        const raw = interaction.fields.getTextInputValue("limit").trim();
+        if (!/^\d{1,2}$/.test(raw)) throw new UserError("Limit must be a number from 0 to 99.");
+        const limit = Number(raw);
+        if (limit > 99) throw new UserError("Limit must be a number from 0 to 99.");
+        await this.services.tempVc.setLimit(channelId, limit);
+        await this.auditTempVcPanel(interaction, "vc.panel.limit", channelId, { limit });
+        await this.services.tempVc.refreshPanel(channelId);
+        await interaction.reply({ content: `User limit set to **${limit === 0 ? "unlimited" : limit}**.`, ephemeral: true });
+        return;
+      }
+
+      throw new UserError("Unknown VC control.");
+    } catch (error) {
+      await this.replyTempVcError(interaction, error);
+    }
   }
 
   private async guard(command: Command, ctx: CommandContext): Promise<boolean> {

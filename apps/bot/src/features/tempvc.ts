@@ -1,16 +1,21 @@
 import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   ChannelType,
-  PermissionFlagsBits,
+  EmbedBuilder,
+  UserSelectMenuBuilder,
   type CategoryChannel,
   type Client,
   type Guild,
   type GuildMember,
+  type MessageActionRowComponentBuilder,
   type VoiceChannel,
   type VoiceState,
 } from "discord.js";
 import { and, eq, sql } from "drizzle-orm";
 import { tempVoiceChannels, type Database, type TempVoiceChannelRow } from "@siela/db";
-import { renderTemplate, sanitizeChannelName, type TempVoiceChannel } from "@siela/shared";
+import { COLORS, renderTemplate, sanitizeChannelName, type TempVoiceChannel } from "@siela/shared";
 import type { SettingsService } from "./settings.js";
 import type { Logger } from "../lib/logger.js";
 import { UserError } from "../lib/errors.js";
@@ -25,6 +30,12 @@ const OWNER_ALLOW = {
   PrioritySpeaker: true,
   Speak: true,
   Stream: true,
+  SendMessages: true,
+  ReadMessageHistory: true,
+  ManageMessages: true,
+  AddReactions: true,
+  AttachFiles: true,
+  EmbedLinks: true,
 } as const;
 
 const BOT_ALLOW = {
@@ -34,7 +45,30 @@ const BOT_ALLOW = {
   MoveMembers: true,
   Speak: true,
   Stream: true,
+  SendMessages: true,
+  ReadMessageHistory: true,
+  ManageMessages: true,
+  AddReactions: true,
+  AttachFiles: true,
+  EmbedLinks: true,
 } as const;
+
+export const TEMP_VC_PANEL_MARKER = "tempvc-panel";
+
+export function tempVcPanelCustomId(action: string, channelId: string): string {
+  return `tempvc:${action}:${channelId}`;
+}
+
+export function parseTempVcPanelCustomId(customId: string): { action: string; channelId: string } | null {
+  const [prefix, action, channelId] = customId.split(":");
+  if (prefix !== "tempvc" || !action || !channelId || !/^\d{17,20}$/.test(channelId)) return null;
+  return { action, channelId };
+}
+
+export interface TempVcPanelPayload {
+  embeds: EmbedBuilder[];
+  components: ActionRowBuilder<MessageActionRowComponentBuilder>[];
+}
 
 export class TempVcService {
   private readonly creating = new Set<string>();
@@ -102,6 +136,106 @@ export class TempVcService {
     return rows.map((row) => this.toDto(row));
   }
 
+  private panelPayloadFor(channel: VoiceChannel, row: TempVoiceChannelRow): TempVcPanelPayload {
+    const embed = new EmbedBuilder()
+      .setColor(COLORS.voice)
+      .setTitle("Temporary VC controls")
+      .setDescription(
+        [
+          `<@${row.ownerId}> owns this voice channel.`,
+          "Use the buttons and member menus below to manage it.",
+          "This panel is in the channel's text chat, so members can coordinate here too.",
+        ].join("\n"),
+      )
+      .addFields(
+        { name: "Status", value: row.locked ? "🔒 Locked" : "🔓 Open", inline: true },
+        { name: "User limit", value: row.userLimit === 0 ? "Unlimited" : String(row.userLimit), inline: true },
+        { name: "In channel", value: String(channel.members.size), inline: true },
+      )
+      .setFooter({ text: `${TEMP_VC_PANEL_MARKER}:${row.channelId}` });
+
+    const lockButton = new ButtonBuilder()
+      .setCustomId(tempVcPanelCustomId("lock", row.channelId))
+      .setLabel(row.locked ? "Unlock" : "Lock")
+      .setEmoji(row.locked ? "🔓" : "🔒")
+      .setStyle(row.locked ? ButtonStyle.Success : ButtonStyle.Secondary);
+    const renameButton = new ButtonBuilder()
+      .setCustomId(tempVcPanelCustomId("rename", row.channelId))
+      .setLabel("Rename")
+      .setEmoji("✏️")
+      .setStyle(ButtonStyle.Primary);
+    const limitButton = new ButtonBuilder()
+      .setCustomId(tempVcPanelCustomId("limit", row.channelId))
+      .setLabel("Limit")
+      .setEmoji("👥")
+      .setStyle(ButtonStyle.Secondary);
+    const chatButton = new ButtonBuilder()
+      .setStyle(ButtonStyle.Link)
+      .setLabel("Open chat")
+      .setEmoji("💬")
+      .setURL(`https://discord.com/channels/${channel.guild.id}/${channel.id}`);
+    const deleteButton = new ButtonBuilder()
+      .setCustomId(tempVcPanelCustomId("delete", row.channelId))
+      .setLabel("Delete VC")
+      .setEmoji("🗑️")
+      .setStyle(ButtonStyle.Danger);
+
+    const actionRow = new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+      lockButton,
+      renameButton,
+      limitButton,
+      chatButton,
+      deleteButton,
+    );
+    const kickRow = new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+      new UserSelectMenuBuilder()
+        .setCustomId(tempVcPanelCustomId("kick", row.channelId))
+        .setPlaceholder("Kick a member from this VC")
+        .setMinValues(1)
+        .setMaxValues(1),
+    );
+    const transferRow = new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+      new UserSelectMenuBuilder()
+        .setCustomId(tempVcPanelCustomId("transfer", row.channelId))
+        .setPlaceholder("Transfer ownership to a member")
+        .setMinValues(1)
+        .setMaxValues(1),
+    );
+
+    return { embeds: [embed], components: [actionRow, kickRow, transferRow] };
+  }
+
+  async panelPayload(channelId: string): Promise<TempVcPanelPayload> {
+    const { channel, row } = await this.requireChannel(channelId);
+    return this.panelPayloadFor(channel, row);
+  }
+
+  async ensurePanel(channelId: string): Promise<void> {
+    const { channel, row } = await this.requireChannel(channelId);
+    const payload = this.panelPayloadFor(channel, row);
+    const messages = await channel.messages.fetch({ limit: 50 }).catch((error) => {
+      this.logger.debug({ err: error, channelId }, "temp VC panel history unavailable");
+      return null;
+    });
+    const existing = messages?.find(
+      (message) =>
+        message.author.id === this.client.user?.id &&
+        message.embeds.some((embed) => embed.footer?.text?.startsWith(TEMP_VC_PANEL_MARKER)),
+    );
+    if (existing) {
+      await existing.edit(payload);
+      return;
+    }
+    const sent = await channel.send(payload);
+    await sent.pin().catch((error) => {
+      this.logger.debug({ err: error, channelId }, "temp VC panel could not be pinned");
+    });
+  }
+
+  async refreshPanel(channelId: string): Promise<void> {
+    await this.ensurePanel(channelId);
+  }
+
   async handleVoiceState(oldState: VoiceState, newState: VoiceState): Promise<void> {
     const guild = newState.guild ?? oldState.guild;
     if (!guild) return;
@@ -120,7 +254,11 @@ export class TempVcService {
 
     if (oldState.channelId && oldState.channelId !== settings.hubChannelId) {
       const row = await this.getRow(oldState.channelId);
-      if (row?.status === "active") this.scheduleCleanup(guild, oldState.channelId, settings.graceSeconds);
+      if (row?.status === "active") {
+        const channel = guild.channels.cache.get(oldState.channelId);
+        const empty = channel?.type === ChannelType.GuildVoice && channel.members.size === 0;
+        this.scheduleCleanup(guild, oldState.channelId, empty ? 0 : settings.graceSeconds, empty);
+      }
     }
   }
 
@@ -136,6 +274,9 @@ export class TempVcService {
         const channel = member.guild.channels.cache.get(existing.channelId);
         if (channel?.type === ChannelType.GuildVoice) {
           await member.voice.setChannel(channel, "Temporary VC rejoin");
+          await this.ensurePanel(channel.id).catch((error) => {
+            this.logger.debug({ err: error, channelId: channel.id }, "temp VC panel refresh failed");
+          });
           return;
         }
         await this.markDeleted(existing.channelId);
@@ -191,6 +332,9 @@ export class TempVcService {
           status: "active",
         });
         await member.voice.setChannel(channel, "Temporary VC created");
+        await this.ensurePanel(channel.id).catch((error) => {
+          this.logger.debug({ err: error, channelId: channel.id }, "temp VC panel creation failed");
+        });
       } catch (error) {
         await channel.delete("Temporary VC creation failed").catch(() => undefined);
         throw error;
@@ -334,8 +478,10 @@ export class TempVcService {
     return { channel, row, guild: channel.guild };
   }
 
-  private scheduleCleanup(guild: Guild, channelId: string, graceSeconds: number): void {
-    if (this.cleanupTimers.has(channelId)) return;
+  private scheduleCleanup(guild: Guild, channelId: string, graceSeconds: number, replace = false): void {
+    const existing = this.cleanupTimers.get(channelId);
+    if (existing && !replace) return;
+    if (existing) clearTimeout(existing);
     const timer = setTimeout(() => {
       this.cleanupTimers.delete(channelId);
       void this.cleanupIfEmpty(guild, channelId);
@@ -373,9 +519,12 @@ export class TempVcService {
       if (!channel || channel.type !== ChannelType.GuildVoice) {
         await this.markDeleted(row.channelId);
       } else if (channel.members.size === 0) {
-        this.scheduleCleanup(guild, row.channelId, settings.graceSeconds);
+        this.scheduleCleanup(guild, row.channelId, 0, true);
       } else {
         await this.syncOverwrites(channel, row.ownerId);
+        await this.ensurePanel(row.channelId).catch((error) => {
+          this.logger.debug({ err: error, channelId: row.channelId }, "temp VC panel reconcile failed");
+        });
       }
     }
   }
