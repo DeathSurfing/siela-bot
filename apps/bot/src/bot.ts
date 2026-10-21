@@ -82,6 +82,17 @@ export class SielaBot {
     this.registry = new CommandRegistry().register(...commands);
     const settings = new SettingsService(this.dbHandle.db);
     const counters = new CounterService(this.dbHandle.db);
+    const music = new MusicService(
+      this.client,
+      {
+        url: this.config.LAVALINK_URL,
+        password: this.config.LAVALINK_PASSWORD,
+        settings,
+        db: this.dbHandle.db,
+      },
+      this.logger,
+    );
+    this.music = music;
     this.services = {
       config: this.config,
       registry: this.registry,
@@ -93,7 +104,7 @@ export class SielaBot {
       tempVc: new TempVcService(this.client, this.dbHandle.db, settings, this.logger),
       translation: new TranslationService(this.config.LIBRETRANSLATE_URL, undefined, this.logger),
       privacy: new PrivacyService(counters),
-      music: null,
+      music,
     };
     this.controlServer = new ControlServer({
       services: this.services,
@@ -189,18 +200,6 @@ export class SielaBot {
     this.guildId = guild.id;
     this.initializedGuildId = guild.id;
     await this.services.settings.ensure(guild.id);
-    this.music = new MusicService(
-      this.client,
-      {
-        url: this.config.LAVALINK_URL,
-        password: this.config.LAVALINK_PASSWORD,
-        guildId: guild.id,
-        settings: this.services.settings,
-        db: this.dbHandle.db,
-      },
-      this.logger,
-    );
-    this.services.music = this.music;
     await this.registerCommands(guild);
     await this.services.tempVc.reconcile(guild).catch((error) => this.logger.warn({ err: error }, "temp VC reconcile failed"));
     await this.client.user?.setPresence({

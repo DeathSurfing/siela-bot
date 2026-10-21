@@ -1,12 +1,13 @@
 import { EventEmitter } from "node:events";
-import { ChannelType, type Client, type GuildMember } from "discord.js";
+import { ChannelType, Events, type Client, type GuildMember } from "discord.js";
 import { eq } from "drizzle-orm";
 import { musicSessions, type Database } from "@siela/db";
 import {
-  Connectors,
+  Connector,
   Constants,
   LoadType,
   Shoukaku,
+  type NodeOption,
   type Player,
   type Track,
 } from "shoukaku";
@@ -18,7 +19,6 @@ import type { MusicLoopMode, MusicQueueState, MusicTrackInfo } from "@siela/shar
 export interface MusicServiceOptions {
   url: string;
   password: string;
-  guildId: string;
   settings: SettingsService;
   db: Database;
 }
@@ -29,6 +29,26 @@ interface PersistedMusicState {
   volume: number;
   loop: MusicLoopMode;
   autoplay: boolean;
+}
+
+/**
+ * Shoukaku's built-in discord.js connector listens for the v15 `clientReady`
+ * event. This connector listens for discord.js v14's `Events.ClientReady`
+ * instead, so the Lavalink node connects reliably.
+ */
+class SielaDiscordConnector extends Connector {
+  override sendPacket(shardId: number, payload: unknown, important: boolean): void {
+    this.client.ws.shards.get(shardId)?.send(payload, important);
+  }
+
+  override getId(): string {
+    return this.client.user?.id ?? "";
+  }
+
+  override listen(nodes: NodeOption[]): void {
+    this.client.once(Events.ClientReady, () => this.ready(nodes));
+    this.client.on("raw", (packet: unknown) => this.raw(packet));
+  }
 }
 
 function trackInfo(track: Track): MusicTrackInfo {
@@ -137,7 +157,7 @@ export class MusicService extends EventEmitter {
     const parsed = new URL(options.url);
     const nodeUrl = parsed.host;
     this.shoukaku = new Shoukaku(
-      new Connectors.DiscordJS(client),
+      new SielaDiscordConnector(client),
       [{ name: "siela", url: nodeUrl, auth: options.password, secure: parsed.protocol === "https:" }],
       {
         resume: true,
