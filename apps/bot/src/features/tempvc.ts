@@ -584,6 +584,11 @@ export class TempVcService {
 
     const owner = await guild.members.fetch(ownerId).catch(() => null);
     if (owner) await channel.permissionOverwrites.create(owner, { MoveMembers: true }).catch(() => undefined);
+
+    const guildOwner = await guild.members.fetch(guild.ownerId).catch(() => null);
+    if (guildOwner && guildOwner.id !== ownerId) {
+      await channel.permissionOverwrites.create(guildOwner, { MoveMembers: true }).catch(() => undefined);
+    }
   }
 
   private async syncOverwrites(channel: VoiceChannel, ownerId: string): Promise<void> {
