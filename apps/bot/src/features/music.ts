@@ -730,13 +730,22 @@ export class MusicService extends EventEmitter {
     });
     try {
       await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
+      this.logger.info({ guildId: member.guild.id, channelId }, "voice connection ready");
     } catch (error) {
       connection.destroy();
       this.logger.warn({ err: error, guildId: member.guild.id }, "voice connection failed");
       throw new ServiceUnavailableError("Could not join the voice channel.");
     }
-    const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Pause } });
-    connection.subscribe(player);
+    const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Play } });
+    const subscription = connection.subscribe(player);
+    this.logger.info(
+      {
+        guildId: member.guild.id,
+        subscribed: Boolean(subscription),
+        connectionStatus: connection.state.status,
+      },
+      "audio player subscription",
+    );
     connection.on("stateChange", (oldState, newState) => {
       this.logger.info(
         { guildId: member.guild.id, from: oldState.status, to: newState.status },
