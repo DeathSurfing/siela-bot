@@ -1,5 +1,7 @@
 import { EventEmitter } from "node:events";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { createReadStream, rmSync, type ReadStream } from "node:fs";
 import { promisify } from "node:util";
 import {
   AudioPlayerStatus,
@@ -93,6 +95,8 @@ class GuildPlayer {
   private ytdlpProcess: ChildProcess | null = null;
   private mpvProcess: ChildProcess | null = null;
   private ffmpegProcess: ChildProcess | null = null;
+  private fifoPath: string | null = null;
+  private fifoStream: ReadStream | null = null;
   resource: AudioResource | null = null;
   private startedAt = 0;
   private pausedAt: number | null = null;
@@ -132,6 +136,16 @@ class GuildPlayer {
     this.mpvProcess = null;
     this.ffmpegProcess = null;
     this.resource = null;
+    this.fifoStream?.destroy();
+    this.fifoStream = null;
+    if (this.fifoPath) {
+      try {
+        rmSync(this.fifoPath, { force: true });
+      } catch {
+        // best effort
+      }
+      this.fifoPath = null;
+    }
   }
 
   stopProcess(): void {
@@ -182,6 +196,11 @@ class GuildPlayer {
   private async startMpv(track: QueueTrack): Promise<AudioResource> {
     const filter = this.audioFilter();
     const directUrl = await this.directAudioUrl(track);
+    const fifoPath = `/tmp/siela-${this.guildId}-${randomUUID()}.pcm`;
+    await execFileAsync("mkfifo", [fifoPath], { timeout: 5_000 });
+    this.fifoPath = fifoPath;
+
+    let stderr = "";
     const mpv = spawn(
       this.service.mpvPath,
       [
@@ -190,7 +209,7 @@ class GuildPlayer {
         "--no-terminal",
         "--really-quiet",
         "--ao=pcm",
-        "--ao-pcm-file=/dev/stdout",
+        `--ao-pcm-file=${fifoPath}`,
         "--ao-pcm-waveheader=no",
         "--audio-format=s16",
         "--audio-samplerate=48000",
@@ -200,25 +219,28 @@ class GuildPlayer {
         "--",
         directUrl,
       ],
-      { cwd: "/tmp", env: { ...process.env, XDG_CACHE_HOME: "/tmp" }, stdio: ["ignore", "pipe", "pipe"] },
+      { cwd: "/tmp", env: { ...process.env, XDG_CACHE_HOME: "/tmp" }, stdio: ["ignore", "ignore", "pipe"] },
     );
     this.mpvProcess = mpv;
-    mpv.stdout?.on("error", (error) => {
-      this.service.logger.debug({ err: error, guildId: this.guildId }, "mpv stdout closed");
-    });
     mpv.stderr?.on("data", (chunk: Buffer) => {
-      const text = chunk.toString().trim();
-      if (text) this.service.logger.debug({ guildId: this.guildId, mpv: text.slice(0, 300) }, "mpv");
+      stderr += chunk.toString();
+      if (stderr.length > 4_000) stderr = stderr.slice(-4_000);
     });
     mpv.on("error", (error) => {
       this.service.logger.warn({ err: error, guildId: this.guildId }, "mpv spawn failed");
     });
     mpv.on("close", (code) => {
       if (code && code !== 0) {
-        this.service.logger.warn({ code, guildId: this.guildId }, "mpv exited with an error");
+        this.service.logger.warn({ code, guildId: this.guildId, stderr: stderr.slice(-500) }, "mpv exited with an error");
       }
     });
-    return createAudioResource(mpv.stdout!, {
+
+    const stream = createReadStream(fifoPath);
+    this.fifoStream = stream;
+    stream.on("error", (error) => {
+      this.service.logger.debug({ err: error, guildId: this.guildId }, "mpv FIFO read stream closed");
+    });
+    return createAudioResource(stream, {
       inputType: StreamType.Raw,
       inlineVolume: true,
     });
