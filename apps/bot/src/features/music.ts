@@ -148,8 +148,40 @@ class GuildPlayer {
           : null;
   }
 
-  private startMpv(track: QueueTrack): AudioResource {
+  private async directAudioUrl(track: QueueTrack): Promise<string> {
+    try {
+      const { stdout } = await execFileAsync(
+        this.service.ytdlpPath,
+        [
+          "--js-runtimes",
+          "node",
+          "--no-part",
+          "--no-cache-dir",
+          "-g",
+          "-f",
+          "bestaudio/best",
+          "--no-playlist",
+          "--no-warnings",
+          "--quiet",
+          track.url,
+        ],
+        { cwd: "/tmp", timeout: 30_000, maxBuffer: 4 * 1024 * 1024 },
+      );
+      const url = stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => /^https?:\/\//.test(line));
+      if (!url) throw new Error("no direct audio URL");
+      return url;
+    } catch (error) {
+      this.service.logger.warn({ err: error, title: track.title }, "yt-dlp direct URL failed");
+      throw new ServiceUnavailableError(`Could not resolve audio for **${track.title}**.`);
+    }
+  }
+
+  private async startMpv(track: QueueTrack): Promise<AudioResource> {
     const filter = this.audioFilter();
+    const directUrl = await this.directAudioUrl(track);
     const mpv = spawn(
       this.service.mpvPath,
       [
@@ -163,14 +195,12 @@ class GuildPlayer {
         "--audio-format=s16",
         "--audio-samplerate=48000",
         "--audio-channels=stereo",
-        "--ytdl=yes",
-        "--ytdl-format=bestaudio/best",
-        `--script-opts=ytdl_hook-ytdl_path=${this.service.ytdlpPath}`,
+        "--ytdl=no",
         ...(filter ? [`--af=${filter}`] : []),
         "--",
-        track.url,
+        directUrl,
       ],
-      { stdio: ["ignore", "pipe", "pipe"] },
+      { cwd: "/tmp", env: { ...process.env, XDG_CACHE_HOME: "/tmp" }, stdio: ["ignore", "pipe", "pipe"] },
     );
     this.mpvProcess = mpv;
     mpv.stdout?.on("error", (error) => {
@@ -198,8 +228,21 @@ class GuildPlayer {
     const filter = this.audioFilter();
     const ytdlp = spawn(
       this.service.ytdlpPath,
-      ["-f", "bestaudio/best", "-o", "-", "--no-playlist", "--no-warnings", "--quiet", track.url],
-      { stdio: ["ignore", "pipe", "pipe"] },
+      [
+        "--js-runtimes",
+        "node",
+        "--no-part",
+        "--no-cache-dir",
+        "-f",
+        "bestaudio/best",
+        "-o",
+        "-",
+        "--no-playlist",
+        "--no-warnings",
+        "--quiet",
+        track.url,
+      ],
+      { cwd: "/tmp", stdio: ["ignore", "pipe", "pipe"] },
     );
     const ffmpeg = spawn(
       this.service.ffmpegPath,
@@ -218,7 +261,7 @@ class GuildPlayer {
         "2",
         "pipe:1",
       ],
-      { stdio: ["pipe", "pipe", "pipe"] },
+      { cwd: "/tmp", stdio: ["pipe", "pipe", "pipe"] },
     );
     this.ytdlpProcess = ytdlp;
     this.ffmpegProcess = ffmpeg;
@@ -261,7 +304,7 @@ class GuildPlayer {
     this.paused = false;
 
     const resource =
-      this.service.backend === "ffmpeg" ? this.startFfmpeg(track) : this.startMpv(track);
+      this.service.backend === "ffmpeg" ? this.startFfmpeg(track) : await this.startMpv(track);
     this.resource = resource;
     resource.volume?.setVolume(this.volume / 100);
     this.player.play(resource);
@@ -274,15 +317,27 @@ class GuildPlayer {
     this.advancing = true;
     try {
       if (this.loop === "track" && this.current) {
-        await this.playNow(this.current);
-        return;
+        try {
+          await this.playNow(this.current);
+          return;
+        } catch (error) {
+          this.service.logger.warn({ err: error, guildId: this.guildId }, "loop replay failed; clearing loop");
+          this.loop = "off";
+        }
       }
       if (this.loop === "queue" && this.current) this.queue.push(this.current);
-      const next = this.queue.shift();
-      if (next) {
-        await this.playNow(next);
-        return;
+
+      let next = this.queue.shift();
+      while (next) {
+        try {
+          await this.playNow(next);
+          return;
+        } catch (error) {
+          this.service.logger.warn({ err: error, guildId: this.guildId, title: next.title }, "skipping unplayable track");
+          next = this.queue.shift();
+        }
       }
+
       const previous = this.current;
       this.current = null;
       this.killProcesses();
@@ -290,8 +345,12 @@ class GuildPlayer {
       if (this.autoplay && previous) {
         const related = await this.service.autoplayTrack(previous);
         if (related) {
-          await this.playNow(related);
-          return;
+          try {
+            await this.playNow(related);
+            return;
+          } catch (error) {
+            this.service.logger.warn({ err: error, guildId: this.guildId }, "autoplay track failed");
+          }
         }
       }
       this.service.schedulePersist(this.guildId);
@@ -464,14 +523,32 @@ export class MusicService extends EventEmitter {
             String(Math.max(1, Math.min(limit, 500))),
             "--no-warnings",
             "--quiet",
+            "--js-runtimes",
+            "node",
+            "--no-part",
+            "--no-cache-dir",
             target,
           ]
-        : ["--dump-single-json", "--no-playlist", "--no-warnings", "--quiet", target]
+        : [
+            "--dump-single-json",
+            "--no-playlist",
+            "--no-warnings",
+            "--quiet",
+            "--js-runtimes",
+            "node",
+            "--no-part",
+            "--no-cache-dir",
+            target,
+          ]
       : [
           "--dump-single-json",
           "--no-playlist",
           "--no-warnings",
           "--quiet",
+          "--js-runtimes",
+          "node",
+          "--no-part",
+          "--no-cache-dir",
           "--default-search",
           "scsearch",
           "--playlist-end",
@@ -481,6 +558,7 @@ export class MusicService extends EventEmitter {
     let stdout: string;
     try {
       const result = await execFileAsync(this.options.ytdlpPath, args, {
+        cwd: "/tmp",
         timeout: 30_000,
         maxBuffer: 16 * 1024 * 1024,
       });
@@ -576,9 +654,17 @@ export class MusicService extends EventEmitter {
     if (next) guildPlayer.queue.unshift(...queueTracks);
     else guildPlayer.queue.push(...queueTracks);
     if (!guildPlayer.current) {
-      const first = guildPlayer.queue.shift()!;
-      await guildPlayer.playNow(first);
-      return { added: queueTracks.length, first: toInfo(first) };
+      let first = guildPlayer.queue.shift();
+      while (first) {
+        try {
+          await guildPlayer.playNow(first);
+          return { added: queueTracks.length, first: toInfo(first) };
+        } catch (error) {
+          this.logger.warn({ err: error, guildId: member.guild.id, title: first.title }, "skipping unplayable track");
+          first = guildPlayer.queue.shift();
+        }
+      }
+      throw new UserError("None of those tracks could be played.");
     }
     this.schedulePersist(member.guild.id);
     return { added: queueTracks.length, first: toInfo(queueTracks[0]!) };

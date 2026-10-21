@@ -20,6 +20,7 @@ FROM node:24-alpine AS runtime
 RUN apk add --no-cache ffmpeg mpv python3 py3-pip fontconfig ttf-dejavu \
   && pip install --no-cache-dir --break-system-packages yt-dlp
 ENV NODE_ENV=production
+ENV XDG_CACHE_HOME=/tmp
 WORKDIR /app
 COPY --from=build /out/ ./
 COPY --from=build /app/packages/db/drizzle ./packages/db/drizzle
