@@ -119,7 +119,7 @@ class GuildPlayer {
     });
     this.connection.on(VoiceConnectionStatus.Disconnected, () => {
       this.service.logger.warn({ guildId: this.guildId }, "voice connection disconnected");
-      void this.service.disconnect(this.guildId, false);
+      void this.service.disconnect(this.guildId, true);
     });
     this.connection.on(VoiceConnectionStatus.Destroyed, () => {
       this.stopProcess();
@@ -561,6 +561,14 @@ export class MusicService extends EventEmitter {
     }
   }
 
+  private async clearPersisted(guildId: string): Promise<void> {
+    try {
+      await this.options.db.delete(musicSessions).where(eq(musicSessions.guildId, guildId));
+    } catch (error) {
+      this.logger.debug({ err: error, guildId }, "failed to clear music state");
+    }
+  }
+
   private async loadPersisted(guildId: string): Promise<PersistedMusicState | null> {
     try {
       const [row] = await this.options.db
@@ -688,7 +696,7 @@ export class MusicService extends EventEmitter {
     if (!channel || channel.type !== ChannelType.GuildVoice) throw new UserError("That is not a voice channel.");
     const existing = this.players.get(member.guild.id);
     if (existing && existing.connection.joinConfig.channelId === channelId) return existing;
-    if (existing) await this.disconnect(member.guild.id, false);
+    if (existing) await this.disconnect(member.guild.id, true);
 
     const connection = joinVoiceChannel({
       channelId,
@@ -739,8 +747,11 @@ export class MusicService extends EventEmitter {
     }
     this.players.set(member.guild.id, guildPlayer);
     if (persisted?.current) {
-      await guildPlayer.playNow(persisted.current).catch((error) => {
-        this.logger.warn({ err: error, guildId: member.guild.id }, "failed to restore persisted track");
+      await guildPlayer.playNow(persisted.current).catch(async (error) => {
+        this.logger.warn({ err: error, guildId: member.guild.id }, "failed to restore persisted track; clearing stale queue");
+        guildPlayer.current = null;
+        guildPlayer.queue.length = 0;
+        await this.clearPersisted(member.guild.id);
       });
     }
     return guildPlayer;
@@ -757,7 +768,7 @@ export class MusicService extends EventEmitter {
     const resolved = await this.resolve(query, settings.maxQueueSize);
     const available = Math.max(0, settings.maxQueueSize - guildPlayer.queue.length - (guildPlayer.current ? 1 : 0));
     const accepted = resolved.slice(0, available);
-    if (!accepted.length) throw new UserError("The queue is full.");
+    if (!accepted.length) throw new UserError("The queue is full. Use `clearqueue` to empty upcoming tracks.");
     const queueTracks: QueueTrack[] = accepted.map((track) => ({ ...track }));
     if (next) guildPlayer.queue.unshift(...queueTracks);
     else guildPlayer.queue.push(...queueTracks);
@@ -828,13 +839,17 @@ export class MusicService extends EventEmitter {
     this.schedulePersist(guildId);
   }
 
-  async disconnect(guildId: string, persist = true): Promise<void> {
+  async disconnect(guildId: string, preserveQueue = false): Promise<void> {
     const gp = this.players.get(guildId);
-    if (persist) this.schedulePersist(guildId);
-    if (gp) {
+    if (preserveQueue) {
+      this.schedulePersist(guildId);
+    } else if (gp) {
+      gp.queue.length = 0;
+      gp.current = null;
       gp.stopProcess();
       gp.player.stop(true);
       gp.connection.destroy();
+      await this.clearPersisted(guildId);
     }
     this.players.delete(guildId);
   }
@@ -923,7 +938,7 @@ export class MusicService extends EventEmitter {
 
   async shutdown(): Promise<void> {
     for (const guildId of [...this.players.keys()]) {
-      await this.disconnect(guildId, false).catch(() => undefined);
+      await this.disconnect(guildId, true).catch(() => undefined);
     }
   }
 }
