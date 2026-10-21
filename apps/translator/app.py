@@ -5,6 +5,8 @@ from typing import Optional
 
 import torch
 from fastapi import FastAPI, HTTPException
+from indic_transliteration import sanscript
+from indic_transliteration.sanscript import transliterate
 from langdetect import DetectorFactory, LangDetectException, detect_langs
 from pydantic import BaseModel, Field
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
@@ -102,6 +104,56 @@ NLLB_LANGUAGE_CODES = {
     "zu": "zul_Latn",
 }
 
+ENGLISH_MARKERS = {
+    "and",
+    "are",
+    "but",
+    "cannot",
+    "do",
+    "does",
+    "for",
+    "from",
+    "had",
+    "has",
+    "have",
+    "he",
+    "hello",
+    "her",
+    "him",
+    "his",
+    "how",
+    "i",
+    "is",
+    "it",
+    "its",
+    "like",
+    "love",
+    "hate",
+    "my",
+    "not",
+    "our",
+    "please",
+    "she",
+    "thanks",
+    "that",
+    "the",
+    "their",
+    "them",
+    "they",
+    "this",
+    "was",
+    "we",
+    "were",
+    "what",
+    "when",
+    "where",
+    "who",
+    "why",
+    "with",
+    "you",
+    "your",
+}
+
 HINGLISH_MARKERS = {
     "aap",
     "abhi",
@@ -164,7 +216,6 @@ HINGLISH_MARKERS = {
     "tera",
     "teri",
     "tha",
-    "the",
     "thi",
     "tujhe",
     "yaar",
@@ -204,7 +255,7 @@ class Translator:
         if self.target_token_id is None:
             raise RuntimeError(f"Target language token {TARGET_LANG} is unavailable")
 
-    def detect(self, text: str) -> tuple[str, str]:
+    def detect(self, text: str) -> tuple[str, str, bool]:
         for code, pattern in SCRIPT_PATTERNS:
             if pattern.search(text):
                 # A Han-only string is Chinese; kana takes precedence above.
@@ -216,39 +267,50 @@ class Translator:
                     "hin_Deva": "hi",
                     "rus_Cyrl": "ru",
                 }[code]
-                return iso, code
+                return iso, code, False
 
         # Romanized Hindi is not reliably detected as Hindi by langdetect.
         words = set(re.findall(r"[A-Za-z]+", text.lower()))
         hinglish_hits = words & HINGLISH_MARKERS
-        if len(hinglish_hits) >= 2 or (len(hinglish_hits) == 1 and len(words) >= 4):
-            return "hi", "hin_Deva"
+        if len(hinglish_hits) >= 2:
+            return "hi", "hin_Deva", True
+
+        # Short English sentences are often misdetected as another Germanic
+        # language. Prefer English when a clear English word is present.
+        if words & ENGLISH_MARKERS:
+            return "en", "eng_Latn", False
 
         try:
             candidates = detect_langs(text)
         except LangDetectException:
-            return "en", "eng_Latn"
+            return "en", "eng_Latn", False
         if not candidates:
-            return "en", "eng_Latn"
+            return "en", "eng_Latn", False
 
         best = candidates[0].lang.lower()
         if best.startswith("zh"):
-            return "zh", "zho_Hans" if best != "zh-tw" else "zho_Hant"
-        if best in ("ko", "ja", "ar", "hi", "en"):
-            return best, NLLB_LANGUAGE_CODES[best]
-        return best, NLLB_LANGUAGE_CODES.get(best, "eng_Latn")
+            return "zh", "zho_Hans" if best != "zh-tw" else "zho_Hant", False
+        return best, NLLB_LANGUAGE_CODES.get(best, "eng_Latn"), False
 
     def translate(self, text: str) -> TranslateResponse:
-        source_iso, source_code = self.detect(text)
-        # English is already the target. Avoid a needless model pass unless the
-        # input is mixed-language Hinglish, which is tagged as hi above.
+        source_iso, source_code, hinglish = self.detect(text)
+        # English is already the target. Avoid a needless model pass.
         if source_code == "eng_Latn":
             return TranslateResponse(translatedText=text, detectedLanguage=source_iso)
+
+        model_text = text
+        if hinglish:
+            # NLLB has a Devanagari Hindi input for this; romanized Hinglish is
+            # not translated reliably without transliteration.
+            try:
+                model_text = transliterate(text, sanscript.ITRANS, sanscript.DEVANAGARI)
+            except Exception as error:
+                print(f"hinglish transliteration failed: {type(error).__name__}: {error}", flush=True)
 
         with self.lock:
             self.tokenizer.src_lang = source_code
             inputs = self.tokenizer(
-                text,
+                model_text,
                 return_tensors="pt",
                 truncation=True,
                 max_length=MAX_INPUT_TOKENS,

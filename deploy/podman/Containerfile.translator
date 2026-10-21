@@ -14,8 +14,8 @@ WORKDIR /app
 
 COPY apps/translator/requirements.txt ./requirements.txt
 RUN pip install --upgrade pip \
-  && pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu \
-  && pip install -r requirements.txt
+  && pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+RUN pip install -r requirements.txt
 
 COPY apps/translator/app.py ./app.py
 

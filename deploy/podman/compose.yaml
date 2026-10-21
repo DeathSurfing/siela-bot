@@ -78,7 +78,7 @@ services:
       timeout: 5s
       retries: 60
       start_period: 180s
-    mem_limit: 3g
+    mem_limit: 4g
 
   bot:
     image: localhost/siela-bot:latest
