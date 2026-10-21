@@ -497,8 +497,10 @@ export class MusicService extends EventEmitter {
     if (!player?.current) return false;
     if (member.voice.channelId !== this.channelId(guildId)) return false;
 
-    switch (emoji) {
-      case "⏯️":
+    // Discord may omit or include the emoji variation selector (U+FE0F).
+    const key = emoji.replace(/\uFE0F/g, "");
+    switch (key) {
+      case "⏯":
         if (player.paused) await this.resume(guildId);
         else await this.pause(guildId);
         return true;
@@ -508,10 +510,10 @@ export class MusicService extends EventEmitter {
       case "⏩":
         await this.seek(guildId, player.positionMs() + 10_000);
         return true;
-      case "⏭️":
+      case "⏭":
         await this.skip(guildId);
         return true;
-      case "⏹️":
+      case "⏹":
         await this.stop(guildId);
         await this.disconnect(guildId);
         this.controlMessages.delete(messageId);
