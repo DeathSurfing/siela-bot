@@ -229,10 +229,12 @@ class GuildPlayer {
       stderr += chunk.toString();
       if (stderr.length > 4_000) stderr = stderr.slice(-4_000);
     });
+    let meter: NodeJS.Timeout | null = null;
     mpv.on("error", (error) => {
       this.service.logger.warn({ err: error, guildId: this.guildId }, "mpv spawn failed");
     });
     mpv.on("close", (code) => {
+      if (meter) clearInterval(meter);
       if (code && code !== 0) {
         this.service.logger.warn({ code, guildId: this.guildId, stderr: stderr.slice(-500) }, "mpv exited with an error");
       }
@@ -240,7 +242,7 @@ class GuildPlayer {
 
     const stream = createReadStream(fifoPath);
     this.fifoStream = stream;
-    const meter = setInterval(() => {
+    meter = setInterval(() => {
       this.service.logger.debug(
         { guildId: this.guildId, pcmBytes: stream.bytesRead, mpvCode: mpv.exitCode },
         "mpv PCM stream",
