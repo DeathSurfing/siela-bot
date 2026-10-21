@@ -245,7 +245,7 @@ export function registerTools(server: McpServer, client: ControlClient, logger: 
   register(server, "music_update_config", "Update music policy (admin).", musicSettingsUpdateSchema.shape, ADMIN, (args) =>
     call(() => client.patch("/v1/music/config", args)),
   );
-  register(server, "music_play", "Play/queue a SoundCloud query or SoundCloud/Spotify URL.", musicPlaySchema.shape, OPERATE, (args) =>
+  register(server, "music_play", "Play/queue a search, track URL, or playlist URL (YouTube/YouTube Music/SoundCloud/Spotify).", musicPlaySchema.shape, OPERATE, (args) =>
     call(() => client.post("/v1/music/play", args)),
   );
   register(server, "music_pause", "Pause playback.", {}, OPERATE, () => call(() => client.post("/v1/music/pause")));

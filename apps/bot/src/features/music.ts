@@ -74,6 +74,14 @@ function trackInfo(track: QueueTrack | null): MusicTrackInfo | null {
   return track ? toInfo(track) : null;
 }
 
+export function isPlaylistUrl(query: string): boolean {
+  return (
+    /[?&]list=/i.test(query) ||
+    /music\.youtube\.com\/playlist/i.test(query) ||
+    /(?:youtube\.com|youtu\.be)\/playlist/i.test(query)
+  );
+}
+
 class GuildPlayer {
   readonly queue: QueueTrack[] = [];
   current: QueueTrack | null = null;
@@ -435,7 +443,7 @@ export class MusicService extends EventEmitter {
     }
   }
 
-  private async resolve(query: string): Promise<ResolvedTrack[]> {
+  private async resolve(query: string, limit = 5): Promise<ResolvedTrack[]> {
     let target = query.trim();
     if (/open\.spotify\.com\//i.test(target)) {
       const search = await this.spotifyToSearch(target);
@@ -445,8 +453,20 @@ export class MusicService extends EventEmitter {
       target = search;
     }
     const isUrl = /^https?:\/\//i.test(target);
+    const playlist = isUrl && isPlaylistUrl(target);
     const args = isUrl
-      ? ["--dump-single-json", "--no-playlist", "--no-warnings", "--quiet", target]
+      ? playlist
+        ? [
+            "--dump-single-json",
+            "--flat-playlist",
+            "--yes-playlist",
+            "--playlist-end",
+            String(Math.max(1, Math.min(limit, 500))),
+            "--no-warnings",
+            "--quiet",
+            target,
+          ]
+        : ["--dump-single-json", "--no-playlist", "--no-warnings", "--quiet", target]
       : [
           "--dump-single-json",
           "--no-playlist",
@@ -455,7 +475,7 @@ export class MusicService extends EventEmitter {
           "--default-search",
           "scsearch",
           "--playlist-end",
-          "5",
+          String(Math.max(1, Math.min(limit, 10))),
           target,
         ];
     let stdout: string;
@@ -547,8 +567,8 @@ export class MusicService extends EventEmitter {
     next = false,
   ): Promise<{ added: number; first: MusicTrackInfo }> {
     const guildPlayer = await this.ensurePlayer(member, voiceChannelId);
-    const resolved = await this.resolve(query);
     const settings = await this.options.settings.getMusic(member.guild.id);
+    const resolved = await this.resolve(query, settings.maxQueueSize);
     const available = Math.max(0, settings.maxQueueSize - guildPlayer.queue.length - (guildPlayer.current ? 1 : 0));
     const accepted = resolved.slice(0, available);
     if (!accepted.length) throw new UserError("The queue is full.");

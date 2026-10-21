@@ -50,9 +50,14 @@ const playCommand: Command = {
   name: "play",
   aliases: ["p"],
   category: "music",
-  description: "Play a SoundCloud search or a SoundCloud/Spotify URL.",
+  description: "Play a search, a track URL, or a playlist URL (YouTube/YouTube Music/SoundCloud).",
   usage: "<query or url>",
-  examples: ["play lofi", "play https://soundcloud.com/...", "play https://open.spotify.com/track/..."],
+  examples: [
+    "play lofi",
+    "play https://soundcloud.com/...",
+    "play https://music.youtube.com/playlist?list=...",
+    "play https://open.spotify.com/track/...",
+  ],
   cooldownMs: 2_000,
   slash: new SlashCommandBuilder()
     .setName("play")
@@ -142,14 +147,26 @@ const queueCommand: Command = {
   name: "queue",
   aliases: ["q"],
   category: "music",
-  description: "Show the music queue.",
+  description: "Show the music queue with pages and total duration.",
   usage: "[page]",
-  examples: ["queue"],
-  slash: new SlashCommandBuilder().setName("queue").setDescription("Show the music queue"),
+  examples: ["queue", "queue 2"],
+  slash: new SlashCommandBuilder()
+    .setName("queue")
+    .setDescription("Show the music queue")
+    .addIntegerOption((option) =>
+      option.setName("page").setDescription("Page number").setRequired(false).setMinValue(1),
+    ),
   async execute(ctx) {
     const state = music(ctx).state(ctx.guild.id);
     if (!state?.current) throw new UserError("Nothing is playing.");
-    const upcoming = state.upcoming.slice(0, 15);
+    const perPage = 10;
+    const totalPages = Math.max(1, Math.ceil(state.upcoming.length / perPage));
+    const requested = Number(ctx.args[0] ?? 1) || 1;
+    const page = Math.max(1, Math.min(totalPages, requested));
+    const start = (page - 1) * perPage;
+    const slice = state.upcoming.slice(start, start + perPage);
+    const totalMs = state.upcoming.reduce((sum, track) => sum + (track.isStream ? 0 : track.length), 0);
+    const lines = slice.map((track, index) => `**${start + index + 1}.** ${trackLine(track)}`);
     await ctx.reply({
       embeds: [
         new EmbedBuilder()
@@ -159,12 +176,12 @@ const queueCommand: Command = {
             [
               `**Now:** ${trackLine(state.current)}`,
               "",
-              upcoming.length
-                ? upcoming.map((track, index) => `**${index + 1}.** ${trackLine(track)}`).join("\n")
-                : "Queue is empty.",
+              lines.length ? lines.join("\n") : "Queue is empty.",
             ].join("\n"),
           )
-          .setFooter({ text: `${state.upcoming.length} upcoming • volume ${state.volume}% • loop ${state.loop}` }),
+          .setFooter({
+            text: `${state.upcoming.length} upcoming • ${formatDuration(totalMs)} total • page ${page}/${totalPages} • volume ${state.volume}% • loop ${state.loop}`,
+          }),
       ],
     });
   },
@@ -296,6 +313,22 @@ const clearCommand: Command = {
   },
 };
 
+const clearQueueCommand: Command = {
+  name: "clearqueue",
+  aliases: ["cq", "emptyqueue"],
+  category: "music",
+  description: "Clear every upcoming track while keeping the current song.",
+  usage: "",
+  examples: ["clearqueue"],
+  slash: new SlashCommandBuilder().setName("clearqueue").setDescription("Clear every upcoming track"),
+  async execute(ctx) {
+    requireSameVoice(ctx);
+    await requireDj(ctx);
+    await music(ctx).clear(ctx.guild.id);
+    await ctx.reply({ content: "Queue cleared.", ephemeral: true });
+  },
+};
+
 const moveCommand: Command = {
   name: "move",
   category: "music",
@@ -416,6 +449,7 @@ export const musicCommands = [
   shuffleCommand,
   removeCommand,
   clearCommand,
+  clearQueueCommand,
   moveCommand,
   jumpCommand,
   disconnectCommand,

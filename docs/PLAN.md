@@ -672,11 +672,11 @@ interface TranslationProvider {
 
 | Command | Description |
 |---|---|
-| `play <query/url>` | Search SoundCloud or enqueue a URL; joins the user's voice channel if needed. |
+| `play <query/url>` | Search SoundCloud, enqueue a track URL, or import a YouTube/YouTube Music/SoundCloud playlist into the queue. |
 | `pause` / `resume` | Toggle playback. |
 | `skip [n]` | Skip current or n tracks. |
 | `stop` | Stop and clear the queue. |
-| `queue [page]` | Paginated queue view. |
+| `queue [page]` | Paginated queue view with total duration and page number. |
 | `nowplaying` | Current track + controls. |
 | `volume <0-150>` | Set volume. |
 | `seek <mm:ss>` | Returns a clear "not supported" message. |
@@ -684,6 +684,7 @@ interface TranslationProvider {
 | `shuffle` | Shuffle the queue. |
 | `remove <index>` | Remove a track. |
 | `clear` | Clear queued tracks. |
+| `clearqueue` (aliases `cq`, `emptyqueue`) | Clear every upcoming track while keeping the current song. |
 | `move <from> <to>` | Reorder. |
 | `jump <index>` | Jump to a queue position. |
 | `disconnect` | Leave voice and clear the live process. |
