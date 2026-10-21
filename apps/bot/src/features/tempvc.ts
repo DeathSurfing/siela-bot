@@ -4,6 +4,7 @@ import {
   ButtonStyle,
   ChannelType,
   EmbedBuilder,
+  PermissionFlagsBits,
   UserSelectMenuBuilder,
   type CategoryChannel,
   type Client,
@@ -79,6 +80,7 @@ export class TempVcService {
     private readonly db: Database,
     private readonly settings: SettingsService,
     private readonly logger: Logger,
+    private readonly adminRoleIds: string[] = [],
   ) {}
 
   private async activeByOwner(guildId: string, ownerId: string): Promise<TempVoiceChannelRow | null> {
@@ -319,9 +321,11 @@ export class TempVcService {
         await channel.permissionOverwrites.create(everyone, {
           ViewChannel: true,
           Connect: !settings.defaultLocked,
+          MoveMembers: false,
         });
         await channel.permissionOverwrites.create(member, OWNER_ALLOW);
         if (this.client.user) await channel.permissionOverwrites.create(this.client.user, BOT_ALLOW);
+        await this.applyMovePermissions(channel, member.id);
         await this.db.insert(tempVoiceChannels).values({
           channelId: channel.id,
           guildId: member.guild.id,
@@ -349,6 +353,7 @@ export class TempVcService {
     await channel.permissionOverwrites.create(channel.guild.roles.everyone, {
       ViewChannel: true,
       Connect: false,
+      MoveMembers: false,
     });
     await this.db
       .update(tempVoiceChannels)
@@ -362,6 +367,7 @@ export class TempVcService {
     await channel.permissionOverwrites.create(channel.guild.roles.everyone, {
       ViewChannel: true,
       Connect: true,
+      MoveMembers: false,
     });
     await this.db
       .update(tempVoiceChannels)
@@ -553,6 +559,33 @@ export class TempVcService {
     await this.markDeleted(row.channelId);
   }
 
+  private async applyMovePermissions(channel: VoiceChannel, ownerId: string): Promise<void> {
+    const guild = channel.guild;
+    const adminRoles = new Set(this.adminRoleIds);
+
+    await channel.permissionOverwrites.create(guild.roles.everyone, { MoveMembers: false }).catch((error) => {
+      this.logger.debug({ err: error, channelId: channel.id }, "could not deny @everyone MoveMembers");
+    });
+
+    for (const role of guild.roles.cache.values()) {
+      if (role.id === guild.id || role.managed) continue;
+      const isAdminRole =
+        adminRoles.has(role.id) ||
+        role.permissions.has(PermissionFlagsBits.Administrator) ||
+        role.permissions.has(PermissionFlagsBits.ManageGuild);
+      const hasMoveMembers = role.permissions.has(PermissionFlagsBits.MoveMembers);
+      if (!isAdminRole && !hasMoveMembers) continue;
+      await channel.permissionOverwrites
+        .create(role, { MoveMembers: isAdminRole })
+        .catch((error) => {
+          this.logger.debug({ err: error, channelId: channel.id, roleId: role.id }, "could not set role MoveMembers");
+        });
+    }
+
+    const owner = await guild.members.fetch(ownerId).catch(() => null);
+    if (owner) await channel.permissionOverwrites.create(owner, { MoveMembers: true }).catch(() => undefined);
+  }
+
   private async syncOverwrites(channel: VoiceChannel, ownerId: string): Promise<void> {
     const guild = channel.guild;
     const owner = await guild.members.fetch(ownerId).catch(() => null);
@@ -560,5 +593,6 @@ export class TempVcService {
       await channel.permissionOverwrites.create(this.client.user, BOT_ALLOW).catch(() => undefined);
     }
     if (owner) await channel.permissionOverwrites.create(owner, OWNER_ALLOW).catch(() => undefined);
+    await this.applyMovePermissions(channel, ownerId);
   }
 }

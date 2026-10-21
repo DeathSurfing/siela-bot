@@ -112,7 +112,7 @@ export class SielaBot {
       counters,
       welcome: new WelcomeService(settings, this.logger),
       autoRole: new AutoRoleService(settings, this.logger),
-      tempVc: new TempVcService(this.client, this.dbHandle.db, settings, this.logger),
+      tempVc: new TempVcService(this.client, this.dbHandle.db, settings, this.logger, this.config.adminRoleIds),
       privacy: new PrivacyService(counters),
       music,
     };
