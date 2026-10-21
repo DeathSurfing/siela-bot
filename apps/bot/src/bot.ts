@@ -85,7 +85,9 @@ export class SielaBot {
     const music = new MusicService(
       this.client,
       {
+        backend: this.config.MUSIC_BACKEND,
         ytdlpPath: this.config.YTDLP_PATH,
+        mpvPath: this.config.MPV_PATH,
         ffmpegPath: this.config.FFMPEG_PATH,
         settings,
         db: this.dbHandle.db,

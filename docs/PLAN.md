@@ -34,7 +34,7 @@
 
 ## 0. Executive summary
 
-Build a TypeScript monorepo with a Discord bot, a separate MCP control server, PostgreSQL, and yt-dlp/ffmpeg, packaged as OCI containers and deployed with rootless Podman.
+Build a TypeScript monorepo with a Discord bot, a separate MCP control server, PostgreSQL, and yt-dlp/mpv, packaged as OCI containers and deployed with rootless Podman.
 
 ```
 Discord users ── prefix / slash / context menu ──┐
@@ -47,7 +47,7 @@ Discord users ── prefix / slash / context menu ──┐
                                          └───┬───────┬─────┘
                                              │       │
                                    ┌─────────▼──┐  ┌─▼──────────────┐
-                                   │ PostgreSQL │  │ yt-dlp/ffmpeg  │
+                                   │ PostgreSQL │  │ yt-dlp/mpv  │
                                    └────────────┘  │  (voice/music) │
                                                    └────────┬───────┘
                                                             │
@@ -61,7 +61,7 @@ Discord users ── prefix / slash / context menu ──┐
 | Runtime | Node.js 24 LTS + TypeScript |
 | Discord library | discord.js v14.x, pinned |
 | Database | PostgreSQL 17 + Drizzle ORM |
-| Music | yt-dlp + ffmpeg: SoundCloud streaming out of the box; Spotify links resolve through oEmbed metadata and SoundCloud search |
+| Music | yt-dlp + mpv: SoundCloud streaming out of the box; Spotify links resolve through oEmbed metadata and SoundCloud search |
 | Translation | Self-hosted LibreTranslate container (zero API tokens, free) |
 | Command UX | **Hybrid (confirmed):** prefix + slash + context menu + mention prefix |
 | Admin model | `Manage Guild` permission, server owner, optional `ADMIN_ROLE_IDS`; runtime checks on every admin action |
@@ -76,7 +76,7 @@ Discord users ── prefix / slash / context menu ──┐
 
 | Decision | Choice |
 |---|---|
-| Music sources | yt-dlp + ffmpeg; SoundCloud is the zero-token default; Spotify links resolve through oEmbed metadata and SoundCloud search |
+| Music sources | yt-dlp + mpv; SoundCloud is the zero-token default; Spotify links resolve through oEmbed metadata and SoundCloud search |
 | Translation | Self-hosted LibreTranslate; no paid API key |
 | MCP exposure | Exposed on the Podman `mcp` network via `MCP_URL=http://mcp:8080/mcp`; one generated `MCP_TOKEN`; optional host/TLS overrides |
 | Social action | `chodu` (renamed from `fuck`), opt-out-aware, cooldown-limited, text-only; optional NSFW gate |
@@ -168,7 +168,7 @@ Discord users ── prefix / slash / context menu ──┐
 
 | Req | Feature | Primary implementation | User commands | Admin commands | MCP tools |
 |---|---|---|---|---|---|
-| G1 | Music | yt-dlp/ffmpeg player + queue service | `play`, `pause`, `skip`, `queue`, `nowplaying`, etc. | DJ role / queue config | `music_*` |
+| G1 | Music | yt-dlp/mpv player + queue service | `play`, `pause`, `skip`, `queue`, `nowplaying`, etc. | DJ role / queue config | `music_*` |
 | G2 | MCP control | `apps/mcp` + bot control API | — | — | All tools |
 | G3 | Welcomer | `welcome` service + `guildMemberAdd` | — | `welcome ...` | `welcome_get`, `welcome_update`, `welcome_test` |
 | G4 | Auto-role | `autorole` service + `guildMemberAdd` | — | `autorole ...` | `autorole_get`, `autorole_update`, `autorole_validate`, `autorole_sync` |
@@ -191,7 +191,7 @@ flowchart LR
   U[Discord users] -->|prefix, slash, context menu| D[Discord API/Gateway]
   D <--> B[Bot process]
   B --> DB[(PostgreSQL)]
-  B --> L[yt-dlp + ffmpeg]
+  B --> L[yt-dlp + mpv]
   L <--> V[Discord Voice]
   B --> T[LibreTranslate container]
   B --> G[GIF API]
@@ -215,7 +215,7 @@ flowchart LR
 | Bot gateway | Discord login, events, command routing, voice state tracking | Accept arbitrary guild IDs |
 | Command framework | Parse prefix/slash, check permissions, cooldowns, errors | Trust client-side permission hints |
 | Feature services | Welcome, autorole, counters, temp VC, translate, prefix, music | Bypass validation or audit |
-| yt-dlp + ffmpeg | Music search/streaming and voice encoding | Reach PostgreSQL or control API |
+| yt-dlp + mpv | Music search/streaming and voice encoding | Reach PostgreSQL or control API |
 | Control API | Private, typed API over bot services | Be publicly exposed without auth |
 | MCP server | Translate tool calls into control API calls; require `MCP_TOKEN` on HTTP | Connect to Discord gateway, hold DB credentials, run SQL/shell |
 | LibreTranslate | Self-hosted English translation | Be exposed outside `edge`, hold DB/control access |
@@ -242,7 +242,7 @@ flowchart LR
 │   │   │   ├── framework/               # command metadata, parser, context, cooldowns
 │   │   │   ├── features/                # welcome, autorole, counters, tempvc, translate, music, prefix
 │   │   │   ├── control/                 # Fastify control API, auth, routes
-│   │   │   ├── music/                   # yt-dlp/ffmpeg player, queue, voice
+│   │   │   ├── music/                   # yt-dlp/mpv player, queue, voice
 │   │   │   └── lib/                     # logger, errors, permissions, mentions, time
 │   │   └── package.json
 │   └── mcp/
@@ -293,7 +293,7 @@ flowchart LR
 | MCP client → MCP server | Untrusted, authenticated | One `MCP_TOKEN`, Podman-network exposure, rate limits, audit |
 | MCP server → control API | Private service | Private network, same `MCP_TOKEN`, request IDs, schema validation |
 | Bot → PostgreSQL | Trusted | Parameterized ORM, least-privilege DB user, no public port |
-| Bot → yt-dlp/ffmpeg | Local subprocess | Timeouts, URL allowlist, private-IP blocking |
+| Bot → yt-dlp/mpv | Local subprocess | Timeouts, URL allowlist, private-IP blocking |
 | yt-dlp → internet | Untrusted content | http(s)-only URLs, private-IP/loopback/link-local blocking |
 | Bot → LibreTranslate | Trusted local service | `edge` network only, timeouts, circuit breaker, no content logging |
 | Bot → GIF API | Third-party, no key | Fixed endpoint, timeout, text-only fallback |
@@ -372,13 +372,13 @@ flowchart LR
 | Validation | Zod | Shared input/output schemas, JSON Schema for MCP | Valibot, io-ts |
 | HTTP | Fastify | Fast, schema-friendly, small | Express, Hono |
 | MCP | `@modelcontextprotocol/sdk` | Official SDK, stdio + Streamable HTTP | Custom JSON-RPC |
-| Music | yt-dlp + ffmpeg + @discordjs/voice | Zero-token SoundCloud; Spotify metadata search; no JVM | Lavalink (extra service/JVM) |
+| Music | yt-dlp + mpv + @discordjs/voice | Zero-token SoundCloud; Spotify metadata search; no JVM | Lavalink (extra service/JVM) |
 | Translation | LibreTranslate container | Free, self-hosted, no API token; text stays on the host | DeepL/Google (paid keys) |
 | GIFs | Adapter: nekos.best default | Simple SFW API with no key for slap/kiss/hug | Tenor (key/policy), local assets |
 | Logs | Pino | JSON logs, redaction, low overhead | Winston |
 | Metrics | prom-client | Prometheus-compatible | OpenTelemetry-only |
 | Tests | Vitest | Fast, TS-native | Jest |
-| Cache/queues | In-process maps; yt-dlp/ffmpeg player queue | Single guild/process; no Redis to operate | Redis |
+| Cache/queues | In-process maps; yt-dlp/mpv player queue | Single guild/process; no Redis to operate | Redis |
 | Containers | Podman + Buildah | Rootless, daemonless, systemd-native | Docker |
 | Compose compatibility | `podman compose`-safe compose subset | Works with both Docker Compose provider and `podman-compose` | Docker-only compose features |
 | Secrets | One required Discord token; internal secrets generated by `scripts/podman-init.sh` | Minimal config, no copy-pasting random passwords | Hand-managed `.env` with many secrets |
@@ -648,7 +648,7 @@ interface TranslationProvider {
 
 ### 5.8 Music
 
-**Topology:** the bot plays audio directly with **yt-dlp + ffmpeg**. There is no Lavalink container and no Java process. The bot image installs `yt-dlp`, `ffmpeg`, `fontconfig`, and DejaVu fonts. Voice is handled by `@discordjs/voice` with `libsodium-wrappers` for encryption and `opusscript` for Opus encoding.
+**Topology:** the bot plays audio directly with **yt-dlp + mpv**. There is no Lavalink container and no Java process. The bot image installs `yt-dlp`, `mpv`, `fontconfig`, and DejaVu fonts. Voice is handled by `@discordjs/voice` with `libsodium-wrappers` for encryption and `opusscript` for Opus encoding.
 
 **Source policy:**
 
@@ -662,8 +662,8 @@ interface TranslationProvider {
 **Resolution and playback:**
 
 - `yt-dlp --dump-single-json --default-search scsearch` resolves searches and direct URLs; Spotify links become `title + artist` searches.
-- `yt-dlp -f bestaudio/best -o - <url>` pipes audio into `ffmpeg`, which outputs raw PCM (`s16le`, 48 kHz, stereo) for `@discordjs/voice`.
-- `GuildPlayer` owns the queue, current track, loop mode, volume, autoplay, and the running yt-dlp/ffmpeg processes.
+- `yt-dlp -f bestaudio/best -o - <url>` pipes audio into `mpv`, which outputs raw PCM (`s16le`, 48 kHz, stereo) for `@discordjs/voice`.
+- `GuildPlayer` owns the queue, current track, loop mode, volume, autoplay, and the running yt-dlp/mpv processes.
 - Queue persistence is implemented in `music_sessions` (jsonb): current track, upcoming queue, volume, loop, and autoplay are saved after mutations and restored the next time the bot joins voice.
 - Max queue size (default 100), max volume 150, default volume 80.
 - `seek` is intentionally unsupported with the streaming backend and returns a clear error.
@@ -688,13 +688,13 @@ interface TranslationProvider {
 | `jump <index>` | Jump to a queue position. |
 | `disconnect` | Leave voice and clear the live process. |
 | `autoplay` | Optional related-track autoplay via yt-dlp search. |
-| `filters` | `off`, `bassboost`, `nightcore`, `vaporwave` via ffmpeg filters. |
+| `filters` | `off`, `bassboost`, `nightcore`, `vaporwave` via mpv audio filters. |
 
 **Voice checks:** user must be in a voice channel; the bot must have `Connect`/`Speak`; the bot leaves when the channel is empty or the bot is alone for the configured timeout.
 
 **Reliability:**
 
-- yt-dlp or ffmpeg missing → music commands return a clear error; `bot_status` reports `music: down`.
+- yt-dlp or mpv missing → music commands return a clear error; `bot_status` reports `music: down`.
 - Stream failure → skip and report; the queue continues.
 - Voice disconnect → clean up player state and notify.
 - Bot restart → queue state is restored from `music_sessions` on the next voice join.
@@ -1307,7 +1307,7 @@ Do **not** grant: Administrator, Kick Members, Ban Members, Manage Guild, Manage
                     └───────┬───────────┘
                             │ mcp + edge
 ┌───────────────┐   ┌───────▼────────┐   ┌──────────────┐   ┌────────────────┐
-│  PostgreSQL   │◀──│   Bot process  │──▶│ yt-dlp/ffmpeg│   │ LibreTranslate │
+│  PostgreSQL   │◀──│   Bot process  │──▶│ yt-dlp/mpv│   │ LibreTranslate │
 │  data network │   │ control+data+  │   │ edge network │   │  edge network  │
 └───────────────┘   │ edge networks  │   └──────┬───────┘   └────────────────┘
                     └───┬────────┬───┘          │
@@ -1365,7 +1365,7 @@ Build rules:
 - `.containerignore` excludes `.git`, `node_modules`, tests, docs, local volumes.
 - Healthchecks live in compose/Quadlet, not the image, so they can vary per environment.
 - Migrations run from the bot image (`node apps/bot/dist/scripts/migrate.js`); there is no separate migrate image.
-- Verify the bot image contains working `yt-dlp` and `ffmpeg` binaries for the target architecture (amd64 VPS vs arm64 Mac/ARM VPS).
+- Verify the bot image contains working `yt-dlp` and `mpv` binaries for the target architecture (amd64 VPS vs arm64 Mac/ARM VPS).
 
 **Resource baseline:**
 
@@ -1378,7 +1378,7 @@ Build rules:
 | Caddy (optional) | 64–128 MiB | 0.1 vCPU |
 | **Host** | **4 GiB recommended; 2 GiB minimum with a small `LT_LOAD_ONLY` set** | **2 vCPU minimum** |
 
-LibreTranslate is the largest consumer. Loading fewer languages reduces its RAM and disk; the first boot downloads models, so allow time and disk. yt-dlp/ffmpeg add CPU during playback but no permanent service.
+LibreTranslate is the largest consumer. Loading fewer languages reduces its RAM and disk; the first boot downloads models, so allow time and disk. yt-dlp/mpv add CPU during playback but no permanent service.
 
 ### 9.3 Compose for development/staging
 
@@ -1831,7 +1831,7 @@ No Docker daemon is required. If the runner lacks rootless Podman, use a dedicat
 - Commands total/errors/duration by command.
 - MCP tool calls total/errors/duration by tool/tier.
 - DB pool size, query errors.
-- yt-dlp/ffmpeg availability, active players, queue length.
+- yt-dlp/mpv availability, active players, queue length.
 - Temp VC active count, creation failures.
 - LibreTranslate requests/characters, errors, in-flight count, model-load state.
 - Rate-limit hits.
@@ -1849,7 +1849,7 @@ No Docker daemon is required. If the runner lacks rootless Podman, use a dedicat
 ### 10.4 Alerts
 
 - Bot offline > 2 minutes.
-- yt-dlp/ffmpeg unavailable > 5 minutes.
+- yt-dlp/mpv unavailable > 5 minutes.
 - DB errors > 5/minute.
 - Command/MCP error rate > 5%.
 - LibreTranslate unhealthy > 5 minutes.
@@ -1863,7 +1863,7 @@ Delivery: optional Discord admin webhook, email, or uptime service. Do not put t
 | Failure | Behavior |
 |---|---|
 | PostgreSQL down | DB-backed commands fail with a friendly error; `/readyz` fails; Podman restarts the bot. Music already playing may continue until the next state write. |
-| yt-dlp/ffmpeg down | Music commands return a clear error; other features keep working. |
+| yt-dlp/mpv down | Music commands return a clear error; other features keep working. |
 | Discord API outage | discord.js retries/rate-limits; commands may be delayed; no silent data corruption. |
 | LibreTranslate down | Friendly error; circuit breaker prevents a retry storm; other features unaffected. |
 | MCP server down | Discord bot and music are unaffected; Podman-network automation unavailable. |
@@ -1875,7 +1875,7 @@ Delivery: optional Discord admin webhook, email, or uptime service. Do not put t
 - Start/stop/restart with Podman/Quadlet.
 - Bot token rotation.
 - DB restore.
-- yt-dlp/ffmpeg outage or upgrade.
+- yt-dlp/mpv outage or upgrade.
 - Temp VC orphan reconciliation.
 - MCP token rotation.
 - LibreTranslate outage / model volume reset / disable command.
@@ -1995,9 +1995,9 @@ Estimates assume one experienced developer, part-time review, and no major Disco
 
 ### Phase 3 — Music (4–6 days)
 
-- yt-dlp/ffmpeg installed in the bot image; SoundCloud search default; Spotify links via oEmbed.
+- yt-dlp/mpv installed in the bot image; SoundCloud search default; Spotify links via oEmbed.
 - Optional Spotify credentials path; `spsearch:` disabled cleanly when absent.
-- @discordjs/voice connection, queue/player, yt-dlp/ffmpeg processes.
+- @discordjs/voice connection, queue/player, yt-dlp/mpv processes.
 - Music commands, now-playing UI, timeouts, reconnection.
 - DJ roles/queue limits config.
 - Music tests (unit + resolver/binary checks where practical).
@@ -2168,7 +2168,7 @@ The big decisions are now confirmed: SoundCloud + optional Spotify, LibreTransla
 
 ### Runtime
 
-- [ ] `podman exec siela-bot yt-dlp --version` and `ffmpeg -version` succeed.
+- [ ] `podman exec siela-bot yt-dlp --version` and `mpv --version` succeed.
 - [ ] Spotify credentials present only if `spsearch:` is wanted; `spsearch:` fails cleanly when absent.
 - [ ] LibreTranslate healthy; model volume populated; sample translation works.
 - [ ] Voice join tested; SoundCloud search/play tested.
@@ -2364,7 +2364,7 @@ podman exec siela-postgres pg_dump -U siela -Fc siela \
 | MCP | Model Context Protocol; tool interface for AI clients. |
 | Quadlet | systemd-native Podman container unit format. |
 | yt-dlp | Media resolver/downloader used for music search and streaming. |
-| ffmpeg | Transcodes yt-dlp audio into raw PCM for Discord voice. |
+| mpv | Decodes and streams audio to raw PCM for Discord voice. |
 | LibreTranslate | Self-hosted, free translation service used for the `translate` command. |
 | Temp VC | Join-to-create temporary voice channel owned by a member. |
 | Atomic upsert | Single SQL statement that inserts or increments without a race. |
@@ -2384,7 +2384,7 @@ podman exec siela-postgres pg_dump -U siela -Fc siela \
 - [x] Consent/opt-out for social actions is addressed.
 - [x] Translation privacy and resource use are addressed (LibreTranslate, zero API keys).
 - [x] MCP has a trust boundary, one token, confirmations, and audit.
-- [x] Music uses yt-dlp + ffmpeg; SoundCloud is zero-token and Spotify links resolve via metadata search.
+- [x] Music uses yt-dlp + mpv; SoundCloud is zero-token and Spotify links resolve via metadata search.
 - [x] Podman rootless constraints, generated secrets, `podman compose` compatibility, Quadlet, migrations, and backups are addressed.
 - [x] Observability, testing, and launch checklist are present.
 - [ ] Remaining smaller decisions in §14 confirmed by the product owner.

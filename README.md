@@ -4,7 +4,7 @@ A single-guild Discord bot with music, welcome/auto-role, social counters, tempo
 
 ## Features
 
-- **Music** — yt-dlp + ffmpeg streaming: SoundCloud works out of the box; Spotify links are resolved through oEmbed metadata and searched on SoundCloud.
+- **Music** — yt-dlp + mpv streaming: SoundCloud works out of the box; Spotify links are resolved through oEmbed metadata and searched on SoundCloud.
 - **Translation** — self-hosted LibreTranslate; no paid API key.
 - **Welcomer** — join messages, generated welcome image cards (`welcome card on/off`), optional DMs, optional goodbye messages.
 - **Auto-role** — admin-configurable roles with hierarchy and dangerous-permission checks.
@@ -14,7 +14,7 @@ A single-guild Discord bot with music, welcome/auto-role, social counters, tempo
 - **Prefix** — global single-guild prefix with validation and audit.
 - **Hybrid commands** — prefix + slash + context menu + mention prefix.
 - **MCP** — 50+ tools exposed on the Podman `mcp` network via `MCP_URL` and one `MCP_TOKEN`.
-- **Podman** — `podman compose`-compatible stack: Postgres, LibreTranslate, bot, MCP, and a one-shot migrate service. The bot image includes yt-dlp and ffmpeg.
+- **Podman** — `podman compose`-compatible stack: Postgres, LibreTranslate, bot, MCP, and a one-shot migrate service. The bot image includes yt-dlp and mpv.
 
 ## Quickstart
 

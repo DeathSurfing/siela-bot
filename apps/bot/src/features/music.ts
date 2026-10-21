@@ -25,7 +25,9 @@ import type { SettingsService } from "./settings.js";
 const execFileAsync = promisify(execFile);
 
 export interface MusicServiceOptions {
+  backend: "mpv" | "ffmpeg";
   ytdlpPath: string;
+  mpvPath: string;
   ffmpegPath: string;
   settings: SettingsService;
   db: Database;
@@ -81,6 +83,7 @@ class GuildPlayer {
   paused = false;
   filterPreset: "off" | "bassboost" | "nightcore" | "vaporwave" = "off";
   private ytdlpProcess: ChildProcess | null = null;
+  private mpvProcess: ChildProcess | null = null;
   private ffmpegProcess: ChildProcess | null = null;
   resource: AudioResource | null = null;
   private startedAt = 0;
@@ -110,9 +113,15 @@ class GuildPlayer {
   }
 
   private killProcesses(): void {
-    this.ytdlpProcess?.kill("SIGKILL");
-    this.ffmpegProcess?.kill("SIGKILL");
+    for (const process of [this.ytdlpProcess, this.mpvProcess, this.ffmpegProcess]) {
+      if (!process) continue;
+      process.stdout?.on("error", () => undefined);
+      process.stderr?.on("error", () => undefined);
+      process.stdin?.on("error", () => undefined);
+      process.kill("SIGKILL");
+    }
     this.ytdlpProcess = null;
+    this.mpvProcess = null;
     this.ffmpegProcess = null;
     this.resource = null;
   }
@@ -121,26 +130,69 @@ class GuildPlayer {
     this.killProcesses();
   }
 
-  async playNow(track: QueueTrack): Promise<void> {
-    this.killProcesses();
-    this.current = track;
-    this.startedAt = Date.now();
-    this.pausedAt = null;
-    this.paused = false;
+  private audioFilter(): string | null {
+    return this.filterPreset === "bassboost"
+      ? "bass=g=6"
+      : this.filterPreset === "nightcore"
+        ? "asetrate=48000*1.2,aresample=48000"
+        : this.filterPreset === "vaporwave"
+          ? "asetrate=48000*0.8,aresample=48000"
+          : null;
+  }
 
+  private startMpv(track: QueueTrack): AudioResource {
+    const filter = this.audioFilter();
+    const mpv = spawn(
+      this.service.mpvPath,
+      [
+        "--no-config",
+        "--no-video",
+        "--no-terminal",
+        "--really-quiet",
+        "--ao=pcm",
+        "--ao-pcm-file=/dev/stdout",
+        "--ao-pcm-waveheader=no",
+        "--audio-format=s16",
+        "--audio-samplerate=48000",
+        "--audio-channels=stereo",
+        "--ytdl=yes",
+        "--ytdl-format=bestaudio/best",
+        `--script-opts=ytdl_hook-ytdl_path=${this.service.ytdlpPath}`,
+        ...(filter ? [`--af=${filter}`] : []),
+        "--",
+        track.url,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    this.mpvProcess = mpv;
+    mpv.stdout?.on("error", (error) => {
+      this.service.logger.debug({ err: error, guildId: this.guildId }, "mpv stdout closed");
+    });
+    mpv.stderr?.on("data", (chunk: Buffer) => {
+      const text = chunk.toString().trim();
+      if (text) this.service.logger.debug({ guildId: this.guildId, mpv: text.slice(0, 300) }, "mpv");
+    });
+    mpv.on("error", (error) => {
+      this.service.logger.warn({ err: error, guildId: this.guildId }, "mpv spawn failed");
+    });
+    mpv.on("close", (code) => {
+      if (code && code !== 0) {
+        this.service.logger.warn({ code, guildId: this.guildId }, "mpv exited with an error");
+      }
+    });
+    return createAudioResource(mpv.stdout!, {
+      inputType: StreamType.Raw,
+      inlineVolume: true,
+    });
+  }
+
+  private startFfmpeg(track: QueueTrack): AudioResource {
+    const filter = this.audioFilter();
     const ytdlp = spawn(
       this.service.ytdlpPath,
       ["-f", "bestaudio/best", "-o", "-", "--no-playlist", "--no-warnings", "--quiet", track.url],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
-    const filterArgs: string[] =
-      this.filterPreset === "bassboost"
-        ? ["-af", "bass=g=6"]
-        : this.filterPreset === "nightcore"
-          ? ["-af", "asetrate=48000*1.2,aresample=48000"]
-          : this.filterPreset === "vaporwave"
-            ? ["-af", "asetrate=48000*0.8,aresample=48000"]
-            : [];
     const ffmpeg = spawn(
       this.service.ffmpegPath,
       [
@@ -149,7 +201,7 @@ class GuildPlayer {
         "error",
         "-i",
         "pipe:0",
-        ...filterArgs,
+        ...(filter ? ["-af", filter] : []),
         "-f",
         "s16le",
         "-ar",
@@ -160,13 +212,21 @@ class GuildPlayer {
       ],
       { stdio: ["pipe", "pipe", "pipe"] },
     );
-
     this.ytdlpProcess = ytdlp;
     this.ffmpegProcess = ffmpeg;
-    ytdlp.stdout?.pipe(ffmpeg.stdin!);
+
+    ytdlp.stdout?.on("error", (error) => {
+      this.service.logger.debug({ err: error, guildId: this.guildId }, "yt-dlp stdout closed");
+    });
     ytdlp.stderr?.on("data", (chunk: Buffer) => {
       const text = chunk.toString().trim();
       if (text) this.service.logger.debug({ guildId: this.guildId, ytdlp: text.slice(0, 200) }, "yt-dlp");
+    });
+    ffmpeg.stdin?.on("error", (error) => {
+      this.service.logger.debug({ err: error, guildId: this.guildId }, "ffmpeg stdin closed");
+    });
+    ffmpeg.stdout?.on("error", (error) => {
+      this.service.logger.debug({ err: error, guildId: this.guildId }, "ffmpeg stdout closed");
     });
     ffmpeg.stderr?.on("data", (chunk: Buffer) => {
       const text = chunk.toString().trim();
@@ -178,13 +238,25 @@ class GuildPlayer {
     ffmpeg.on("error", (error) => {
       this.service.logger.warn({ err: error, guildId: this.guildId }, "ffmpeg spawn failed");
     });
-
-    this.resource = createAudioResource(ffmpeg.stdout!, {
+    ytdlp.stdout?.pipe(ffmpeg.stdin!);
+    return createAudioResource(ffmpeg.stdout!, {
       inputType: StreamType.Raw,
       inlineVolume: true,
     });
-    this.resource.volume?.setVolume(this.volume / 100);
-    this.player.play(this.resource);
+  }
+
+  async playNow(track: QueueTrack): Promise<void> {
+    this.killProcesses();
+    this.current = track;
+    this.startedAt = Date.now();
+    this.pausedAt = null;
+    this.paused = false;
+
+    const resource =
+      this.service.backend === "ffmpeg" ? this.startFfmpeg(track) : this.startMpv(track);
+    this.resource = resource;
+    resource.volume?.setVolume(this.volume / 100);
+    this.player.play(resource);
     this.service.emit("trackStart", { guildId: this.guildId, track: toInfo(track) });
     this.service.schedulePersist(this.guildId);
   }
@@ -257,8 +329,16 @@ export class MusicService extends EventEmitter {
     this.on("error", () => undefined);
   }
 
+  get backend(): "mpv" | "ffmpeg" {
+    return this.options.backend;
+  }
+
   get ytdlpPath(): string {
     return this.options.ytdlpPath;
+  }
+
+  get mpvPath(): string {
+    return this.options.mpvPath;
   }
 
   get ffmpegPath(): string {
@@ -270,10 +350,12 @@ export class MusicService extends EventEmitter {
     this.binariesCheckedAt = Date.now();
     try {
       await execFileAsync(this.options.ytdlpPath, ["--version"], { timeout: 10_000 });
-      await execFileAsync(this.options.ffmpegPath, ["-version"], { timeout: 10_000 });
+      await execFileAsync(this.options[this.options.backend === "ffmpeg" ? "ffmpegPath" : "mpvPath"], [
+        this.options.backend === "ffmpeg" ? "-version" : "--version",
+      ], { timeout: 10_000 });
       this.binariesOk = true;
     } catch (error) {
-      this.logger.warn({ err: error }, "yt-dlp/ffmpeg not available");
+      this.logger.warn({ err: error, backend: this.options.backend }, `${this.options.backend} backend not available`);
       this.binariesOk = false;
     }
     return this.binariesOk;
