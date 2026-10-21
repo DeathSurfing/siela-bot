@@ -1,0 +1,14 @@
+# Optional external TLS front door for MCP.
+#
+# Used only with compose.proxy.yaml. Replace mcp.example.com and
+# provide a certificate strategy that works for your host (DNS challenge,
+# mounted certs, or an internal CA).
+#
+# The MCP upstream is on the internal `mcp` network:
+#   http://mcp:8080
+
+mcp.example.com:8443 {
+	tls internal
+	encode zstd gzip
+	reverse_proxy mcp:8080
+}

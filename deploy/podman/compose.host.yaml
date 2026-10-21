@@ -1,0 +1,11 @@
+# Optional override: publish MCP to the host loopback only.
+#
+# Use only when a host-local HTTP client needs to reach MCP:
+#   podman compose -p siela \
+#     -f deploy/podman/compose.yaml \
+#     -f deploy/podman/compose.host.yaml up -d
+
+services:
+  mcp:
+    ports:
+      - "127.0.0.1:8080:8080"

@@ -1,0 +1,142 @@
+# Siela Bot — Podman Compose stack
+#
+# Kept to the compose subset that works with both `podman compose`
+# (Docker Compose provider) and `podman-compose`.
+# No top-level `name`, no `profiles`, no `deploy`, no `secrets`,
+# no `build.target`, and no `depends_on.condition`.
+#
+# Use:
+#   podman compose -p siela -f deploy/podman/compose.yaml up -d
+# so network names are deterministic: siela_edge, siela_data,
+# siela_control, siela_mcp.
+
+networks:
+  edge:
+  data:
+    internal: true
+  control:
+    internal: true
+  mcp:
+    internal: true
+
+volumes:
+  pgdata:
+  lavalink_plugins:
+  libretranslate_models:
+
+services:
+  postgres:
+    image: docker.io/library/postgres:17-alpine
+    container_name: siela-postgres
+    env_file: .env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [data]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U siela -d siela"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 512m
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: deploy/podman/Containerfile.bot
+    env_file: .env
+    networks: [data]
+    depends_on:
+      - postgres
+    restart: "no"
+    command: ["node", "apps/bot/dist/scripts/migrate.js"]
+
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4
+    container_name: siela-lavalink
+    env_file: .env
+    volumes:
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro,Z
+      - lavalink_plugins:/opt/Lavalink/plugins
+    networks: [edge]
+    restart: unless-stopped
+    mem_limit: 2g
+    # No published ports. The bot reaches lavalink:2333 on the edge network.
+
+  libretranslate:
+    image: libretranslate/libretranslate:latest
+    container_name: siela-libretranslate
+    environment:
+      LT_LOAD_ONLY: en,es,fr,de,hi
+      LT_DISABLE_WEB_UI: "true"
+      LT_CHAR_LIMIT: "2000"
+      LT_REQ_LIMIT: "60"
+      LT_THREADS: "2"
+    volumes:
+      - libretranslate_models:/home/libretranslate/.local
+    networks: [edge]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "./venv/bin/python scripts/healthcheck.py"]
+      interval: 15s
+      timeout: 5s
+      retries: 60
+      start_period: 60s
+    mem_limit: 2g
+
+  bot:
+    build:
+      context: ../..
+      dockerfile: deploy/podman/Containerfile.bot
+    container_name: siela-bot
+    env_file: .env
+    networks:
+      edge:
+      data:
+      control:
+        aliases: [bot-control]
+    depends_on:
+      - postgres
+      - migrate
+      - lavalink
+      - libretranslate
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3002/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    mem_limit: 1g
+
+  mcp:
+    build:
+      context: ../..
+      dockerfile: deploy/podman/Containerfile.mcp
+    container_name: siela-mcp
+    env_file: .env
+    networks: [control, mcp]
+    depends_on:
+      - bot
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m
+    # No host port. MCP is exposed on the `mcp` network at
+    # MCP_URL=http://mcp:8080/mcp.

@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+deploy/podman/.env
+deploy/podman/.env.*
+!deploy/podman/.env.example
+secrets/
+
+# Local data and dumps
+*.dump
+*.dump.gz
+data/
+volumes/
+
+# Logs
+*.log
+logs/
+
+# Editor/OS
+.DS_Store
+.idea/
+.vscode/
