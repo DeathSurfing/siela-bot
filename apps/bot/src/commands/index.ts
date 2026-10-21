@@ -10,6 +10,7 @@ import { joinToCreateCommand } from "./admin/jointocreate.js";
 import { musicConfigCommand } from "./admin/musicconfig.js";
 import { configCommand } from "./admin/config.js";
 import { vcCommand } from "./voice/vc.js";
+import { loveCalcCommand } from "./social/love.js";
 import {
   choduCommand,
   hugCommand,
@@ -35,6 +36,7 @@ export const commands: Command[] = [
   musicConfigCommand,
   configCommand,
   vcCommand,
+  loveCalcCommand,
   slapCommand,
   kissCommand,
   hugCommand,
