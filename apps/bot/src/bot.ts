@@ -348,7 +348,9 @@ export class SielaBot {
     if (!music || !member) return;
 
     const replyError = async (message: string): Promise<void> => {
-      if (!interaction.replied && !interaction.deferred) {
+      if (interaction.deferred) {
+        await interaction.editReply({ content: message }).catch(() => undefined);
+      } else if (!interaction.replied) {
         await interaction.reply({ content: message, ephemeral: true }).catch(() => undefined);
       } else {
         await interaction.followUp({ content: message, ephemeral: true }).catch(() => undefined);
@@ -369,17 +371,18 @@ export class SielaBot {
         return;
       }
       if (action === "rewind" || action === "forward") {
+        await interaction.deferReply({ ephemeral: true });
         const delta = action === "rewind" ? -10_000 : 10_000;
         await music.seek(guild.id, state.position + delta);
-        await interaction.reply({
+        await interaction.editReply({
           content: action === "rewind" ? "Rewound 10 seconds." : "Forwarded 10 seconds.",
-          ephemeral: true,
         });
         return;
       }
       if (action === "skip") {
+        await interaction.deferReply({ ephemeral: true });
         await music.skip(guild.id);
-        await interaction.reply({ content: "Skipped.", ephemeral: true });
+        await interaction.editReply({ content: "Skipped." });
         return;
       }
       if (action === "shuffle") {
