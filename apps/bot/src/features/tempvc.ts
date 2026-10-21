@@ -171,11 +171,6 @@ export class TempVcService {
       .setLabel("Limit")
       .setEmoji("👥")
       .setStyle(ButtonStyle.Secondary);
-    const chatButton = new ButtonBuilder()
-      .setStyle(ButtonStyle.Link)
-      .setLabel("Open chat")
-      .setEmoji("💬")
-      .setURL(`https://discord.com/channels/${channel.guild.id}/${channel.id}`);
     const deleteButton = new ButtonBuilder()
       .setCustomId(tempVcPanelCustomId("delete", row.channelId))
       .setLabel("Delete VC")
@@ -186,7 +181,6 @@ export class TempVcService {
       lockButton,
       renameButton,
       limitButton,
-      chatButton,
       deleteButton,
     );
     const kickRow = new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(

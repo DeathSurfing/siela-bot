@@ -555,7 +555,7 @@ RETURNING count;
 - If the user already owns an active channel, move them there instead of creating a new one.
 - Create the channel with a marker in the topic if the channel type supports it (`siela-tempvc:<ownerId>`); the DB row is the source of truth for reconciliation.
 - Apply overwrites, move the member, insert the DB row.
-- Post a persistent control panel in the voice channel's text chat: lock/unlock, rename, user limit, kick, transfer ownership, open chat, and delete. The owner receives text-chat permissions for that channel.
+- Post a persistent control panel in the voice channel's text chat: lock/unlock, rename, user limit, kick, transfer ownership, and delete. The owner receives text-chat permissions for that channel.
 - If creation fails, reply/log with a safe error and do not leave a half-created row.
 
 **Permission matrix:**
@@ -575,7 +575,7 @@ RETURNING count;
 
 **Commands:** `vc lock`, `vc unlock`, `vc permit @user`, `vc deny @user`, `vc disconnect @user`, `vc rename <name>`, `vc limit <0-99>`, `vc claim`, `vc transfer @user`, `vc delete`, `vc panel`, `vc info`.
 
-**Control panel:** each new temp VC gets a pinned-or-visible panel in its text chat. It shows owner/status/limit and provides Lock/Unlock, Rename, Limit, Open chat, Delete, Kick (member select), and Transfer ownership (member select). Only the owner or an admin can use it.
+**Control panel:** each new temp VC gets a pinned-or-visible panel in its text chat. It shows owner/status/limit and provides Lock/Unlock, Rename, Limit, Delete, Kick (member select), and Transfer ownership (member select). Only the owner or an admin can use it.
 
 **Hub setup:** `jointocreate <#voice-channel> [template]` (aliases `j2c`) sets the join-to-create hub, auto-creates a **Temporary VCs** category if none is configured, sets the default `{user}'s VC` template, enables the feature, and warns about role-level `Connect` allows. `jointocreate template <text>`, `jointocreate category <#category>`, `jointocreate status`, and `jointocreate disable` are also available. The existing `tempvc setup` remains available.
 
