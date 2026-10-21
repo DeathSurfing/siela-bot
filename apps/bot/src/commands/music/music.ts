@@ -2,6 +2,7 @@ import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import { COLORS, formatDuration, parseDuration, truncate } from "@siela/shared";
 import type { Command, CommandContext } from "../../framework/types.js";
 import type { MusicService } from "../../features/music.js";
+import { buildMusicControls } from "../../features/music-ui.js";
 import { canManageMusic } from "../../framework/permissions.js";
 import { UserError } from "../../lib/errors.js";
 
@@ -70,7 +71,7 @@ const playCommand: Command = {
     await ctx.reply({ content: "🔎 Loading…" });
     try {
       const result = await music(ctx).play(ctx.member, query, ctx.args[1]);
-      const message = await ctx.edit({
+      await ctx.edit({
         embeds: [
           new EmbedBuilder()
             .setColor(COLORS.music)
@@ -80,13 +81,13 @@ const playCommand: Command = {
                 trackLine(result.first),
                 "",
                 result.added > 1
-                  ? `**${result.added}** tracks imported. React below to control playback.`
-                  : "React below to control playback.",
+                  ? `**${result.added}** tracks imported. Use the buttons below to control playback.`
+                  : "Use the buttons below to control playback.",
               ].join("\n"),
             ),
         ],
+        components: buildMusicControls(ctx.guild.id, music(ctx).state(ctx.guild.id)),
       });
-      if (message) await music(ctx).registerControlMessage(message);
     } catch (error) {
       const message = error instanceof Error ? error.message : "That play request failed.";
       await ctx.edit({ content: message }).catch(() => undefined);
@@ -230,8 +231,10 @@ const nowPlayingCommand: Command = {
   examples: ["nowplaying"],
   slash: new SlashCommandBuilder().setName("nowplaying").setDescription("Show the current track"),
   async execute(ctx) {
-    const message = await ctx.reply({ embeds: [stateEmbed(ctx)] });
-    if (message) await music(ctx).registerControlMessage(message);
+    await ctx.reply({
+      embeds: [stateEmbed(ctx)],
+      components: buildMusicControls(ctx.guild.id, music(ctx).state(ctx.guild.id)),
+    });
   },
 };
 

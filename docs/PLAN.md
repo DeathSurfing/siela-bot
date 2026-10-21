@@ -670,7 +670,7 @@ interface TranslationProvider {
 - The queue is intentionally in-memory only. Disconnecting, leaving voice, or restarting the bot clears the queue; nothing is restored on the next join.
 - Max queue size (default 100), max volume 150, default volume 80.
 - `seek` restarts the current mpv stream at the requested offset.
-- The now-playing message supports reaction controls: `⏯️` pause/resume, `⏪`/`⏩` seek 10s, `⏭️` skip, `⏹️` stop/disconnect, `🔀` shuffle, `🔁` loop.
+- The now-playing message supports button controls: pause/resume, seek back/forward 10s, skip, stop/disconnect, shuffle, and loop.
 
 **Commands:**
 
@@ -682,7 +682,7 @@ interface TranslationProvider {
 | `skip [n]` | Skip current or n tracks. |
 | `stop` | Stop and clear the queue. |
 | `queue [page]` | Paginated queue view with total duration and page number. |
-| `nowplaying` (aliases `current`, `currentlyplaying`, `cp`, `np`) | Current track + reaction controls. |
+| `nowplaying` (aliases `current`, `currentlyplaying`, `cp`, `np`) | Current track + button controls. |
 | `volume <0-150>` | Set volume. |
 | `seek <mm:ss>` | Seek the current track by restarting the stream at the offset. |
 | `loop <off/track/queue>` | Loop mode. |

@@ -6,7 +6,6 @@ import {
   ButtonStyle,
   ChannelType,
   Client,
-  EmbedBuilder,
   Events,
   GatewayIntentBits,
   ModalBuilder,
@@ -19,13 +18,9 @@ import {
   type GuildMember,
   type Interaction,
   type Message,
-  type MessageReaction,
   type ModalSubmitInteraction,
-  type PartialMessageReaction,
   type ChatInputCommandInteraction,
   type PartialGuildMember,
-  type PartialUser,
-  type User,
   type StringSelectMenuInteraction,
   type UserSelectMenuInteraction,
   type VoiceChannel,
@@ -56,6 +51,7 @@ import { AutoRoleService } from "./features/autorole.js";
 import { parseTempVcPanelCustomId, tempVcPanelCustomId, TempVcService } from "./features/tempvc.js";
 
 import { MusicService } from "./features/music.js";
+import { buildMusicControls } from "./features/music-ui.js";
 import { PrivacyService } from "./features/privacy.js";
 import { buildHelpPayload } from "./features/help.js";
 import { ControlServer } from "./control/server.js";
@@ -86,11 +82,10 @@ export class SielaBot {
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildVoiceStates,
       ],
-      partials: [Partials.Channel, Partials.GuildMember, Partials.Message, Partials.Reaction, Partials.User],
+      partials: [Partials.Channel, Partials.GuildMember, Partials.Message, Partials.User],
       allowedMentions: { parse: [], repliedUser: false },
     });
     this.registry = new CommandRegistry().register(...commands);
@@ -157,7 +152,6 @@ export class SielaBot {
       if (guild.id === this.guildId) this.logger.warn({ guildId: guild.id }, "bound guild removed");
     });
     this.client.on(Events.MessageCreate, (message) => void this.onMessage(message));
-    this.client.on(Events.MessageReactionAdd, (reaction, user) => void this.onReaction(reaction, user));
     this.client.on(Events.InteractionCreate, (interaction) => void this.onInteraction(interaction));
     this.client.on(Events.GuildMemberAdd, (member) => void this.onMemberAdd(member));
     this.client.on(Events.GuildMemberRemove, (member) => void this.onMemberRemove(member));
@@ -273,6 +267,10 @@ export class SielaBot {
         await this.onChatInput(interaction);
         return;
       }
+      if (interaction.isButton() && interaction.customId.startsWith("music:")) {
+        await this.onMusicButton(interaction);
+        return;
+      }
       if ((interaction.isButton() || interaction.isUserSelectMenu()) && interaction.customId.startsWith("tempvc:")) {
         await this.onTempVcComponent(interaction);
         return;
@@ -338,6 +336,73 @@ export class SielaBot {
       embeds: payload.embeds,
       components: payload.components,
     });
+  }
+
+  private async onMusicButton(interaction: ButtonInteraction): Promise<void> {
+    const [prefix, action, guildId] = interaction.customId.split(":");
+    if (prefix !== "music" || !guildId || !this.guildId || guildId !== this.guildId) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+    const music = this.services.music;
+    const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+    if (!music || !member) return;
+
+    const replyError = async (message: string): Promise<void> => {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: message, ephemeral: true }).catch(() => undefined);
+      } else {
+        await interaction.followUp({ content: message, ephemeral: true }).catch(() => undefined);
+      }
+    };
+
+    const channelId = music.channelId(guild.id);
+    if (!channelId) return replyError("The bot is not in a voice channel.");
+    if (member.voice.channelId !== channelId) return replyError("Join the bot's voice channel first.");
+    const state = music.state(guild.id);
+    if (!state?.current) return replyError("Nothing is playing.");
+
+    try {
+      if (action === "pause") {
+        if (state.paused) await music.resume(guild.id);
+        else await music.pause(guild.id);
+        await interaction.update({ components: buildMusicControls(guild.id, music.state(guild.id)) });
+        return;
+      }
+      if (action === "rewind" || action === "forward") {
+        const delta = action === "rewind" ? -10_000 : 10_000;
+        await music.seek(guild.id, state.position + delta);
+        await interaction.reply({
+          content: action === "rewind" ? "Rewound 10 seconds." : "Forwarded 10 seconds.",
+          ephemeral: true,
+        });
+        return;
+      }
+      if (action === "skip") {
+        await music.skip(guild.id);
+        await interaction.reply({ content: "Skipped.", ephemeral: true });
+        return;
+      }
+      if (action === "shuffle") {
+        await music.shuffle(guild.id);
+        await interaction.reply({ content: "Queue shuffled.", ephemeral: true });
+        return;
+      }
+      if (action === "loop") {
+        const next = state.loop === "off" ? "track" : state.loop === "track" ? "queue" : "off";
+        await music.loop(guild.id, next);
+        await interaction.update({ components: buildMusicControls(guild.id, music.state(guild.id)) });
+        return;
+      }
+      if (action === "stop") {
+        await music.stop(guild.id);
+        await music.disconnect(guild.id);
+        await interaction.update({ content: "Music stopped.", embeds: [], components: [] });
+        return;
+      }
+      await replyError("Unknown music control.");
+    } catch (error) {
+      await replyError(error instanceof UserError ? error.message : "That music control failed.");
+    }
   }
 
   private async requireTempVcPanelAccess(
@@ -601,28 +666,6 @@ export class SielaBot {
       await (source as CommandContext).reply({ content, ephemeral: true }).catch(() => undefined);
     } else {
       await (source as Message).reply({ content, allowedMentions: { parse: [] } }).catch(() => undefined);
-    }
-  }
-
-  private async onReaction(
-    reaction: MessageReaction | PartialMessageReaction,
-    user: User | PartialUser,
-  ): Promise<void> {
-    if (user.bot) return;
-    try {
-      if (reaction.partial) await reaction.fetch();
-      const message = reaction.message.partial ? await reaction.message.fetch() : reaction.message;
-      if (!message.guildId || message.guildId !== this.guildId) return;
-      const member = await message.guild?.members.fetch(user.id).catch(() => null);
-      if (!member) return;
-      const handled = await this.services.music?.handleControlReaction(
-        message.id,
-        reaction.emoji.name ?? "",
-        member,
-      );
-      if (handled) await reaction.users.remove(user.id).catch(() => undefined);
-    } catch (error) {
-      this.logger.debug({ err: error, messageId: reaction.message.id }, "reaction control failed");
     }
   }
 

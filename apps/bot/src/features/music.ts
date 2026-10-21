@@ -16,7 +16,7 @@ import {
   type AudioResource,
   type VoiceConnection,
 } from "@discordjs/voice";
-import { ChannelType, type Client, type GuildMember, type Message } from "discord.js";
+import { ChannelType, type Client, type GuildMember } from "discord.js";
 import type { MusicLoopMode, MusicQueueState, MusicTrackInfo } from "@siela/shared";
 import { UserError, ServiceUnavailableError } from "../lib/errors.js";
 import type { Logger } from "../lib/logger.js";
@@ -49,8 +49,6 @@ interface ResolvedTrack {
   isStream: boolean;
   artworkUrl: string | null;
 }
-
-export const MUSIC_CONTROL_EMOJIS = ["⏯️", "⏪", "⏩", "⏭️", "⏹️", "🔀", "🔁"] as const;
 
 function toInfo(track: QueueTrack): MusicTrackInfo {
   return {
@@ -456,7 +454,6 @@ class GuildPlayer {
 export class MusicService extends EventEmitter {
   readonly logger: Logger;
   private readonly players = new Map<string, GuildPlayer>();
-  private readonly controlMessages = new Map<string, string>();
   private binariesCheckedAt = 0;
   private binariesOk = false;
 
@@ -512,57 +509,6 @@ export class MusicService extends EventEmitter {
 
   channelId(guildId: string): string | null {
     return this.players.get(guildId)?.connection.joinConfig.channelId ?? null;
-  }
-
-  async registerControlMessage(message: Message): Promise<void> {
-    if (!message.guildId) return;
-    this.controlMessages.set(message.id, message.guildId);
-    if (this.controlMessages.size > 100) {
-      const oldest = this.controlMessages.keys().next().value;
-      if (oldest) this.controlMessages.delete(oldest);
-    }
-    for (const emoji of MUSIC_CONTROL_EMOJIS) {
-      await message.react(emoji).catch(() => undefined);
-    }
-  }
-
-  async handleControlReaction(messageId: string, emoji: string, member: GuildMember): Promise<boolean> {
-    const guildId = this.controlMessages.get(messageId);
-    if (!guildId || guildId !== member.guild.id) return false;
-    const player = this.players.get(guildId);
-    if (!player?.current) return false;
-    if (member.voice.channelId !== this.channelId(guildId)) return false;
-
-    // Discord may omit or include the emoji variation selector (U+FE0F).
-    const key = emoji.replace(/\uFE0F/g, "");
-    switch (key) {
-      case "⏯":
-        if (player.paused) await this.resume(guildId);
-        else await this.pause(guildId);
-        return true;
-      case "⏪":
-        await this.seek(guildId, Math.max(0, player.positionMs() - 10_000));
-        return true;
-      case "⏩":
-        await this.seek(guildId, player.positionMs() + 10_000);
-        return true;
-      case "⏭":
-        await this.skip(guildId);
-        return true;
-      case "⏹":
-        await this.stop(guildId);
-        await this.disconnect(guildId);
-        this.controlMessages.delete(messageId);
-        return true;
-      case "🔀":
-        await this.shuffle(guildId);
-        return true;
-      case "🔁":
-        await this.loop(guildId, player.loop === "off" ? "track" : player.loop === "track" ? "queue" : "off");
-        return true;
-      default:
-        return false;
-    }
   }
 
   private async spotifyToSearch(url: string): Promise<string | null> {
