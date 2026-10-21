@@ -597,6 +597,5 @@ export class TempVcService {
       await channel.permissionOverwrites.create(this.client.user, BOT_ALLOW).catch(() => undefined);
     }
     if (owner) await channel.permissionOverwrites.create(owner, OWNER_ALLOW).catch(() => undefined);
-    await this.applyMovePermissions(channel, ownerId);
   }
 }
