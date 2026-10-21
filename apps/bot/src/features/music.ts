@@ -527,59 +527,7 @@ export class MusicService extends EventEmitter {
     }
   }
 
-  private async resolve(query: string, limit = 5): Promise<ResolvedTrack[]> {
-    let target = query.trim();
-    if (/open\.spotify\.com\//i.test(target)) {
-      const search = await this.spotifyToSearch(target);
-      if (!search) {
-        throw new UserError("Could not read that Spotify link. Try a SoundCloud link or a search.");
-      }
-      target = search;
-    }
-    const isUrl = /^https?:\/\//i.test(target);
-    const playlist = isUrl && isPlaylistUrl(target);
-    const args = isUrl
-      ? playlist
-        ? [
-            "--dump-single-json",
-            "--flat-playlist",
-            "--yes-playlist",
-            "--playlist-end",
-            String(Math.max(1, Math.min(limit, 500))),
-            "--no-warnings",
-            "--quiet",
-            "--js-runtimes",
-            "node",
-            "--no-part",
-            "--no-cache-dir",
-            target,
-          ]
-        : [
-            "--dump-single-json",
-            "--no-playlist",
-            "--no-warnings",
-            "--quiet",
-            "--js-runtimes",
-            "node",
-            "--no-part",
-            "--no-cache-dir",
-            target,
-          ]
-      : [
-          "--dump-single-json",
-          "--no-playlist",
-          "--no-warnings",
-          "--quiet",
-          "--js-runtimes",
-          "node",
-          "--no-part",
-          "--no-cache-dir",
-          "--default-search",
-          "scsearch",
-          "--playlist-end",
-          String(Math.max(1, Math.min(limit, 10))),
-          target,
-        ];
+  private async ytdlpJson(args: string[], query: string): Promise<ResolvedTrack[]> {
     let stdout: string;
     try {
       const result = await execFileAsync(this.options.ytdlpPath, args, {
@@ -592,6 +540,7 @@ export class MusicService extends EventEmitter {
       this.logger.warn({ err: error, query }, "yt-dlp resolve failed");
       throw new ServiceUnavailableError("Music search failed. Try again in a moment.");
     }
+
     let parsed: unknown;
     try {
       parsed = JSON.parse(stdout);
@@ -602,21 +551,123 @@ export class MusicService extends EventEmitter {
       entries?: Array<Record<string, unknown>>;
     } & Record<string, unknown>;
     const entries = Array.isArray(root.entries) ? root.entries : [root];
-    const tracks: ResolvedTrack[] = [];
-    for (const entry of entries) {
+    return entries.flatMap((entry) => {
       const url = (entry.webpage_url ?? entry.url) as string | undefined;
-      if (!url) continue;
-      tracks.push({
+      if (!url) return [];
+      return [{
         url,
         title: (entry.title as string) ?? "Unknown title",
         author: ((entry.uploader ?? entry.channel ?? entry.artist) as string) ?? "Unknown artist",
         length: Number(entry.duration ?? 0) * 1000,
         isStream: Boolean(entry.is_live),
         artworkUrl: (entry.thumbnail as string) ?? null,
-      });
+      }];
+    });
+  }
+
+  private async searchTracks(
+    target: string,
+    engine: "scsearch" | "ytsearch",
+    limit = 5,
+  ): Promise<ResolvedTrack[]> {
+    return this.ytdlpJson(
+      [
+        "--dump-single-json",
+        "--no-playlist",
+        "--no-warnings",
+        "--quiet",
+        "--js-runtimes",
+        "node",
+        "--no-part",
+        "--no-cache-dir",
+        "--default-search",
+        engine,
+        "--playlist-end",
+        String(Math.max(1, Math.min(limit, 10))),
+        target,
+      ],
+      target,
+    );
+  }
+
+  private async resolve(query: string, limit = 5): Promise<ResolvedTrack[]> {
+    let target = query.trim().replace(/^["']|["']$/g, "").trim();
+    if (/open\.spotify\.com\//i.test(target)) {
+      const search = await this.spotifyToSearch(target);
+      if (!search) {
+        throw new UserError("Could not read that Spotify link. Try a SoundCloud link or a search.");
+      }
+      target = search;
     }
-    if (!tracks.length) throw new UserError("No tracks found for that search.", "no_tracks");
-    return tracks;
+    const isUrl = /^https?:\/\//i.test(target);
+    const playlist = isUrl && isPlaylistUrl(target);
+
+    if (isUrl) {
+      const tracks = await this.ytdlpJson(
+        playlist
+          ? [
+              "--dump-single-json",
+              "--flat-playlist",
+              "--yes-playlist",
+              "--playlist-end",
+              String(Math.max(1, Math.min(limit, 500))),
+              "--no-warnings",
+              "--quiet",
+              "--js-runtimes",
+              "node",
+              "--no-part",
+              "--no-cache-dir",
+              target,
+            ]
+          : [
+              "--dump-single-json",
+              "--no-playlist",
+              "--no-warnings",
+              "--quiet",
+              "--js-runtimes",
+              "node",
+              "--no-part",
+              "--no-cache-dir",
+              target,
+            ],
+        query,
+      );
+      if (!tracks.length) throw new UserError("No tracks found for that URL.", "no_tracks");
+      return playlist ? tracks : [tracks[0]!];
+    }
+
+    // SoundCloud sometimes returns 30-second previews as search results.
+    // Prefer a full-length SoundCloud result, then fall back to YouTube search.
+    let soundCloudTracks: ResolvedTrack[] = [];
+    let lastError: unknown;
+    try {
+      soundCloudTracks = await this.searchTracks(target, "scsearch");
+    } catch (error) {
+      lastError = error;
+      this.logger.warn({ err: error, query }, "SoundCloud search failed; trying YouTube");
+    }
+    const fullSoundCloud = soundCloudTracks.filter((track) => track.isStream || track.length === 0 || track.length >= 45_000);
+    if (fullSoundCloud.length) return [fullSoundCloud[0]!];
+
+    try {
+      const youtubeTracks = await this.searchTracks(target, "ytsearch");
+      const fullYoutube = youtubeTracks.filter((track) => track.isStream || track.length === 0 || track.length >= 45_000);
+      const chosen = fullYoutube[0] ?? youtubeTracks[0];
+      if (chosen) {
+        this.logger.info(
+          { query, title: chosen.title, length: chosen.length },
+          "using YouTube fallback because SoundCloud only returned short clips",
+        );
+        return [chosen];
+      }
+    } catch (error) {
+      lastError = error;
+      this.logger.warn({ err: error, query }, "YouTube fallback failed");
+    }
+
+    if (soundCloudTracks.length) return [soundCloudTracks[0]!];
+    if (lastError instanceof UserError) throw lastError;
+    throw new ServiceUnavailableError("Music search failed. Try again in a moment.");
   }
 
   private async ensurePlayer(member: GuildMember, voiceChannelId?: string): Promise<GuildPlayer> {
