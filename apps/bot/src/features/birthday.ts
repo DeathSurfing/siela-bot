@@ -45,6 +45,7 @@ export class BirthdayService {
 
   start(): void {
     if (this.timer) return;
+    this.logger.info("birthday scheduler started");
     this.timer = setInterval(() => {
       void this.processToday().catch((error) => this.logger.warn({ err: error }, "birthday processing failed"));
     }, 5 * 60 * 1000);
@@ -54,29 +55,32 @@ export class BirthdayService {
     }, 10_000).unref?.();
   }
 
-  stop(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
-  }
-
   async processToday(): Promise<void> {
-    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
     if (this.lastRunDate === today) return;
-    const month = new Date().getUTCMonth() + 1;
-    const day = new Date().getUTCDate();
+    const month = now.getUTCMonth() + 1;
+    const day = now.getUTCDate();
 
     const rows = await this.db
       .select()
       .from(userBirthdays)
       .where(and(eq(userBirthdays.month, month), eq(userBirthdays.day, day)));
 
+    this.logger.info({ today, month, day, rows: rows.length }, "processing birthdays");
+
     for (const row of rows) {
       if (row.lastWishedDate === today) continue;
       await this.wish(row, today);
     }
     this.lastRunDate = today;
+  }
+
+  stop(): void {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
   }
 
   private async wish(row: UserBirthdayRow, today: string): Promise<void> {
@@ -90,6 +94,7 @@ export class BirthdayService {
       ? `🎉 Happy Birthday, <@${row.userId}>! 🎂 You're ${age} today!`
       : `🎉 Happy Birthday, <@${row.userId}>! 🎂`;
 
+    this.logger.info({ guildId: row.guildId, userId: row.userId, channel: await this.settings.getBirthdayChannel(row.guildId).catch(() => null) }, "wishing birthday");
     try {
       const channelId = await this.settings.getBirthdayChannel(row.guildId);
       if (channelId) {
