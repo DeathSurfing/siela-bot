@@ -92,6 +92,8 @@ class GuildPlayer {
   private startedAt = 0;
   private pausedAt: number | null = null;
   private advancing = false;
+  private restarting = false;
+  private restartTimer: NodeJS.Timeout | null = null;
 
   constructor(
     readonly guildId: string,
@@ -100,9 +102,19 @@ class GuildPlayer {
     private readonly service: MusicService,
   ) {
     this.player.on(AudioPlayerStatus.Idle, () => {
+      // Killing the old PCM stream can make the player emit Idle before the
+      // replacement resource starts. Do not advance the queue for that.
+      if (this.restarting) {
+        this.service.logger.debug({ guildId: this.guildId }, "ignoring idle during stream replacement");
+        return;
+      }
       if (!this.advancing) void this.advance();
     });
+    this.player.on(AudioPlayerStatus.Playing, () => {
+      this.endRestart();
+    });
     this.player.on("error", (error) => {
+      if (this.restarting) return;
       this.service.logger.warn({ err: error, guildId: this.guildId }, "audio player error");
       if (!this.advancing) void this.advance();
     });
@@ -153,6 +165,24 @@ class GuildPlayer {
 
   stopProcess(): void {
     this.killProcesses();
+  }
+
+  private beginRestart(): void {
+    this.restarting = true;
+    if (this.restartTimer) clearTimeout(this.restartTimer);
+    this.restartTimer = setTimeout(() => {
+      this.restarting = false;
+      this.restartTimer = null;
+    }, 15_000);
+    this.restartTimer.unref?.();
+  }
+
+  private endRestart(): void {
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+    this.restarting = false;
   }
 
   private audioFilter(): string | null {
@@ -335,20 +365,26 @@ class GuildPlayer {
   }
 
   async playNow(track: QueueTrack, startAtMs = 0): Promise<void> {
-    this.killProcesses();
-    this.current = track;
-    this.startedAt = Date.now() - Math.max(0, startAtMs);
-    this.pausedAt = null;
-    this.paused = false;
+    this.beginRestart();
+    try {
+      this.killProcesses();
+      this.current = track;
+      this.pausedAt = null;
+      this.paused = false;
 
-    const resource =
-      this.service.backend === "ffmpeg"
-        ? this.startFfmpeg(track, startAtMs)
-        : await this.startMpv(track, startAtMs);
-    this.resource = resource;
-    resource.volume?.setVolume(this.volume / 100);
-    this.player.play(resource);
-    this.service.emit("trackStart", { guildId: this.guildId, track: toInfo(track) });
+      const resource =
+        this.service.backend === "ffmpeg"
+          ? this.startFfmpeg(track, startAtMs)
+          : await this.startMpv(track, startAtMs);
+      this.resource = resource;
+      resource.volume?.setVolume(this.volume / 100);
+      this.startedAt = Date.now() - Math.max(0, startAtMs);
+      this.player.play(resource);
+      this.service.emit("trackStart", { guildId: this.guildId, track: toInfo(track) });
+    } catch (error) {
+      this.endRestart();
+      throw error;
+    }
   }
 
   async advance(): Promise<void> {
@@ -812,7 +848,8 @@ export class MusicService extends EventEmitter {
   async seek(guildId: string, positionMs: number): Promise<void> {
     const gp = this.requirePlayer(guildId);
     if (!gp.current) throw new UserError("Nothing is playing.");
-    const target = Math.max(0, Math.floor(positionMs));
+    const max = gp.current.isStream || gp.current.length <= 0 ? Number.MAX_SAFE_INTEGER : Math.max(0, gp.current.length - 1_000);
+    const target = Math.min(max, Math.max(0, Math.floor(positionMs)));
     await gp.playNow(gp.current, target);
   }
 
