@@ -51,6 +51,21 @@ export class SettingsService {
     return channelId;
   }
 
+  async getConfessionChannel(guildId: string): Promise<string | null> {
+    const row = await this.getGuild(guildId);
+    return row.confessionChannelId ?? null;
+  }
+
+  async setConfessionChannel(guildId: string, channelId: string | null, actorId: string): Promise<string | null> {
+    await this.ensure(guildId);
+    await this.db
+      .update(guildSettings)
+      .set({ confessionChannelId: channelId, updatedAt: new Date(), updatedBy: actorId })
+      .where(eq(guildSettings.guildId, guildId));
+    this.prefixCache.delete(guildId);
+    return channelId;
+  }
+
   async getPrefix(guildId: string): Promise<string> {
     const cached = this.prefixCache.get(guildId);
     if (cached) return cached;

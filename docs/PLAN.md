@@ -2221,6 +2221,11 @@ The big decisions are now confirmed: SoundCloud + optional Spotify, Hugging Face
 | `socialtop [kind]` | `top` | Everyone | Leaderboard. |
 | `optout [kind]` | — | Everyone | Consent. |
 | `optin [kind]` | — | Everyone | Reverse opt-out. |
+| `friendship <user>` | `friend`, `friendlevel` | Everyone | Friendship tier, XP, time together, progress. |
+| `friendshiptop` | `friendtop` | Everyone | Friendship leaderboard. |
+| `activity [user]` | `memberactivity` | Everyone | Message, command, reaction, and voice stats. |
+| `activetop [metric]` | `activitytop` | Everyone | Activity leaderboard. |
+| `confess <text>` | — | Everyone | Anonymous confession to configured wall; rate-limited. |
 
 ### Voice
 
@@ -2249,6 +2254,8 @@ The big decisions are now confirmed: SoundCloud + optional Spotify, Hugging Face
 | `help [command/category]` | Everyone | Components V2 help. |
 | `ping` | Everyone | Gateway/DB/music/translation status. |
 | `privacy` | Everyone | Data summary; `privacy delete` deletes caller data. |
+| `activity [user]` | Everyone | Activity stats (see Social). |
+| `activetop [metric]` | Everyone | Activity leaderboard (see Social). |
 
 ### Admin
 
@@ -2260,6 +2267,7 @@ The big decisions are now confirmed: SoundCloud + optional Spotify, Hugging Face
 | `tempvc setup/config` | Hub/category/limits/template. |
 | `music djrole` / `music maxqueue` | Music policy. |
 | `config` | Read-only config overview. |
+| `confession channel <#channel>` / `clear` / `delete <number>` / `status` | Configure and moderate confession wall. |
 
 ### Music
 

@@ -49,7 +49,10 @@ import { AuditService } from "./features/audit.js";
 import { CounterService } from "./features/counters.js";
 import { WelcomeService } from "./features/welcome.js";
 import { AutoRoleService } from "./features/autorole.js";
+import { ActivityService } from "./features/activity.js";
 import { BiasService } from "./features/bias.js";
+import { ConfessionService } from "./features/confession.js";
+import { FriendshipService } from "./features/friendship.js";
 import { BirthdayService } from "./features/birthday.js";
 import { parseTempVcPanelCustomId, tempVcPanelCustomId, TempVcService } from "./features/tempvc.js";
 
@@ -94,6 +97,9 @@ export class SielaBot {
     this.registry = new CommandRegistry().register(...commands);
     const settings = new SettingsService(this.dbHandle.db);
     const counters = new CounterService(this.dbHandle.db);
+    const friendship = new FriendshipService(this.dbHandle.db, this.logger);
+    const confession = new ConfessionService(this.dbHandle.db, settings, this.client, this.logger);
+    const tempVc = new TempVcService(this.client, this.dbHandle.db, settings, this.logger, this.config.adminRoleIds);
     const music = new MusicService(
       this.client,
       {
@@ -106,17 +112,21 @@ export class SielaBot {
       this.logger,
     );
     this.music = music;
+    const activity = new ActivityService(this.dbHandle.db, friendship, tempVc, music, this.logger);
     this.services = {
       config: this.config,
       registry: this.registry,
       settings,
       audit: new AuditService(this.dbHandle.db, this.logger),
+      activity,
       counters,
       welcome: new WelcomeService(settings, this.logger),
       autoRole: new AutoRoleService(settings, this.logger),
       bias: new BiasService(this.dbHandle.db),
       birthday: new BirthdayService(this.dbHandle.db, settings, this.client, this.logger),
-      tempVc: new TempVcService(this.client, this.dbHandle.db, settings, this.logger, this.config.adminRoleIds),
+      confession,
+      friendship,
+      tempVc,
       privacy: new PrivacyService(counters),
       music,
     };
@@ -157,6 +167,7 @@ export class SielaBot {
       if (guild.id === this.guildId) this.logger.warn({ guildId: guild.id }, "bound guild removed");
     });
     this.client.on(Events.MessageCreate, (message) => void this.onMessage(message));
+    this.client.on(Events.MessageReactionAdd, (reaction, user) => void this.onReactionAdd(reaction, user));
     this.client.on(Events.InteractionCreate, (interaction) => void this.onInteraction(interaction));
     this.client.on(Events.GuildMemberAdd, (member) => void this.onMemberAdd(member));
     this.client.on(Events.GuildMemberRemove, (member) => void this.onMemberRemove(member));
@@ -216,6 +227,9 @@ export class SielaBot {
     await this.services.settings.ensure(guild.id);
     await this.registerCommands(guild);
     await this.services.tempVc.reconcile(guild).catch((error) => this.logger.warn({ err: error }, "temp VC reconcile failed"));
+    await this.services.activity.purgeOld().catch((error) => this.logger.warn({ err: error }, "activity purge failed"));
+    await this.services.activity.reconcile(guild).catch((error) => this.logger.warn({ err: error }, "activity reconcile failed"));
+    this.services.activity.start();
     this.services.birthday.start();
     await this.client.user?.setPresence({
       activities: [{ name: `${guild.name} • ${DEFAULTS.prefix}help`, type: ActivityType.Watching }],
@@ -234,6 +248,7 @@ export class SielaBot {
     try {
       if (message.author.bot || !message.inGuild() || message.webhookId) return;
       if (!this.guildId || message.guild.id !== this.guildId) return;
+      this.services.activity.recordMessage(message.guild.id, message.author.id);
       const prefix = await this.services.settings.getPrefix(message.guild.id);
       const parsed = parsePrefixCommand(message.content, prefix, this.client.user?.id ?? "");
       if (!parsed) return;
@@ -262,8 +277,25 @@ export class SielaBot {
       const allowed = await this.guard(command, ctx);
       if (!allowed) return;
       await command.execute(ctx);
+      this.services.activity.recordCommand(message.guild.id, message.author.id);
     } catch (error) {
       await this.handleCommandError(message, error);
+    }
+  }
+
+  private async onReactionAdd(reaction: any, user: any): Promise<void> {
+    try {
+      if (user?.bot) return;
+      let guildId: string | null = null;
+      if (reaction.message?.guildId) guildId = reaction.message.guildId;
+      else if (reaction.partial) {
+        const fetched = await reaction.fetch().catch(() => null);
+        guildId = fetched?.message?.guildId ?? null;
+      }
+      if (!guildId || guildId !== this.guildId) return;
+      this.services.activity.recordReaction(guildId, user.id);
+    } catch {
+      // ignore reaction tracking failures
     }
   }
 
@@ -327,6 +359,7 @@ export class SielaBot {
     const allowed = await this.guard(command, ctx);
     if (!allowed) return;
     await command.execute(ctx);
+    this.services.activity.recordCommand(interaction.guild.id, interaction.user.id);
   }
 
   private async onHelpSelect(interaction: StringSelectMenuInteraction): Promise<void> {
@@ -759,6 +792,9 @@ export class SielaBot {
 
   private async onVoiceState(oldState: VoiceState, newState: VoiceState): Promise<void> {
     if (oldState.guild.id !== this.guildId) return;
+    await this.services.activity.handleVoiceState(oldState, newState).catch((error) => {
+      this.logger.warn({ err: error }, "activity voice handling failed");
+    });
     await this.services.tempVc.handleVoiceState(oldState, newState).catch((error) => {
       this.logger.warn({ err: error }, "voice state handling failed");
     });
@@ -786,6 +822,7 @@ export class SielaBot {
     this.stopping = true;
     await Promise.allSettled([this.controlServer.stop(), this.healthServer.stop()]);
     if (this.music) await this.music.shutdown().catch(() => undefined);
+    this.services.activity.stop();
     this.services.birthday.stop();
     this.client.destroy();
     await this.dbHandle.close();

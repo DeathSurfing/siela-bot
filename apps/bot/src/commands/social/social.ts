@@ -46,6 +46,7 @@ function socialCommand(kind: InteractionKind): Command {
       }
 
       const count = await ctx.services.counters.increment(ctx.guild.id, ctx.author.id, target.id, kind);
+      await ctx.services.friendship.addXp(ctx.guild.id, ctx.author.id, target.id, 1).catch(() => undefined);
       const gif = await fetchInteractionGif(kind);
       const embed = new EmbedBuilder()
         .setColor(COLORS.social)

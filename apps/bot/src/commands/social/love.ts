@@ -46,6 +46,7 @@ export const loveCalcCommand: Command = {
     if (first.id === second.id) throw new UserError("Pick two different members.");
 
     const result = loveResult(ctx.guild.id, first.id, second.id);
+    await ctx.services.friendship.addXp(ctx.guild.id, first.id, second.id, 1).catch(() => undefined);
     const embed = new EmbedBuilder()
       .setColor(result.score >= 80 ? 0xff4f8b : COLORS.social)
       .setTitle(`💘 Love Calculator — ${result.score}%`)

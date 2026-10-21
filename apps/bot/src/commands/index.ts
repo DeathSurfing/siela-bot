@@ -6,8 +6,12 @@ import { prefixCommand } from "./admin/prefix.js";
 import { welcomeCommand } from "./admin/welcome.js";
 import { autoRoleCommand } from "./admin/autorole.js";
 import { birthdayCommand } from "./utility/birthday.js";
+import { activityCommand, activityTopCommand } from "./utility/activity.js";
 import { biasCommand } from "./social/bias.js";
+import { confessCommand } from "./social/confess.js";
+import { friendshipCommand, friendshipTopCommand } from "./social/friendship.js";
 import { tempVcCommand } from "./admin/tempvc.js";
+import { confessionCommand } from "./admin/confession.js";
 import { joinToCreateCommand } from "./admin/jointocreate.js";
 import { musicConfigCommand } from "./admin/musicconfig.js";
 import { configCommand } from "./admin/config.js";
@@ -31,16 +35,22 @@ export const commands: Command[] = [
   pingCommand,
   privacyCommand,
   birthdayCommand,
+  activityCommand,
+  activityTopCommand,
   prefixCommand,
   welcomeCommand,
   autoRoleCommand,
   tempVcCommand,
+  confessionCommand,
   joinToCreateCommand,
   musicConfigCommand,
   configCommand,
   vcCommand,
   loveCalcCommand,
   biasCommand,
+  confessCommand,
+  friendshipCommand,
+  friendshipTopCommand,
   slapCommand,
   kissCommand,
   hugCommand,

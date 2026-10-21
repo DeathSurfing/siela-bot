@@ -18,6 +18,8 @@ export const guildSettings = pgTable("guild_settings", {
   prefix: varchar("prefix", { length: 5 }).notNull().default("!"),
   locale: varchar("locale", { length: 10 }).notNull().default("en"),
   birthdayChannelId: text("birthday_channel_id"),
+  confessionChannelId: text("confession_channel_id"),
+  confessionCounter: integer("confession_counter").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   updatedBy: text("updated_by"),
@@ -169,6 +171,58 @@ export const userBiases = pgTable(
   (table) => [primaryKey({ columns: [table.guildId, table.userId] })],
 );
 
+export const friendshipLevels = pgTable(
+  "friendship_levels",
+  {
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    userA: text("user_a").notNull(),
+    userB: text("user_b").notNull(),
+    xp: integer("xp").notNull().default(0),
+    timeTogetherSeconds: integer("time_together_seconds").notNull().default(0),
+    lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.guildId, table.userA, table.userB] })],
+);
+
+export const memberActivity = pgTable(
+  "member_activity",
+  {
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    messages: integer("messages").notNull().default(0),
+    commands: integer("commands").notNull().default(0),
+    reactions: integer("reactions").notNull().default(0),
+    voiceSeconds: integer("voice_seconds").notNull().default(0),
+    lastActiveAt: timestamp("last_active_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.guildId, table.userId] })],
+);
+
+export const confessions = pgTable(
+  "confessions",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    channelId: text("channel_id").notNull(),
+    authorId: text("author_id").notNull(),
+    number: integer("number").notNull(),
+    content: text("content").notNull(),
+    messageId: text("message_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedBy: text("deleted_by"),
+  },
+  (table) => [uniqueIndex("confessions_guild_number_uq").on(table.guildId, table.number)],
+);
+
 export const auditLog = pgTable(
   "audit_log",
   {
@@ -200,5 +254,8 @@ export type CounterRow = typeof interactionCounters.$inferSelect;
 export type UserBiasRow = typeof userBiases.$inferSelect;
 export type OptoutRow = typeof interactionOptouts.$inferSelect;
 export type UserBirthdayRow = typeof userBirthdays.$inferSelect;
+export type FriendshipLevelRow = typeof friendshipLevels.$inferSelect;
+export type MemberActivityRow = typeof memberActivity.$inferSelect;
+export type ConfessionRow = typeof confessions.$inferSelect;
 export type TempVoiceChannelRow = typeof tempVoiceChannels.$inferSelect;
 export type AuditRow = typeof auditLog.$inferSelect;
