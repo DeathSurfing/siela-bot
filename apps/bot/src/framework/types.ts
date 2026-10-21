@@ -24,6 +24,7 @@ import type { AuditService } from "../features/audit.js";
 import type { CounterService } from "../features/counters.js";
 import type { WelcomeService } from "../features/welcome.js";
 import type { AutoRoleService } from "../features/autorole.js";
+import type { BiasService } from "../features/bias.js";
 import type { TempVcService } from "../features/tempvc.js";
 import type { MusicService } from "../features/music.js";
 import type { PrivacyService } from "../features/privacy.js";
@@ -37,6 +38,7 @@ export interface Services {
   counters: CounterService;
   welcome: WelcomeService;
   autoRole: AutoRoleService;
+  bias: BiasService;
   tempVc: TempVcService;
   privacy: PrivacyService;
   music: MusicService | null;

@@ -49,6 +49,7 @@ import { AuditService } from "./features/audit.js";
 import { CounterService } from "./features/counters.js";
 import { WelcomeService } from "./features/welcome.js";
 import { AutoRoleService } from "./features/autorole.js";
+import { BiasService } from "./features/bias.js";
 import { parseTempVcPanelCustomId, tempVcPanelCustomId, TempVcService } from "./features/tempvc.js";
 
 import { MusicService, type MusicFilterPreset } from "./features/music.js";
@@ -112,6 +113,7 @@ export class SielaBot {
       counters,
       welcome: new WelcomeService(settings, this.logger),
       autoRole: new AutoRoleService(settings, this.logger),
+      bias: new BiasService(this.dbHandle.db),
       tempVc: new TempVcService(this.client, this.dbHandle.db, settings, this.logger, this.config.adminRoleIds),
       privacy: new PrivacyService(counters),
       music,

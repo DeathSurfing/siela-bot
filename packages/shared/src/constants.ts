@@ -31,6 +31,9 @@ export const CATEGORY_EMOJI: Record<CommandCategory, string> = {
   admin: "🛡️",
 };
 
+export const BTS_MEMBERS = ["RM", "Jin", "Suga", "J-Hope", "Jimin", "V", "Jungkook"] as const;
+export type BtsMember = (typeof BTS_MEMBERS)[number];
+
 export const INTERACTION_KINDS: InteractionKind[] = ["slap", "kiss", "hug", "chodu", "wuzu"];
 
 export const INTERACTION_META: Record<

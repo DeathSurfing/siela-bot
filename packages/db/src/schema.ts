@@ -137,6 +137,20 @@ export const tempVoiceChannels = pgTable(
   ],
 );
 
+export const userBiases = pgTable(
+  "user_biases",
+  {
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    bias: varchar("bias", { length: 32 }).notNull(),
+    biasWrecker: varchar("bias_wrecker", { length: 32 }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.guildId, table.userId] })],
+);
+
 export const auditLog = pgTable(
   "audit_log",
   {
@@ -165,6 +179,7 @@ export type AutoRoleSettingsRow = typeof autoroleSettings.$inferSelect;
 export type TempVcSettingsRow = typeof tempvcSettings.$inferSelect;
 export type MusicSettingsRow = typeof musicSettings.$inferSelect;
 export type CounterRow = typeof interactionCounters.$inferSelect;
+export type UserBiasRow = typeof userBiases.$inferSelect;
 export type OptoutRow = typeof interactionOptouts.$inferSelect;
 export type TempVoiceChannelRow = typeof tempVoiceChannels.$inferSelect;
 export type AuditRow = typeof auditLog.$inferSelect;
