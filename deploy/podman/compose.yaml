@@ -91,7 +91,7 @@ services:
       context: ./tts
       dockerfile: Containerfile.tts
     container_name: siela-tts
-    networks: [data]
+    networks: [data, edge]
     volumes:
       - /opt/nvidia-libs:/opt/nvidia-libs:ro
     environment:
