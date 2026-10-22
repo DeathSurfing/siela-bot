@@ -22,7 +22,7 @@ export class DeluluService {
   ) {}
 
   async generate(bias: string): Promise<string> {
-    const prompt = `You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Address the reader directly as 'you'. Do not include quotes around the whole response. /no_think`;
+    const prompt = `You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Address the reader directly as 'you'. Think carefully and at length before answering, but output only the final scenario. Do not include quotes around the whole response.`;
 
     if (this.llmUrl) {
       try {
@@ -32,10 +32,10 @@ export class DeluluService {
           body: JSON.stringify({
             model: "default",
             messages: [{ role: "user", content: prompt }],
-            max_tokens: 140,
+            max_tokens: 700,
             temperature: 0.95,
           }),
-          signal: AbortSignal.timeout(30_000),
+          signal: AbortSignal.timeout(120_000),
         });
         if (response.ok) {
           const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
@@ -99,7 +99,7 @@ export class DeluluService {
 
     // Public no-token fallback so /delulu works without HF_TOKEN.
     try {
-      const prompt = `You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Address the reader directly as 'you'. Do not include quotes around the whole response. /no_think`;
+      const prompt = `You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Address the reader directly as 'you'. Think carefully and at length before answering, but output only the final scenario. Do not include quotes around the whole response.`;
       const response = await fetch(`https://text.pollinations.ai/${encodeURIComponent(prompt)}`, {
         signal: AbortSignal.timeout(20_000),
       });
