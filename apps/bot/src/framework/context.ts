@@ -59,6 +59,7 @@ export async function createPrefixContext(options: {
         content: data.content,
         embeds: data.embeds,
         components: data.components,
+        files: data.files,
         allowedMentions: data.allowedMentions,
       });
       return lastReply;
@@ -112,6 +113,7 @@ export async function createSlashContext(options: {
           content: data.content,
           embeds: data.embeds,
           components: data.components,
+          files: data.files,
           allowedMentions: data.allowedMentions,
         });
       }
@@ -120,6 +122,7 @@ export async function createSlashContext(options: {
           content: data.content,
           embeds: data.embeds,
           components: data.components,
+          files: data.files,
           ephemeral: data.ephemeral,
           allowedMentions: data.allowedMentions,
         });
@@ -148,6 +151,7 @@ export async function createSlashContext(options: {
           content: data.content,
           embeds: data.embeds,
           components: data.components,
+          files: data.files,
           allowedMentions: data.allowedMentions,
         });
       }
@@ -159,6 +163,7 @@ export async function createSlashContext(options: {
         content: data.content,
         embeds: data.embeds,
         components: data.components,
+        files: data.files,
         ephemeral: data.ephemeral,
         allowedMentions: data.allowedMentions,
       });
