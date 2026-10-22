@@ -167,7 +167,7 @@ export class TambolaGame {
   hostId: string;
   readonly maxPlayers: number;
   readonly intervalSeconds: number;
-  readonly autoMark: boolean;
+  autoMark: boolean;
   readonly players = new Map<string, TambolaPlayer>();
   readonly called: number[] = [];
   readonly calledSet = new Set<number>();
@@ -187,7 +187,7 @@ export class TambolaGame {
     this.hostId = options.hostId;
     this.maxPlayers = Math.max(2, Math.min(options.maxPlayers ?? MAX_PLAYERS, MAX_PLAYERS));
     this.intervalSeconds = Math.max(5, Math.min(options.intervalSeconds ?? 12, 20));
-    this.autoMark = Boolean(options.autoMark);
+    this.autoMark = options.autoMark ?? true;
     this.rng = options.rng ?? defaultRng;
   }
 
@@ -330,6 +330,11 @@ export class TambolaGame {
       this.endedAt = Date.now();
     }
     return { ok: true, pattern, userId };
+  }
+
+  setAutoMark(value: boolean): void {
+    if (this.status !== "lobby") return;
+    this.autoMark = value;
   }
 
   transferHost(userId: string): boolean {

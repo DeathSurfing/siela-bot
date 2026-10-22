@@ -3,6 +3,7 @@ import {
   ChannelType,
   MessageFlags,
   type ButtonInteraction,
+  type ChannelSelectMenuInteraction,
   type Client,
   type Guild,
   type GuildBasedChannel,
@@ -26,6 +27,7 @@ import {
   buildTambolaGamePayload,
   buildTambolaLobbyPayload,
   buildTambolaRulesPayload,
+  buildTambolaSettingsPayload,
   buildTambolaTicketPayload,
 } from "../tambola-ui.js";
 import { buildCallPhrase } from "./calls.js";
@@ -33,12 +35,14 @@ import { CLAIM_LABELS, CLAIM_PATTERNS, TambolaGame, type ClaimPattern, type Tamb
 import { TambolaVoice } from "./voice.js";
 
 const LOBBY_TIMEOUT_MS = 5 * 60 * 1000;
-const CALL_INTERVAL_MS = 8_000;
 const FINAL_CLAIM_WINDOW_MS = 30_000;
 const GAME_TIMEOUT_MS = 45 * 60 * 1000;
 const MANUAL_CALL_THROTTLE_MS = 2_000;
 
-type ComponentInteraction = ButtonInteraction | StringSelectMenuInteraction;
+type ComponentInteraction =
+  | ButtonInteraction
+  | StringSelectMenuInteraction
+  | ChannelSelectMenuInteraction;
 
 interface TambolaSession {
   game: TambolaGame;
@@ -137,7 +141,7 @@ export class TambolaService {
       voice: null,
       voiceTask: null,
       voiceChannelId: options.voiceChannelId,
-      voiceNote: null,
+      voiceNote: options.voiceChannelId ? "Connecting voice…" : "Text only",
       lastGenericIndex: null,
       lastManualCallAt: 0,
       calling: false,
@@ -244,6 +248,19 @@ export class TambolaService {
     if (session.voice) void session.voice.speak("Game resumed.");
   }
 
+  settingsPayload(guildId: string, member: GuildMember): ReplyPayload {
+    const session = this.require(guildId);
+    this.assertHost(session, member);
+    if (session.game.status !== "lobby") {
+      throw new UserError("Settings can only be changed in the lobby.");
+    }
+    return buildTambolaSettingsPayload(
+      session.game,
+      session.voiceChannelId,
+      session.voiceNote ?? (session.voice?.connected ? "Ready" : undefined),
+    );
+  }
+
   promptEnd(guildId: string, member: GuildMember): ReplyPayload {
     const session = this.require(guildId);
     this.assertControl(session, member);
@@ -289,6 +306,92 @@ export class TambolaService {
     try {
       if (action === "rules") {
         await this.privateReply(interaction, buildTambolaRulesPayload());
+        return;
+      }
+      if (action === "settings") {
+        if (!member) throw new UserError("Open settings from the server lobby.");
+        await this.privateReply(interaction, this.settingsPayload(session.game.guildId, member));
+        return;
+      }
+      if (action === "toggleautomark") {
+        if (!member) throw new UserError("Change settings from the server lobby.");
+        this.assertHost(session, member);
+        if (session.game.status !== "lobby") throw new UserError("Settings can only be changed in the lobby.");
+        session.game.setAutoMark(!session.game.autoMark);
+        await this.updateCard(session);
+        void this.refreshPlayerTickets(session);
+        await interaction.update(
+          messageOptions(
+            buildTambolaSettingsPayload(
+              session.game,
+              session.voiceChannelId,
+              session.voiceNote ?? (session.voice?.connected ? "Ready" : undefined),
+            ),
+            false,
+          ),
+        );
+        return;
+      }
+      if (action === "novoice") {
+        if (!member) throw new UserError("Change settings from the server lobby.");
+        this.assertHost(session, member);
+        if (session.game.status !== "lobby") throw new UserError("Settings can only be changed in the lobby.");
+        await this.clearVoice(session);
+        session.voiceChannelId = null;
+        session.voiceNote = "Text only";
+        await this.updateCard(session);
+        await interaction.update(
+          messageOptions(
+            buildTambolaSettingsPayload(
+              session.game,
+              session.voiceChannelId,
+              session.voiceNote ?? (session.voice?.connected ? "Ready" : undefined),
+            ),
+            false,
+          ),
+        );
+        return;
+      }
+      if (action === "voice") {
+        if (!member) throw new UserError("Change settings from the server lobby.");
+        this.assertHost(session, member);
+        if (session.game.status !== "lobby") throw new UserError("Settings can only be changed in the lobby.");
+        if (!interaction.isChannelSelectMenu()) throw new UserError("Choose a voice channel.");
+        const channelId = interaction.values[0];
+        if (!channelId) throw new UserError("Choose a voice channel.");
+        const channel = await interaction.guild?.channels.fetch(channelId).catch(() => null);
+        if (!channel || channel.type !== ChannelType.GuildVoice) {
+          throw new UserError("Choose a voice channel.");
+        }
+        if (channelId === session.voiceChannelId && session.voice?.connected) {
+          await interaction.update(
+            messageOptions(
+              buildTambolaSettingsPayload(
+                session.game,
+                session.voiceChannelId,
+                session.voiceNote ?? "Ready",
+              ),
+              false,
+            ),
+          );
+          return;
+        }
+        await interaction.deferUpdate();
+        await this.clearVoice(session);
+        session.voiceChannelId = channelId;
+        session.voiceNote = null;
+        await this.ensureVoice(session);
+        await this.updateCard(session);
+        await interaction.editReply(
+          messageOptions(
+            buildTambolaSettingsPayload(
+              session.game,
+              session.voiceChannelId,
+              session.voiceNote ?? (session.voice?.connected ? "Ready" : undefined),
+            ),
+            false,
+          ),
+        );
         return;
       }
       if (action === "join") {
@@ -499,6 +602,16 @@ export class TambolaService {
 
   private async connectVoice(session: TambolaSession): Promise<boolean> {
     const guildId = session.game.guildId;
+    if (!session.voiceChannelId) {
+      session.voiceNote = "Text only";
+      this.logger.info({ guildId }, "tambola voice not configured; running text-only");
+      return false;
+    }
+    if (session.voice?.connected) {
+      session.voiceNote = null;
+      return true;
+    }
+    session.voiceNote = "Connecting voice…";
     if (this.music.isConnected(guildId)) {
       try {
         await this.music.disconnect(guildId);
@@ -541,7 +654,11 @@ export class TambolaService {
       session.voiceNote = "Text only · TTS unavailable";
       return false;
     }
-    if (this.byId.get(session.game.id) !== session || session.game.status === "cancelled") {
+    if (
+      this.byId.get(session.game.id) !== session ||
+      session.game.status === "cancelled" ||
+      session.voiceChannelId !== channel.id
+    ) {
       voice.leave();
       return false;
     }
@@ -582,7 +699,10 @@ export class TambolaService {
   private scheduleCall(session: TambolaSession): void {
     this.clearTimers(session, "call");
     if (session.game.status !== "active") return;
-    session.callTimer = setTimeout(() => void this.callNext(session), CALL_INTERVAL_MS);
+    session.callTimer = setTimeout(
+      () => void this.callNext(session),
+      session.game.intervalSeconds * 1000,
+    );
   }
 
   private scheduleFinalize(session: TambolaSession): void {
@@ -652,7 +772,7 @@ export class TambolaService {
   private cardPayload(session: TambolaSession): ReplyPayload {
     const game = session.game;
     if (game.status === "lobby") {
-      return buildTambolaLobbyPayload(game, session.voiceChannelId);
+      return buildTambolaLobbyPayload(game, session.voiceChannelId, session.voiceNote ?? undefined);
     }
     if (game.status === "finished" || game.status === "cancelled") {
       return buildTambolaFinalPayload(game);
@@ -679,6 +799,20 @@ export class TambolaService {
     }
   }
 
+  private async refreshPlayerTickets(session: TambolaSession): Promise<void> {
+    for (const player of session.game.players.values()) {
+      const user = await this.client.users.fetch(player.userId).catch(() => null);
+      if (!user) continue;
+      await this.sendTicketDm(user, buildTambolaTicketPayload(session.game, player));
+    }
+  }
+
+  private async clearVoice(session: TambolaSession): Promise<void> {
+    if (session.voiceTask) await session.voiceTask.catch(() => false);
+    session.voice?.leave();
+    session.voice = null;
+  }
+
   private async sendTicketDm(user: { send(options: OutgoingMessage): Promise<unknown> }, payload: ReplyPayload): Promise<boolean> {
     try {
       await user.send(messageOptions(payload, false));
@@ -687,6 +821,10 @@ export class TambolaService {
       this.logger.debug({ err: error }, "tambola ticket DM failed");
       return false;
     }
+  }
+
+  private assertHost(session: TambolaSession, member: GuildMember): void {
+    if (member.id !== session.game.hostId) throw new UserError("Only the host can change Tambola settings.");
   }
 
   private assertControl(session: TambolaSession, member: GuildMember): void {

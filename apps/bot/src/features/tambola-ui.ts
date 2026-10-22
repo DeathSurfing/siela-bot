@@ -2,6 +2,8 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ChannelSelectMenuBuilder,
+  ChannelType,
   ContainerBuilder,
   MessageFlags,
   StringSelectMenuBuilder,
@@ -64,7 +66,11 @@ function voiceLabel(game: TambolaGame, voiceChannelId: string | null): string {
   return `Voice · <#${voiceChannelId}>`;
 }
 
-export function buildTambolaLobbyPayload(game: TambolaGame, voiceChannelId: string | null): ReplyPayload {
+export function buildTambolaLobbyPayload(
+  game: TambolaGame,
+  voiceChannelId: string | null,
+  voiceNote?: string,
+): ReplyPayload {
   const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
   container.addTextDisplayComponents(text(`## ${ICONS.music} Tambola · Lobby`));
   container.addTextDisplayComponents(text(`Host · <@${game.hostId}>`));
@@ -74,6 +80,9 @@ export function buildTambolaLobbyPayload(game: TambolaGame, voiceChannelId: stri
     ),
   );
   container.addTextDisplayComponents(text(voiceLabel(game, voiceChannelId)));
+  container.addTextDisplayComponents(
+    text(`**TTS** · ${voiceNote ?? (voiceChannelId ? "Ready" : "Text only")}`),
+  );
   container.addSeparatorComponents(separator());
   container.addTextDisplayComponents(text(playerList(game)));
   if (voiceChannelId) {
@@ -99,10 +108,64 @@ export function buildTambolaLobbyPayload(game: TambolaGame, voiceChannelId: stri
         .setStyle(ButtonStyle.Primary)
         .setDisabled(game.players.size < 2),
       new ButtonBuilder()
+        .setCustomId(id(game, "settings"))
+        .setLabel("Settings")
+        .setEmoji(EMOJI.filter)
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
         .setCustomId(id(game, "rules"))
         .setLabel("Rules")
         .setStyle(ButtonStyle.Secondary),
     ),
+  );
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
+}
+
+export function buildTambolaSettingsPayload(
+  game: TambolaGame,
+  voiceChannelId: string | null,
+  voiceNote?: string,
+): ReplyPayload {
+  const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+  container.addTextDisplayComponents(text(`## ${ICONS.music} Tambola settings`));
+  container.addTextDisplayComponents(
+    text(`**Auto-marking** · ${game.autoMark ? "On" : "Off"}`),
+  );
+  container.addTextDisplayComponents(
+    text(`**Voice** · ${voiceChannelId ? `<#${voiceChannelId}>` : "Text only"}`),
+  );
+  container.addTextDisplayComponents(
+    text(`**TTS** · ${voiceNote ?? (voiceChannelId ? "Ready" : "Text only")}`),
+  );
+  container.addTextDisplayComponents(
+    text(`**Calls** · every ${game.intervalSeconds} seconds`),
+  );
+  container.addTextDisplayComponents(
+    text("-# Lobby only. Players can press Refresh on their ticket after changing auto-marking."),
+  );
+  container.addSeparatorComponents(separator());
+  container.addActionRowComponents(
+    actionRow(
+      new ButtonBuilder()
+        .setCustomId(id(game, "toggleautomark"))
+        .setLabel(`Auto-mark: ${game.autoMark ? "On" : "Off"}`)
+        .setStyle(game.autoMark ? ButtonStyle.Success : ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(id(game, "novoice"))
+        .setLabel("Text only")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(!voiceChannelId),
+    ),
+  );
+  const select = new ChannelSelectMenuBuilder()
+    .setCustomId(id(game, "voice"))
+    .setPlaceholder("Choose TTS voice channel")
+    .setChannelTypes(ChannelType.GuildVoice)
+    .setMinValues(1)
+    .setMaxValues(1);
+  if (voiceChannelId) select.setDefaultChannels(voiceChannelId);
+  container.addActionRowComponents(
+    new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(select),
   );
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }

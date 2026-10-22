@@ -124,6 +124,7 @@ export class TambolaVoice {
         this.player.stop(true);
       }
       this.player.play(createAudioResource(createReadStream(file), { inputType: StreamType.Arbitrary }));
+      this.logger.debug({ text, status: this.player.state.status }, "tambola TTS playback started");
     } catch (error) {
       this.logger.warn({ err: error }, "tambola TTS playback failed");
     }
@@ -180,6 +181,7 @@ export class TambolaVoice {
       }
       renameSync(temp, file);
       this.synthesized += 1;
+      if (this.synthesized === 1) this.logger.info({ text }, "tambola TTS first clip ready");
       if (this.synthesized % 20 === 0) this.pruneCache();
       return file;
     } catch (error) {

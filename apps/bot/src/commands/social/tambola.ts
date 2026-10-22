@@ -15,7 +15,7 @@ async function hostOptions(ctx: CommandContext): Promise<{
 }> {
   let maxPlayers = 20;
   let intervalSeconds = 12;
-  let autoMark = false;
+  let autoMark = true;
   let voiceChannelId: string | null = null;
   for (const raw of ctx.args.slice(1)) {
     const lower = raw.toLowerCase();
@@ -100,7 +100,7 @@ export const tambolaCommand: Command = {
         .addBooleanOption((option) =>
           option
             .setName("auto_mark")
-            .setDescription("Automatically mark called numbers")
+            .setDescription("Automatically mark called numbers (default: on)")
             .setRequired(false),
         ),
     )
@@ -113,6 +113,7 @@ export const tambolaCommand: Command = {
     .addSubcommand((sub) => sub.setName("resume").setDescription("Resume auto-calls"))
     .addSubcommand((sub) => sub.setName("end").setDescription("End the Tambola game"))
     .addSubcommand((sub) => sub.setName("status").setDescription("Show the current game"))
+    .addSubcommand((sub) => sub.setName("settings").setDescription("Change Tambola lobby settings"))
     .addSubcommand((sub) => sub.setName("rules").setDescription("Show Tambola rules")),
   async execute(ctx) {
     const tambola = ctx.services.tambola;
@@ -212,11 +213,16 @@ export const tambolaCommand: Command = {
       return;
     }
 
+    if (action === "settings") {
+      await ctx.reply(privateReply(ctx, tambola.settingsPayload(ctx.guild.id, ctx.member)));
+      return;
+    }
+
     if (action === "rules") {
       await ctx.reply(tambola.rules());
       return;
     }
 
-    throw new UserError("Use `tambola host`, `join`, `ticket`, `start`, `call`, `pause`, `resume`, `end`, `status`, or `rules`.");
+    throw new UserError("Use `tambola host`, `join`, `ticket`, `start`, `call`, `pause`, `resume`, `end`, `status`, `settings`, or `rules`.");
   },
 };

@@ -340,7 +340,9 @@ export class SielaBot {
         return;
       }
       if (
-        (interaction.isButton() || interaction.isStringSelectMenu()) &&
+        (interaction.isButton() ||
+          interaction.isStringSelectMenu() ||
+          interaction.isChannelSelectMenu()) &&
         interaction.customId.startsWith("tambola:")
       ) {
         await this.services.tambola.handleInteraction(interaction);

@@ -116,6 +116,7 @@ describe("TambolaService", () => {
       channel: channel as never,
       host: host as never,
       maxPlayers: 20,
+      autoMark: false,
       voiceChannelId: null,
     });
     expect(channel.send).toHaveBeenCalledTimes(1);
@@ -138,6 +139,29 @@ describe("TambolaService", () => {
     service.stop();
   });
 
+  it("toggles auto-marking from the lobby settings", async () => {
+    const { service, channel, guild } = createService();
+    const host = fakeMember("host", "Host");
+    const session = await service.host({
+      guild: guild as never,
+      channel: channel as never,
+      host: host as never,
+      maxPlayers: 20,
+      autoMark: false,
+      voiceChannelId: null,
+    });
+    await service.join("guild", host as never);
+    const interaction = fakeInteraction(
+      `tambola:toggleautomark:${session.game.id}`,
+      "host",
+      { guild },
+    );
+    await service.handleInteraction(interaction as never);
+    expect(session.game.autoMark).toBe(true);
+    expect(interaction.getState().updated).not.toBeNull();
+    service.stop();
+  });
+
   it("accepts a DM mark interaction", async () => {
     const { service, channel, guild } = createService();
     const host = fakeMember("host", "Host");
@@ -147,6 +171,7 @@ describe("TambolaService", () => {
       channel: channel as never,
       host: host as never,
       maxPlayers: 20,
+      autoMark: false,
       voiceChannelId: null,
     });
     await service.join("guild", player as never);
@@ -178,6 +203,7 @@ describe("TambolaService", () => {
       channel: channel as never,
       host: host as never,
       maxPlayers: 20,
+      autoMark: false,
       voiceChannelId: null,
     });
     await service.join("guild", player as never);

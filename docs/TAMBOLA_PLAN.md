@@ -4,7 +4,7 @@
 
 | Decision | Choice |
 |---|---|
-| Marking | Players mark their own numbers by default; the host can enable auto-marking |
+| Marking | Auto-marking is on by default; the host can turn it off in settings |
 | Active games | One per guild |
 | Winning patterns | Top Line, Middle Line, Bottom Line, Full House |
 | Stats/leaderboard | Deferred to a later phase |
@@ -76,9 +76,11 @@ Add a 90-ball Tambola/Housie game mode that runs inside Discord:
 - Manual calls are allowed while paused.
 - Manual calls are throttled to one every 2 seconds.
 
-### Manual marking
+### Marking
 
-- Players mark their own numbers.
+- Auto-marking is on by default. When enabled, called numbers are automatically marked on every ticket and players only need to claim.
+- The host can turn auto-marking off in the lobby settings.
+- When auto-marking is off, players mark their own numbers.
 - A player may only mark a number that:
   - Exists on their ticket.
   - Has already been called.
@@ -626,7 +628,7 @@ Stats and leaderboards are a later phase.
 - Max players: 20
 - Min players: 2
 - Auto-call interval: 12 seconds; fast 8s and slow 15s options
-- Auto-marking: off by default; the host can enable it
+- Auto-marking: on by default; the host can turn it off in settings
 - Lobby timeout: 5 minutes
 - Game timeout: 45 minutes
 - Manual call throttle: 2 seconds
