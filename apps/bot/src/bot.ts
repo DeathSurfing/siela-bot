@@ -405,7 +405,12 @@ export class SielaBot {
     });
     const allowed = await this.guard(command, ctx);
     if (!allowed) return;
-    await command.execute(ctx);
+    try {
+      await command.execute(ctx);
+    } catch (error) {
+      await this.handleCommandError(ctx, error);
+      return;
+    }
     this.services.activity.recordCommand(interaction.guild.id, interaction.user.id);
   }
 
