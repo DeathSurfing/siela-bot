@@ -43,6 +43,7 @@ export const EMOJI = {
   unlock: "🔓",
   rename: "✏️",
   limit: "👥",
+  lyrics: "📜",
 } as const;
 
 export const ICONS = {
@@ -75,6 +76,7 @@ export const ICONS = {
   kick: "−",
   transfer: "⇄",
   delete: "✕",
+  lyrics: "♬",
 } as const;
 
 export function text(content: string): TextDisplayBuilder {

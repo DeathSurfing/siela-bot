@@ -81,6 +81,11 @@ export function buildMusicPayload(
         .setEmoji(state.paused ? EMOJI.play : EMOJI.pause)
         .setStyle(state.paused ? ButtonStyle.Success : ButtonStyle.Secondary),
       new ButtonBuilder()
+        .setCustomId(buttonId(guildId, "lyrics"))
+        .setLabel("Lyrics")
+        .setEmoji(EMOJI.lyrics)
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
         .setCustomId(buttonId(guildId, "skip"))
         .setLabel("Skip")
         .setEmoji(EMOJI.skip)

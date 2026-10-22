@@ -2271,9 +2271,9 @@ The big decisions are now confirmed: SoundCloud + optional Spotify, Hugging Face
 
 ### Music
 
-`join`, `play`, `pause`, `resume`, `skip`, `stop`, `queue`, `nowplaying`, `volume`, `seek`, `loop`, `shuffle`, `remove`, `clear`, `clearqueue`, `move`, `jump`, `disconnect`, `autoplay`, `filters`.
+`join`, `play`, `pause`, `resume`, `skip`, `stop`, `queue`, `nowplaying`, `lyrics`, `volume`, `seek`, `loop`, `shuffle`, `remove`, `clear`, `clearqueue`, `move`, `jump`, `disconnect`, `autoplay`, `filters`.
 
-Aliases: `j`/`summon` for `join`; `p`, `s`, `q`; `np`/`current`/`currentlyplaying`/`cp` for `nowplaying`; `cq`/`emptyqueue` for `clearqueue`; `dc`.
+Aliases: `j`/`summon` for `join`; `p`, `s`, `q`; `np`/`current`/`currentlyplaying`/`cp` for `nowplaying`; `lyric`/`lrc` for `lyrics`; `cq`/`emptyqueue` for `clearqueue`; `dc`.
 
 ---
 

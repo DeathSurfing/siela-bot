@@ -64,6 +64,8 @@ import { parseTempVcPanelCustomId, tempVcPanelCustomId, TempVcService } from "./
 
 import { MusicService, type MusicFilterPreset } from "./features/music.js";
 import { buildMusicPayload } from "./features/music-ui.js";
+import { LyricsService } from "./features/lyrics.js";
+import { buildLyricsPayload } from "./features/lyrics-ui.js";
 import { EMOJI, card, confirmCard } from "./features/ui.js";
 import { PrivacyService } from "./features/privacy.js";
 import { buildHelpPayload } from "./features/help.js";
@@ -109,6 +111,7 @@ export class SielaBot {
     const counters = new CounterService(this.dbHandle.db);
     this.valkey = new ValkeyService(this.config.VALKEY_URL ?? null, this.logger);
     const friendship = new FriendshipService(this.dbHandle.db, this.logger, this.valkey);
+    const lyrics = new LyricsService(this.logger);
     const confession = new ConfessionService(this.dbHandle.db, settings, this.client, this.logger);
     const tempVc = new TempVcService(this.client, this.dbHandle.db, settings, this.logger, this.config.adminRoleIds);
     const music = new MusicService(
@@ -150,6 +153,7 @@ export class SielaBot {
       tempVc,
       privacy: new PrivacyService(counters),
       music,
+      lyrics,
       scheduledEvents: this.scheduledEvents,
     };
     this.controlServer = new ControlServer({
@@ -448,9 +452,23 @@ export class SielaBot {
     };
 
     const channelId = music.channelId(guild.id);
+    const state = music.state(guild.id);
+    if (action === "lyrics") {
+      if (!state?.current) return replyError("Nothing is playing.");
+      await interaction.deferReply();
+      try {
+        const result = await this.services.lyrics.forTrack(state.current);
+        await interaction.editReply(buildLyricsPayload(state.current, result));
+      } catch (error) {
+        const message = error instanceof UserError ? error.message : "Could not fetch lyrics.";
+        await interaction
+          .editReply(card({ title: "Lyrics", body: message }))
+          .catch(() => undefined);
+      }
+      return;
+    }
     if (!channelId) return replyError("The bot is not in a voice channel.");
     if (member.voice.channelId !== channelId) return replyError("Join the bot's voice channel first.");
-    const state = music.state(guild.id);
     if (!state?.current) return replyError("Nothing is playing.");
 
     try {

@@ -34,6 +34,7 @@ import type { FriendshipService } from "../features/friendship.js";
 import type { BirthdayService } from "../features/birthday.js";
 import type { TempVcService } from "../features/tempvc.js";
 import type { MusicService } from "../features/music.js";
+import type { LyricsService } from "../features/lyrics.js";
 import type { ScheduledEventService } from "../features/scheduledEvents.js";
 import type { PrivacyService } from "../features/privacy.js";
 import type { CommandRegistry } from "./registry.js";
@@ -56,6 +57,7 @@ export interface Services {
   tempVc: TempVcService;
   privacy: PrivacyService;
   music: MusicService | null;
+  lyrics: LyricsService;
   scheduledEvents: ScheduledEventService;
 }
 

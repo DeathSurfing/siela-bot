@@ -3,6 +3,7 @@ import { formatDuration, parseDuration } from "@siela/shared";
 import type { Command, CommandContext } from "../../framework/types.js";
 import type { MusicService } from "../../features/music.js";
 import { buildMusicPayload, buildQueuePayload } from "../../features/music-ui.js";
+import { buildLyricsPayload } from "../../features/lyrics-ui.js";
 import { attachConfirmation, card, confirmCard, success } from "../../features/ui.js";
 import { canManageMusic } from "../../framework/permissions.js";
 import { UserError } from "../../lib/errors.js";
@@ -211,6 +212,33 @@ const queueCommand: Command = {
     collector.on("end", () => {
       message.edit(buildQueuePayload(ctx.guild.id, service.state(ctx.guild.id), currentPage, true)).catch(() => undefined);
     });
+  },
+};
+
+const lyricsCommand: Command = {
+  name: "lyrics",
+  aliases: ["lyric", "lrc"],
+  category: "music",
+  description: "Show lyrics for the current track.",
+  usage: "",
+  examples: ["lyrics"],
+  slash: new SlashCommandBuilder().setName("lyrics").setDescription("Show lyrics for the current track"),
+  async execute(ctx) {
+    const service = music(ctx);
+    const state = service.state(ctx.guild.id);
+    if (!state?.current) throw new UserError("Nothing is playing.");
+    if (ctx.source === "prefix") {
+      await ctx.reply(card({ title: "Lyrics", body: "Searching for lyrics…" }));
+    } else {
+      await ctx.defer();
+    }
+    try {
+      const result = await ctx.services.lyrics.forTrack(state.current);
+      await ctx.edit(buildLyricsPayload(state.current, result));
+    } catch (error) {
+      const message = error instanceof UserError ? error.message : "Could not fetch lyrics.";
+      await ctx.edit(card({ title: "Lyrics", body: message })).catch(() => undefined);
+    }
   },
 };
 
@@ -490,6 +518,7 @@ export const musicCommands = [
   stopCommand,
   queueCommand,
   nowPlayingCommand,
+  lyricsCommand,
   volumeCommand,
   seekCommand,
   loopCommand,
