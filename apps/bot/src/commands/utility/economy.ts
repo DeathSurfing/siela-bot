@@ -55,12 +55,12 @@ export const economyCommand: Command = {
     if (action === "daily") {
       try {
         const result = await economy.daily(ctx.guild.id, ctx.author.id);
-        await ctx.reply(success(`Claimed ${formatCoins(result.amount)} (streak x${result.streak}). Next claim after ${result.nextAt.toISOString().slice(0, 16).replace("T", " ")}.`));
+        await ctx.reply(success(`Claimed ${formatCoins(result.amount)} (streak x${result.streak}). Next claim: <t:${Math.floor(result.nextAt.getTime() / 1000)}:R>.`));
       } catch (error) {
         const message = error instanceof Error ? error.message : "Daily claim failed.";
         if (message.startsWith("DAILY_COOLDOWN:")) {
           const next = message.slice("DAILY_COOLDOWN:".length);
-          throw new UserError(`You already claimed today. Next claim: ${next.slice(0, 16).replace("T", " ")}.`);
+          throw new UserError(`You already claimed today. Next claim: <t:${Math.floor(new Date(next).getTime() / 1000)}:R>.`);
         }
         throw new UserError(message);
       }
@@ -71,12 +71,12 @@ export const economyCommand: Command = {
     if (action === "work") {
       try {
         const result = await economy.work(ctx.guild.id, ctx.author.id);
-        await ctx.reply(success(`You earned ${formatCoins(result.amount)} from work. Next shift after ${result.nextAt.toISOString().slice(0, 16).replace("T", " ")}.`));
+        await ctx.reply(success(`You earned ${formatCoins(result.amount)} from work. Next shift: <t:${Math.floor(result.nextAt.getTime() / 1000)}:R>.`));
       } catch (error) {
         const message = error instanceof Error ? error.message : "Work failed.";
         if (message.startsWith("WORK_COOLDOWN:")) {
           const next = message.slice("WORK_COOLDOWN:".length);
-          throw new UserError(`You are tired. Next shift: ${next.slice(0, 16).replace("T", " ")}.`);
+          throw new UserError(`You are tired. Next shift: <t:${Math.floor(new Date(next).getTime() / 1000)}:R>.`);
         }
         throw new UserError(message);
       }
