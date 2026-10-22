@@ -23,7 +23,6 @@ volumes:
   pgdata:
   llmcache:
   valkeydata:
-  ttscache:
 
 services:
   postgres:
@@ -57,7 +56,7 @@ services:
     mem_limit: 256m
 
   llm:
-    image: vllm/vllm-openai:latest
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
     container_name: siela-llm
     networks: [edge, control]
     volumes:
@@ -67,34 +66,20 @@ services:
       - /dev/nvidiactl:/dev/nvidiactl
       - /dev/nvidia-uvm:/dev/nvidia-uvm
     command:
-      - "--model"
-      - "Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3"
+      - "--hf-repo"
+      - "Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3-gguf"
+      - "--hf-file"
+      - "josiefied-qwen2.5-1.5b-instruct-abliterated-v3.Q4_K_M.gguf"
       - "--host"
       - "0.0.0.0"
       - "--port"
-      - "8000"
-      - "--gpu-memory-utilization"
-      - "0.4"
-      - "--max-model-len"
+      - "8080"
+      - "--n-gpu-layers"
+      - "99"
+      - "-c"
       - "2048"
     restart: unless-stopped
     mem_limit: 2g
-
-  tts:
-    build:
-      context: ./tts
-      dockerfile: Containerfile.tts
-    container_name: siela-tts
-    networks: [data]
-    devices:
-      - /dev/nvidia0:/dev/nvidia0
-      - /dev/nvidiactl:/dev/nvidiactl
-      - /dev/nvidia-uvm:/dev/nvidia-uvm
-    environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-    restart: unless-stopped
-    mem_limit: 8g
 
   migrate:
     image: localhost/siela-bot:latest
@@ -125,20 +110,14 @@ services:
       - migrate
       - llm
       - valkey
-      - tts
     environment:
-      LLM_URL: ${LLM_URL:-http://llm:8000}
+      LLM_URL: ${LLM_URL:-http://llm:8080}
       VALKEY_URL: ${VALKEY_URL:-redis://valkey:6379}
-      TTS_SERVICE_URL: ${TTS_SERVICE_URL:-http://tts:8000}
-      TTS_BACKEND: ${TTS_BACKEND:-edge}
-      TTS_VOICE: ${TTS_VOICE:-Bruno}
     restart: unless-stopped
     init: true
     read_only: true
     tmpfs:
       - /tmp
-    volumes:
-      - ttscache:/app/.cache
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]
