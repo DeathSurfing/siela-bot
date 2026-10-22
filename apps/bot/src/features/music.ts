@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, mkdirSync, readdirSync, rmSync, statSync, utimesSync, type ReadStream } from "node:fs";
+import { createConnection } from "node:net";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import {
@@ -92,6 +93,7 @@ class GuildPlayer {
   private ffmpegProcess: ChildProcess | null = null;
   private fifoPath: string | null = null;
   private fifoStream: ReadStream | null = null;
+  private ipcSocketPath: string | null = null;
   resource: AudioResource | null = null;
   private startedAt = 0;
   private pausedAt: number | null = null;
@@ -165,6 +167,14 @@ class GuildPlayer {
       }
       this.fifoPath = null;
     }
+    if (this.ipcSocketPath) {
+      try {
+        rmSync(this.ipcSocketPath, { force: true });
+      } catch {
+        // best effort
+      }
+      this.ipcSocketPath = null;
+    }
   }
 
   stopProcess(): void {
@@ -230,6 +240,53 @@ class GuildPlayer {
     }
   }
 
+  private async setMpvFilter(filter: string | null): Promise<boolean> {
+    if (this.service.backend !== "mpv" || !this.ipcSocketPath) return false;
+    const socketPath = this.ipcSocketPath;
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const socket = createConnection(socketPath);
+      const finish = (ok: boolean): void => {
+        if (settled) return;
+        settled = true;
+        socket.destroy();
+        resolve(ok);
+      };
+      const timer = setTimeout(() => finish(false), 2_000);
+      timer.unref?.();
+      let data = "";
+      socket.once("connect", () => {
+        socket.write(`${JSON.stringify({ command: ["set_property", "af", filter ?? ""] })}\n`);
+      });
+      socket.on("data", (chunk: Buffer) => {
+        data += chunk.toString();
+        if (!data.includes("\n")) return;
+        clearTimeout(timer);
+        try {
+          const line = data.split(/\r?\n/).find(Boolean);
+          const parsed = JSON.parse(line ?? "") as { error?: string };
+          finish(parsed.error === "success");
+        } catch {
+          finish(false);
+        }
+      });
+      socket.once("error", () => {
+        clearTimeout(timer);
+        finish(false);
+      });
+      socket.once("close", () => {
+        if (!settled) {
+          clearTimeout(timer);
+          finish(false);
+        }
+      });
+    });
+  }
+
+  async applyFilterLive(): Promise<boolean> {
+    return this.setMpvFilter(this.audioFilter());
+  }
+
   private async startMpv(track: QueueTrack, startAtMs = 0): Promise<AudioResource> {
     const filter = this.audioFilter();
     const cached = this.service.cachedFile(track);
@@ -238,6 +295,8 @@ class GuildPlayer {
     const fifoPath = `/tmp/siela-${this.guildId}-${randomUUID()}.pcm`;
     await execFileAsync("mkfifo", [fifoPath], { timeout: 5_000 });
     this.fifoPath = fifoPath;
+    const ipcSocketPath = `/tmp/siela-${this.guildId}-${randomUUID()}.sock`;
+    this.ipcSocketPath = ipcSocketPath;
 
     let stderr = "";
     const mpv = spawn(
@@ -246,6 +305,7 @@ class GuildPlayer {
         "--no-config",
         "--no-video",
         "--no-terminal",
+        `--input-ipc-server=${ipcSocketPath}`,
         "--really-quiet",
         "--ao=pcm",
         `--ao-pcm-file=${fifoPath}`,
@@ -1078,7 +1138,12 @@ export class MusicService extends EventEmitter {
   async filters(guildId: string, preset: MusicFilterPreset): Promise<void> {
     const gp = this.requirePlayer(guildId);
     gp.filterPreset = preset;
-    if (gp.current) await gp.playNow(gp.current);
+    if (!gp.current) return;
+    const applied = await gp.applyFilterLive();
+    if (!applied) {
+      this.logger.debug({ guildId, preset }, "live filter unavailable; restarting stream at current position");
+      await gp.playNow(gp.current, gp.positionMs());
+    }
   }
 
   state(guildId: string): MusicQueueState | null {
