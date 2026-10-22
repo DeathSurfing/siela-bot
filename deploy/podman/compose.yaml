@@ -70,7 +70,7 @@ services:
     volumes:
       - ttscache:/root/.cache/huggingface
     restart: unless-stopped
-    mem_limit: 4g
+    mem_limit: 5g
 
   migrate:
     image: localhost/siela-bot:latest
