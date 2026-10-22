@@ -115,6 +115,10 @@ services:
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3002/healthz || exit 1"]
       interval: 15s
