@@ -49,18 +49,6 @@ function calledBoard(game: TambolaGame): string {
   return lines.join("\n");
 }
 
-function ticketGrid(player: TambolaPlayer): string {
-  const header = `   ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((number) => ` ${number} `).join("")}`;
-  const rows = player.ticket.rows.map((row, index) => {
-    const cells = row.map((number) => {
-      if (number === null) return " · ";
-      return `${String(number).padStart(2, " ")}${player.marked.has(number) ? "*" : " "}`;
-    });
-    return `R${index + 1} ${cells.join("")}`;
-  });
-  return [header, ...rows].join("\n");
-}
-
 function voiceLabel(game: TambolaGame, voiceChannelId: string | null): string {
   if (!voiceChannelId) return "Text only";
   return `Voice · <#${voiceChannelId}>`;
@@ -258,7 +246,6 @@ export function buildTambolaTicketPayload(game: TambolaGame, player: TambolaPlay
   const playable = game.status !== "finished" && game.status !== "cancelled";
   container.addTextDisplayComponents(text(`## ${ICONS.music} Your Tambola ticket`));
   container.addTextDisplayComponents(text(`Game \`${game.id}\` · ${player.marked.size}/15 marked`));
-  container.addTextDisplayComponents(text(`\`\`\`\n${ticketGrid(player)}\n\`\`\``));
   container.addTextDisplayComponents(
     text(
       game.autoMark

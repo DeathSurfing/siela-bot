@@ -189,11 +189,6 @@ The ticket is sent by DM on join:
 ```text
 ## ♬ Your Tambola ticket
 Game `ABC123` · 3/15 marked
-      1  2  3  4  5  6  7  8  9
-R1  12  · 34  · 56  · 78  · 90
-R2   · 15  · 37  · 59  · 81  ·
-R3  11  · 33  · 55  · 77  · 89
-* = marked
 
 [ 12 ] [ 34 ] [ 56 ] [ 78 ] [ 90 ]
 [ 15 ] [ 37 ] [ 59 ] [ 81 ] [ 11 ]
@@ -413,8 +408,9 @@ interface TambolaTicket {
 interface TambolaPlayer {
   userId: string;
   displayName: string;
-  ticket: TambolaTicket;
+  tickets: TambolaTicket[];
   marked: Set<number>;
+  autoMark: boolean;
   joinedAt: number;
 }
 
@@ -628,7 +624,7 @@ Stats and leaderboards are a later phase.
 - Max players: 20
 - Min players: 2
 - Auto-call interval: 12 seconds; fast 8s and slow 15s options
-- Auto-marking: on by default; the host can turn it off in settings
+- Auto-marking: paid per-player feature; a player can buy it for all of their tickets
 - Lobby timeout: 5 minutes
 - Game timeout: 45 minutes
 - Manual call throttle: 2 seconds
@@ -640,11 +636,15 @@ Stats and leaderboards are a later phase.
 
 ## Out of scope for v1
 
-- Multiple tickets per player.
 - Stats, leaderboards, and game history.
-- Entry fees, prizes, coins, or XP rewards.
 - Image-rendered tickets.
 - Cross-guild games.
+
+Economy integration:
+- Players can buy multiple tickets in one game.
+- Auto-mark is purchased per player and applies to all of that player's tickets.
+- Extra tickets and auto-mark are charged through the economy service when it ships.
+
 - Tournament brackets.
 - Spectator-only mode.
 - Music and Tambola TTS mixed together.
