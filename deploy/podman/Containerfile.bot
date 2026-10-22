@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg mpv pyth
   && /opt/tts/bin/pip install --no-cache-dir yt-dlp edge-tts==7.3.1 kittenml soundfile \
   && /opt/tts/bin/pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu121 \
   && /opt/tts/bin/python -c "from kittenml import KittenTTS; KittenTTS('KittenML/kitten-tts-2')" \
-  && mkdir -p /out/cache && cp -r /root/.cache /out/cache && chmod -R a+rX /out/cache \
+  && mkdir -p /out/cache && cp -a /root/.cache/. /out/cache/ && chmod -R a+rX /out/cache \
   && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 ENV XDG_CACHE_HOME=/tmp
