@@ -52,6 +52,7 @@ interface TambolaSession {
   lobbyTimer: NodeJS.Timeout | null;
   callTimer: NodeJS.Timeout | null;
   finalizeTimer: NodeJS.Timeout | null;
+  voiceTimer: NodeJS.Timeout | null;
   gameTimer: NodeJS.Timeout | null;
   voice: TambolaVoice | null;
   voiceTask: Promise<boolean> | null;
@@ -144,6 +145,7 @@ export class TambolaService {
       lobbyTimer: null,
       callTimer: null,
       finalizeTimer: null,
+      voiceTimer: null,
       gameTimer: null,
       voice: null,
       voiceTask: null,
@@ -842,11 +844,12 @@ export class TambolaService {
     session.voice = null;
     if (voice) {
       if (winner) void voice.speak("Full house! Congratulations!");
-      setTimeout(() => {
+      session.voiceTimer = setTimeout(() => {
         voice.leave();
         if (!this.byGuild.has(session.game.guildId)) {
           this.music.unlockVoice(session.game.guildId);
         }
+        session.voiceTimer = null;
       }, 6_000);
     } else {
       this.music.unlockVoice(session.game.guildId);
@@ -865,6 +868,10 @@ export class TambolaService {
   }
 
   private detach(session: TambolaSession): void {
+    if (session.voiceTimer) {
+      clearTimeout(session.voiceTimer);
+      session.voiceTimer = null;
+    }
     if (this.byGuild.get(session.game.guildId) === session) {
       this.byGuild.delete(session.game.guildId);
     }
@@ -872,6 +879,10 @@ export class TambolaService {
   }
 
   private clearTimers(session: TambolaSession, kind?: "lobby" | "call"): void {
+    if (session.voiceTimer) {
+      clearTimeout(session.voiceTimer);
+      session.voiceTimer = null;
+    }
     if (kind !== "call" && session.lobbyTimer) {
       clearTimeout(session.lobbyTimer);
       session.lobbyTimer = null;

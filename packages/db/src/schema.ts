@@ -239,7 +239,12 @@ export const familyMarriages = pgTable(
     divorcedAt: timestamp("divorced_at", { withTimezone: true }),
     divorcedBy: text("divorced_by"),
   },
-  (table) => [index("family_marriages_guild_spouse_a_idx").on(table.guildId, table.spouseA), index("family_marriages_guild_spouse_b_idx").on(table.guildId, table.spouseB)],
+  (table) => [
+    index("family_marriages_guild_spouse_a_idx").on(table.guildId, table.spouseA),
+    index("family_marriages_guild_spouse_b_idx").on(table.guildId, table.spouseB),
+    uniqueIndex("family_marriages_active_spouse_a_uq").on(table.guildId, table.spouseA).where(sql`${table.status} = 'active'`),
+    uniqueIndex("family_marriages_active_spouse_b_uq").on(table.guildId, table.spouseB).where(sql`${table.status} = 'active'`),
+  ],
 );
 
 export const familyChildren = pgTable(
@@ -256,7 +261,11 @@ export const familyChildren = pgTable(
     endedAt: timestamp("ended_at", { withTimezone: true }),
     endedBy: text("ended_by"),
   },
-  (table) => [index("family_children_guild_parent_idx").on(table.guildId, table.parentId), index("family_children_guild_child_idx").on(table.guildId, table.childId)],
+  (table) => [
+    index("family_children_guild_parent_idx").on(table.guildId, table.parentId),
+    index("family_children_guild_child_idx").on(table.guildId, table.childId),
+    uniqueIndex("family_children_active_uq").on(table.guildId, table.parentId, table.childId).where(sql`${table.status} = 'active'`),
+  ],
 );
 
 export const auditLog = pgTable(

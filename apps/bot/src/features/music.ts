@@ -261,7 +261,7 @@ class GuildPlayer {
     this.restartTimer.unref?.();
   }
 
-  private endRestart(): void {
+  endRestart(): void {
     if (this.restartTimer) {
       clearTimeout(this.restartTimer);
       this.restartTimer = null;
@@ -1348,6 +1348,7 @@ export class MusicService extends EventEmitter {
 
   async stop(guildId: string): Promise<void> {
     const gp = this.players.get(guildId);
+    if (gp) gp.endRestart();
     if (!gp) return;
     gp.queue.length = 0;
     gp.current = null;
@@ -1360,6 +1361,7 @@ export class MusicService extends EventEmitter {
 
   async disconnect(guildId: string): Promise<void> {
     const gp = this.players.get(guildId);
+    if (gp) gp.endRestart();
     if (gp) {
       await this.saveQueue(guildId);
       gp.queue.length = 0;

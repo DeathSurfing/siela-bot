@@ -157,7 +157,7 @@ export class SielaBot {
       confession,
       friendship,
       tempVc,
-      privacy: new PrivacyService(counters, economy),
+      privacy: new PrivacyService(this.dbHandle.db, counters, economy, activity, friendship),
       music,
       lyrics,
       tambola,
@@ -294,6 +294,9 @@ export class SielaBot {
       const command = this.registry.get(parsed.name);
       if (!command) {
         const now = Date.now();
+        for (const [userId, timestamp] of this.unknownCommandNotices) {
+          if (now - timestamp > 15_000) this.unknownCommandNotices.delete(userId);
+        }
         const last = this.unknownCommandNotices.get(message.author.id) ?? 0;
         if (now - last > 15_000) {
           this.unknownCommandNotices.set(message.author.id, now);
@@ -964,6 +967,7 @@ export class SielaBot {
     await Promise.allSettled([this.controlServer.stop(), this.healthServer.stop()]);
     if (this.music) await this.music.shutdown().catch(() => undefined);
     this.services.tambola.stop();
+    this.services.tempVc.stop();
     this.randomVc.stop();
     this.scheduledEvents.stop();
     await this.services.activity.stop();

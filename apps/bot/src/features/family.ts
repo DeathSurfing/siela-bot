@@ -43,23 +43,27 @@ export class FamilyService {
 
   async marry(guildId: string, firstUserId: string, secondUserId: string): Promise<void> {
     if (firstUserId === secondUserId) throw new UserError("You cannot marry yourself.");
-    const existingA = await this.getActiveMarriage(guildId, firstUserId);
-    const existingB = await this.getActiveMarriage(guildId, secondUserId);
-    if (existingA) throw new UserError("You are already married.");
-    if (existingB) throw new UserError("That member is already married.");
-    const [spouseA, spouseB] = this.normalizePair(firstUserId, secondUserId);
-    await this.db.insert(familyMarriages).values({ guildId, spouseA, spouseB });
+    await this.db.transaction(async (tx) => {
+      const existingA = await tx.select().from(familyMarriages).where(and(eq(familyMarriages.guildId, guildId), eq(familyMarriages.status, "active"), or(eq(familyMarriages.spouseA, firstUserId), eq(familyMarriages.spouseB, firstUserId)))).limit(1);
+      const existingB = await tx.select().from(familyMarriages).where(and(eq(familyMarriages.guildId, guildId), eq(familyMarriages.status, "active"), or(eq(familyMarriages.spouseA, secondUserId), eq(familyMarriages.spouseB, secondUserId)))).limit(1);
+      if (existingA.length) throw new UserError("You are already married.");
+      if (existingB.length) throw new UserError("That member is already married.");
+      const [spouseA, spouseB] = this.normalizePair(firstUserId, secondUserId);
+      await tx.insert(familyMarriages).values({ guildId, spouseA, spouseB });
+    });
   }
 
   async divorce(guildId: string, userId: string): Promise<string> {
-    const marriage = await this.getActiveMarriage(guildId, userId);
-    if (!marriage) throw new UserError("You are not currently married.");
-    const spouse = marriage.spouseA === userId ? marriage.spouseB : marriage.spouseA;
-    await this.db
-      .update(familyMarriages)
-      .set({ status: "divorced", divorcedAt: new Date(), divorcedBy: userId })
-      .where(eq(familyMarriages.id, marriage.id));
-    return spouse;
+    return this.db.transaction(async (tx) => {
+      const [marriage] = await tx.select().from(familyMarriages).where(and(eq(familyMarriages.guildId, guildId), eq(familyMarriages.status, "active"), or(eq(familyMarriages.spouseA, userId), eq(familyMarriages.spouseB, userId)))).limit(1);
+      if (!marriage) throw new UserError("You are not currently married.");
+      const spouse = marriage.spouseA === userId ? marriage.spouseB : marriage.spouseA;
+      await tx
+        .update(familyMarriages)
+        .set({ status: "divorced", divorcedAt: new Date(), divorcedBy: userId })
+        .where(eq(familyMarriages.id, marriage.id));
+      return spouse;
+    });
   }
 
   async hasActiveParentChild(guildId: string, parentId: string, childId: string): Promise<boolean> {
@@ -115,8 +119,11 @@ export class FamilyService {
   }
 
   async adopt(guildId: string, parentId: string, childId: string): Promise<void> {
-    await this.assertCanAdopt(guildId, parentId, childId);
-    await this.db.insert(familyChildren).values({ guildId, parentId, childId });
+    await this.db.transaction(async (tx) => {
+      // Re-check inside the transaction to reduce races; assertCanAdopt reads are best-effort.
+      await this.assertCanAdopt(guildId, parentId, childId);
+      await tx.insert(familyChildren).values({ guildId, parentId, childId });
+    });
   }
 
   async runaway(guildId: string, actorId: string, targetId?: string): Promise<number> {

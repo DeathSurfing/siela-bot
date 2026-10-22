@@ -1,0 +1,3 @@
+CREATE UNIQUE INDEX "family_children_active_uq" ON "family_children" USING btree ("guild_id","parent_id","child_id") WHERE "family_children"."status" = 'active';--> statement-breakpoint
+CREATE UNIQUE INDEX "family_marriages_active_spouse_a_uq" ON "family_marriages" USING btree ("guild_id","spouse_a") WHERE "family_marriages"."status" = 'active';--> statement-breakpoint
+CREATE UNIQUE INDEX "family_marriages_active_spouse_b_uq" ON "family_marriages" USING btree ("guild_id","spouse_b") WHERE "family_marriages"."status" = 'active';

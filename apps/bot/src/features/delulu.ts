@@ -1,5 +1,5 @@
 import type { Logger } from "../lib/logger.js";
-import { Effect } from "effect";
+import { Effect, Schedule } from "effect";
 
 function cleanModelText(text: string): string {
   return text.replace(/^[\s\S]*?<\/think>/i, "").trim();
@@ -139,7 +139,7 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
               return (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
             },
             catch: (error) => error,
-          }).pipe(Effect.retry({ times: 2 })),
+          }).pipe(Effect.retry({ times: 2, schedule: Schedule.exponential("100 millis") })),
         );
         const content = json.choices?.[0]?.message?.content?.trim();
         if (content) {
@@ -187,7 +187,7 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
               return (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
             },
             catch: (error) => error,
-          }).pipe(Effect.retry({ times: 1 })),
+          }).pipe(Effect.retry({ times: 1, schedule: Schedule.exponential("100 millis") })),
         );
         const content = json.choices?.[0]?.message?.content?.trim();
         if (content) {
@@ -214,7 +214,7 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
             return (await response.text()).trim();
           },
           catch: (error) => error,
-        }).pipe(Effect.retry({ times: 1 })),
+        }).pipe(Effect.retry({ times: 1, schedule: Schedule.exponential("100 millis") })),
       );
       if (text && !text.toLowerCase().includes("free limit reached") && !text.toLowerCase().includes("please wait")) {
         return text;

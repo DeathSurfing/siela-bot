@@ -569,6 +569,12 @@ export class TempVcService {
     }
   }
 
+  stop(): void {
+    for (const timer of this.cleanupTimers.values()) clearTimeout(timer);
+    this.cleanupTimers.clear();
+    this.creating.clear();
+  }
+
   private async syncOverwrites(channel: VoiceChannel, ownerId: string): Promise<void> {
     const guild = channel.guild;
     const owner = await guild.members.fetch(ownerId).catch(() => null);

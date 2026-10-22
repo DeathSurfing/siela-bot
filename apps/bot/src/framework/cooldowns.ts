@@ -4,7 +4,9 @@ export class CooldownManager {
   remaining(key: string, durationMs: number): number {
     const last = this.timestamps.get(key);
     if (!last) return 0;
-    return Math.max(0, durationMs - (Date.now() - last));
+    const remaining = Math.max(0, durationMs - (Date.now() - last));
+    if (remaining === 0) this.timestamps.delete(key);
+    return remaining;
   }
 
   use(key: string): void {

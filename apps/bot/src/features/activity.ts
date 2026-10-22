@@ -46,6 +46,8 @@ export class ActivityService {
   private timer: NodeJS.Timeout | null = null;
   private pairTimer: NodeJS.Timeout | null = null;
   private pairTicking = false;
+  private flushPromise: Promise<void> | null = null;
+  private pairPromise: Promise<void> | null = null;
   private lastPurgeDate: string | null = null;
 
   constructor(
@@ -211,10 +213,12 @@ export class ActivityService {
   }
 
   private async accruePairs(): Promise<void> {
-    if (this.pairTicking) return;
-    this.pairTicking = true;
-    try {
-      const now = Date.now();
+    if (this.pairPromise) return this.pairPromise;
+    this.pairPromise = (async () => {
+      if (this.pairTicking) return;
+      this.pairTicking = true;
+      try {
+        const now = Date.now();
       const deltas: Array<{ guildId: string; firstUserId: string; secondUserId: string; xp: number; seconds: number }> = [];
       for (const [key, pair] of this.pairSessions) {
         const [guildId, a, b] = key.split(":") as [string, string, string];
@@ -225,9 +229,13 @@ export class ActivityService {
         }
       }
       if (deltas.length) await this.friendship.addBatch(deltas);
-    } finally {
-      this.pairTicking = false;
-    }
+      } finally {
+        this.pairTicking = false;
+      }
+    })().finally(() => {
+      this.pairPromise = null;
+    });
+    return this.pairPromise;
   }
 
   private addVoiceTime(guildId: string, userId: string, seconds: number): void {
@@ -298,6 +306,14 @@ export class ActivityService {
   }
 
   async flush(): Promise<void> {
+    if (this.flushPromise) return this.flushPromise;
+    this.flushPromise = this.doFlush().finally(() => {
+      this.flushPromise = null;
+    });
+    return this.flushPromise;
+  }
+
+  private async doFlush(): Promise<void> {
     const now = Date.now();
     for (const guildId of this.voiceSessions.keys()) {
       const sessions = this.voiceSessions.get(guildId)!;
@@ -346,6 +362,14 @@ export class ActivityService {
       } catch (error) {
         this.logger.warn({ err: error, guildId, userId }, "failed to flush activity");
       }
+    }
+    for (const [guildId, users] of this.activity) {
+      for (const [userId, delta] of users) {
+        if (delta.messages === 0 && delta.commands === 0 && delta.reactions === 0 && delta.voiceSeconds === 0 && !this.dirtyActivity.has(`${guildId}:${userId}`)) {
+          users.delete(userId);
+        }
+      }
+      if (users.size === 0) this.activity.delete(guildId);
     }
   }
 
