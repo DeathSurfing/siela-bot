@@ -76,7 +76,8 @@ export class TambolaVoice {
       );
       return false;
     }
-    if (getVoiceConnection(channel.guild.id)) {
+    const existing = getVoiceConnection(channel.guild.id);
+    if (existing && existing.state.status !== VoiceConnectionStatus.Destroyed) {
       this.logger.warn({ guildId: channel.guild.id }, "tambola TTS skipped because a voice connection already exists");
       return false;
     }
