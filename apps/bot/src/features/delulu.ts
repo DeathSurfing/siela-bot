@@ -49,6 +49,14 @@ const FALLBACK_SCENARIOS = [
   "finds you in the company cafeteria, sits down uninvited, and insists you taste-test his experimental ramyeon creation.",
 ];
 
+const NSFW_FALLBACK_SCENARIOS = [
+  "notices you leaning against the practice room door, drops the towel he was holding, and asks you to stay for one private dance.",
+  "spots you at a late-night convenience store, buys the same drink as you, and suggests you share it somewhere quieter.",
+  "catches your eye at the afterparty, leads you to the balcony, and whispers that he has been thinking about you all tour.",
+  "finds you waiting outside the studio, pulls you into the hallway, and asks if you want to see the choreography no one else gets to watch.",
+  "sees you in the hotel lobby, takes your hand, and tells you the night is far too young to stay alone.",
+];
+
 export class DeluluService {
   constructor(
     private readonly llmUrl: string | null,
@@ -56,8 +64,21 @@ export class DeluluService {
     private readonly logger: Logger,
   ) {}
 
-  async generate(bias: string): Promise<string> {
-    const prompt = `Return JSON for a ridiculous delulu story about BTS member ${bias} noticing the user.
+  async generate(bias: string, nsfw = false): Promise<string> {
+    const prompt = nsfw
+      ? `Return JSON for a mature, NSFW-focused delulu story about BTS member ${bias} noticing the user.
+
+Keys:
+- scene: one sentence starting with "You are" in a specific ordinary place
+- notice: one sentence where ${bias} notices you and reacts in an over-the-top, dramatic, adult, NSFW-focused way
+- escalation: one sentence where something impossible or surreal happens
+- line: one short line ${bias} says to you, without quotation marks
+
+Example for Jin:
+{"scene":"You are sorting socks at a laundromat.","notice":"Jin bursts out of the dryer wearing a chef's hat and declares you his muse.","escalation":"The washing machines begin to spin in perfect harmony as the customers form a conga line.","line":"I have been searching every laundromat in Seoul for someone with your sock energy."}
+
+Now write new JSON for ${bias}. Use a different place, reaction, and escalation. Make it exaggerated, absurd, and funny. Keep it NSFW-focused, consensual adult fanfiction; do not include minors, coercion, or explicit sexual acts. Use simple English.`
+      : `Return JSON for a ridiculous delulu story about BTS member ${bias} noticing the user.
 
 Keys:
 - scene: one sentence starting with "You are" in a specific ordinary place
@@ -78,7 +99,12 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
           body: JSON.stringify({
             model: "default",
             messages: [
-              { role: "system", content: "You generate JSON only. Output only the JSON object." },
+              {
+                role: "system",
+                content: nsfw
+                  ? "You generate JSON only. Adult NSFW fanfiction is allowed. Output only the JSON object."
+                  : "You generate JSON only. Output only the JSON object.",
+              },
               { role: "user", content: prompt },
             ],
             max_tokens: 700,
@@ -134,8 +160,9 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
             messages: [
               {
                 role: "system",
-                content:
-                  "You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where a BTS member notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Address the reader directly as 'you'. Do not include quotes around the whole response.",
+                content: nsfw
+                  ? "You are a playful adult K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where a BTS member notices the user in an ordinary public setting and reacts in an over-the-top, delulu, NSFW-focused way. Keep it consensual, adult, and suggestive rather than explicit. Address the reader directly as 'you'. Do not include quotes around the whole response."
+                  : "You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where a BTS member notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Address the reader directly as 'you'. Do not include quotes around the whole response.",
               },
               {
                 role: "user",
@@ -168,7 +195,9 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
 
     // Public no-token fallback so /delulu works without HF_TOKEN.
     try {
-      const prompt = `You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Address the reader directly as 'you'. Think carefully and at length before answering, but output only the final scenario. Do not include quotes around the whole response.`;
+      const prompt = nsfw
+        ? `You are a playful adult K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu, NSFW-focused way. Keep it consensual, adult, and suggestive rather than explicit. Address the reader directly as 'you'. Think carefully and at length before answering, but output only the final scenario. Do not include quotes around the whole response.`
+        : `You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Address the reader directly as 'you'. Think carefully and at length before answering, but output only the final scenario. Do not include quotes around the whole response.`;
       const response = await fetch(`https://text.pollinations.ai/${encodeURIComponent(prompt)}`, {
         signal: AbortSignal.timeout(20_000),
       });
@@ -182,7 +211,8 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
       this.logger.warn({ err: error }, "delulu public fallback failed");
     }
 
-    const scenario = FALLBACK_SCENARIOS[Math.floor(Math.random() * FALLBACK_SCENARIOS.length)]!;
+    const scenarios = nsfw ? NSFW_FALLBACK_SCENARIOS : FALLBACK_SCENARIOS;
+    const scenario = scenarios[Math.floor(Math.random() * scenarios.length)]!;
     return `${bias} ${scenario}`;
   }
 }

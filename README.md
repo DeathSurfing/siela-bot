@@ -14,7 +14,7 @@ A single-guild Discord bot with music, welcome/auto-role, social counters, tempo
 - **Scheduled voice events (optional)** — at the selected Delhi prayer time, then +1h and +2h, moves everyone already in voice through `masjid`, `parliament`, and `mandir` channels and plays admin-supplied licensed audio. Disabled by default; requires `EVENT_SCHEDULE_ENABLED=true` and files in `apps/bot/assets/events/`.
 - **Temporary VC** — join-to-create private voice channels with a control panel in the channel's text chat for lock/unlock, rename, limit, kick, ownership transfer, and delete. Only the channel owner and admins can kick members. Empty temp VCs are removed immediately. `jointocreate #voice [template]` (alias `j2c`) auto-creates a **Temporary VCs** category and sets the default `{user}'s VC` template.
 - **Activity monitoring** — per-member message, command, reaction, and voice-time stats with `activity` and `activetop` (90-day retention).
-- **Delulu** — `/delulu` generates ridiculous bias scenarios using a local llama.cpp service running a 1.5B abliterated Qwen2.5 GGUF model. No Hugging Face token required.
+- **Delulu** — `/delulu` generates ridiculous bias scenarios using a local llama.cpp service running a 1.5B abliterated Qwen2.5 GGUF model. No Hugging Face token required. Use `/delulu nsfw` in an NSFW channel for an NSFW-focused scenario.
 - **Prefix** — global single-guild prefix with validation and audit.
 - **Hybrid commands** — prefix + slash + context menu + mention prefix.
 - **MCP (optional)** — 50+ tools exposed on the Podman `mcp` network via `MCP_URL` and one `MCP_TOKEN`. Off by default; set `MCP_ENABLED=true` to enable.
