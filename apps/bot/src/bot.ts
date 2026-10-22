@@ -121,6 +121,7 @@ export class SielaBot {
         settings,
       },
       this.logger,
+      this.valkey,
     );
     this.music = music;
     this.randomVc = new RandomVcService(music, this.logger);

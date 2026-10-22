@@ -114,7 +114,7 @@ export function buildQueuePayload(
   page = 1,
   disabled = false,
 ): ReplyPayload {
-  if (!state?.current) {
+  if (!state || (!state.current && !state.upcoming.length)) {
     return {
       components: [
         new ContainerBuilder()
@@ -149,7 +149,11 @@ export function buildQueuePayload(
       new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
     )
     .addTextDisplayComponents(
-      text(`**Now** · ${truncate(state.current.title, 64)} — ${truncate(state.current.author, 32)}`),
+      text(
+        state.current
+          ? `**Now** · ${truncate(state.current.title, 64)} — ${truncate(state.current.author, 32)}`
+          : "**Now** · Nothing playing",
+      ),
     );
 
   if (lines.length) {

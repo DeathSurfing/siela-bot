@@ -24,6 +24,7 @@ import { UserError, ServiceUnavailableError } from "../lib/errors.js";
 import type { Logger } from "../lib/logger.js";
 import type { SettingsService } from "./settings.js";
 import { buildMusicPayload } from "./music-ui.js";
+import type { ValkeyService } from "./valkey.js";
 
 const execFileAsync = promisify(execFile);
 const AUDIO_FORMAT = "bestaudio[abr<=312]/bestaudio/best[abr<=312]/best";
@@ -69,6 +70,19 @@ function toInfo(track: QueueTrack): MusicTrackInfo {
 
 function trackInfo(track: QueueTrack | null): MusicTrackInfo | null {
   return track ? toInfo(track) : null;
+}
+
+function isQueueTrack(value: unknown): value is QueueTrack {
+  if (!value || typeof value !== "object") return false;
+  const track = value as Record<string, unknown>;
+  return (
+    typeof track.url === "string" &&
+    typeof track.title === "string" &&
+    typeof track.author === "string" &&
+    typeof track.length === "number" &&
+    typeof track.isStream === "boolean" &&
+    (track.artworkUrl === null || typeof track.artworkUrl === "string")
+  );
 }
 
 export function isPlaylistUrl(query: string): boolean {
@@ -460,6 +474,7 @@ class GuildPlayer {
       this.startedAt = Date.now() - Math.max(0, startAtMs);
       this.player.play(resource);
       this.service.emit("trackStart", { guildId: this.guildId, track: toInfo(track) });
+      void this.service.saveQueue(this.guildId);
       this.service.prefetchAround(this);
     } catch (error) {
       this.endRestart();
@@ -467,11 +482,11 @@ class GuildPlayer {
     }
   }
 
-  async advance(): Promise<void> {
+  async advance(options: { ignoreTrackLoop?: boolean } = {}): Promise<void> {
     if (this.advancing) return;
     this.advancing = true;
     try {
-      if (this.loop === "track" && this.current) {
+      if (this.loop === "track" && this.current && !options.ignoreTrackLoop) {
         try {
           await this.playNow(this.current);
           return;
@@ -495,6 +510,7 @@ class GuildPlayer {
 
       const previous = this.current;
       this.current = null;
+      void this.service.clearStoredQueue(this.guildId);
       this.killProcesses();
       this.player.stop(true);
       if (this.autoplay && previous) {
@@ -541,6 +557,7 @@ export class MusicService extends EventEmitter {
   private readonly cacheInFlight = new Map<string, Promise<string | null>>();
   private readonly nowPlayingMessages = new Map<string, Message>();
   private readonly nowPlayingUpdating = new Set<string>();
+  private readonly valkey: ValkeyService | null;
   private binariesCheckedAt = 0;
   private binariesOk = false;
 
@@ -548,9 +565,11 @@ export class MusicService extends EventEmitter {
     private readonly client: Client,
     private readonly options: MusicServiceOptions,
     logger: Logger,
+    valkey: ValkeyService | null = null,
   ) {
     super();
     this.logger = logger;
+    this.valkey = valkey;
     this.on("error", () => undefined);
     mkdirSync(this.cacheDir, { recursive: true });
     this.on("trackStart", (payload: { guildId: string }) => {
@@ -597,6 +616,42 @@ export class MusicService extends EventEmitter {
 
   private cacheKey(track: QueueTrack): string {
     return createHash("sha1").update(track.url).digest("hex");
+  }
+
+  private queueStoreKey(guildId: string): string {
+    return `siela:music:queue:${guildId}`;
+  }
+
+  private async loadQueue(guildId: string): Promise<QueueTrack[]> {
+    const client = this.valkey?.client;
+    if (!client) return [];
+    try {
+      const raw = await client.get(this.queueStoreKey(guildId));
+      if (!raw) return [];
+      const parsed: unknown = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter(isQueueTrack) : [];
+    } catch (error) {
+      this.logger.debug({ err: error, guildId }, "failed to restore music queue");
+      return [];
+    }
+  }
+
+  async saveQueue(guildId: string): Promise<void> {
+    const client = this.valkey?.client;
+    if (!client) return;
+    const player = this.players.get(guildId);
+    if (!player) return;
+    try {
+      await client.set(this.queueStoreKey(guildId), JSON.stringify(player.queue));
+    } catch (error) {
+      this.logger.debug({ err: error, guildId }, "failed to save music queue");
+    }
+  }
+
+  async clearStoredQueue(guildId: string): Promise<void> {
+    const client = this.valkey?.client;
+    if (!client) return;
+    await client.del(this.queueStoreKey(guildId)).catch(() => undefined);
   }
 
   cachedFile(track: QueueTrack): string | null {
@@ -965,6 +1020,8 @@ export class MusicService extends EventEmitter {
     const guildPlayer = new GuildPlayer(member.guild.id, connection, player, this);
     const musicSettings = await this.options.settings.getMusic(member.guild.id);
     guildPlayer.volume = musicSettings.defaultVolume;
+    const restored = await this.loadQueue(member.guild.id);
+    if (restored.length) guildPlayer.queue.push(...restored);
     this.players.set(member.guild.id, guildPlayer);
     return guildPlayer;
   }
@@ -1004,6 +1061,7 @@ export class MusicService extends EventEmitter {
       }
       throw new UserError("None of those tracks could be played.");
     }
+    void this.saveQueue(member.guild.id);
     this.prefetchAround(guildPlayer);
     return { added: queueTracks.length, first: toInfo(queueTracks[0]!) };
   }
@@ -1044,7 +1102,7 @@ export class MusicService extends EventEmitter {
     if (!gp.current) throw new UserError("Nothing is playing.");
     if (count > 1) gp.queue.splice(0, Math.max(0, count - 1));
     gp.stopProcess();
-    await gp.advance();
+    await gp.advance({ ignoreTrackLoop: true });
   }
 
   async stop(guildId: string): Promise<void> {
@@ -1056,11 +1114,13 @@ export class MusicService extends EventEmitter {
     gp.stopProcess();
     gp.player.stop(true);
     void this.clearNowPlaying(guildId);
+    void this.clearStoredQueue(guildId);
   }
 
   async disconnect(guildId: string): Promise<void> {
     const gp = this.players.get(guildId);
     if (gp) {
+      await this.saveQueue(guildId);
       gp.queue.length = 0;
       gp.current = null;
       gp.stopProcess();
@@ -1098,6 +1158,7 @@ export class MusicService extends EventEmitter {
       const j = Math.floor(Math.random() * (i + 1));
       [gp.queue[i], gp.queue[j]] = [gp.queue[j]!, gp.queue[i]!];
     }
+    void this.saveQueue(guildId);
     this.prefetchAround(gp);
   }
 
@@ -1105,6 +1166,7 @@ export class MusicService extends EventEmitter {
     const gp = this.requirePlayer(guildId);
     const [removed] = gp.queue.splice(index - 1, 1);
     if (!removed) throw new UserError("Invalid queue index.");
+    void this.saveQueue(guildId);
     this.prefetchAround(gp);
     return removed;
   }
@@ -1112,6 +1174,7 @@ export class MusicService extends EventEmitter {
   async clear(guildId: string): Promise<void> {
     const gp = this.requirePlayer(guildId);
     gp.queue.length = 0;
+    void this.saveQueue(guildId);
   }
 
   async move(guildId: string, from: number, to: number): Promise<void> {
@@ -1120,6 +1183,7 @@ export class MusicService extends EventEmitter {
     if (!track) throw new UserError("Invalid source index.");
     const target = Math.max(0, Math.min(gp.queue.length, to - 1));
     gp.queue.splice(target, 0, track);
+    void this.saveQueue(guildId);
     this.prefetchAround(gp);
   }
 

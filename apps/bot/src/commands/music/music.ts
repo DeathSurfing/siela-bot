@@ -189,7 +189,8 @@ const queueCommand: Command = {
   async execute(ctx) {
     const service = music(ctx);
     const state = service.state(ctx.guild.id);
-    if (!state?.current) throw new UserError("Nothing is playing.");
+    if (!state) throw new UserError("Nothing is playing.");
+    if (!state.current && !state.upcoming.length) throw new UserError("The queue is empty.");
     const requested = Number(ctx.args[0] ?? 1) || 1;
     const message = await ctx.reply(buildQueuePayload(ctx.guild.id, state, requested));
     if (!message) return;
