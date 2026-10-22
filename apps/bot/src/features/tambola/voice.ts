@@ -319,21 +319,31 @@ export class TambolaVoice {
           { timeout: 120_000, maxBuffer: 1024 * 1024 },
         );
       } else {
-        await execFileAsync(
-          process.env.TTS_PYTHON ?? "python3",
-          [
-            "-m",
-            "edge_tts",
-            "--voice",
-            this.voice,
-            `--rate=${this.rate}`,
-            "--text",
-            text,
-            "--write-media",
-            temp,
-          ],
-          { timeout: 12_000, maxBuffer: 1024 * 1024 },
-        );
+        let lastError: unknown;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            await execFileAsync(
+              process.env.TTS_PYTHON ?? "python3",
+              [
+                "-m",
+                "edge_tts",
+                "--voice",
+                this.voice,
+                `--rate=${this.rate}`,
+                "--text",
+                text,
+                "--write-media",
+                temp,
+              ],
+              { timeout: 30_000, maxBuffer: 1024 * 1024 },
+            );
+            lastError = null;
+            break;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        if (lastError) throw lastError;
       }
       if (!existsSync(temp) || statSync(temp).size === 0) {
         throw new Error("edge-tts produced an empty file");
