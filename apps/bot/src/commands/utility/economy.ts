@@ -24,6 +24,9 @@ export const economyCommand: Command = {
     .addSubcommand((sub) => sub.setName("work").setDescription("Work a shift for coins"))
     .addSubcommand((sub) => sub.setName("transfer").setDescription("Transfer coins").addUserOption((o) => o.setName("user").setDescription("Member").setRequired(true)).addIntegerOption((o) => o.setName("amount").setDescription("Amount").setRequired(true).setMinValue(1)))
     .addSubcommand((sub) => sub.setName("top").setDescription("Show the richest members"))
+    .addSubcommand((sub) => sub.setName("coinflip").setDescription("Flip a coin").addIntegerOption((o) => o.setName("amount").setDescription("Bet").setRequired(true).setMinValue(1)).addStringOption((o) => o.setName("side").setDescription("heads or tails").setRequired(true).addChoices({ name: "Heads", value: "heads" }, { name: "Tails", value: "tails" })))
+    .addSubcommand((sub) => sub.setName("slots").setDescription("Spin the slots").addIntegerOption((o) => o.setName("amount").setDescription("Bet").setRequired(true).setMinValue(1)))
+    .addSubcommand((sub) => sub.setName("blackjack").setDescription("Play blackjack").addIntegerOption((o) => o.setName("amount").setDescription("Bet").setRequired(true).setMinValue(1)))
     .addSubcommand((sub) => sub.setName("shop").setDescription("Show the economy shop"))
     .addSubcommand((sub) => sub.setName("buy").setDescription("Buy a shop item").addStringOption((o) => o.setName("item").setDescription("Item key").setRequired(true)))
     .addSubcommand((sub) => sub.setName("shopadd").setDescription("Add a shop item (admin)").addStringOption((o) => o.setName("key").setDescription("Item key").setRequired(true)).addIntegerOption((o) => o.setName("price").setDescription("Price").setRequired(true).setMinValue(1)).addStringOption((o) => o.setName("name").setDescription("Item name").setRequired(true)).addRoleOption((o) => o.setName("role").setDescription("Role to grant").setRequired(false)).addIntegerOption((o) => o.setName("stock").setDescription("Stock").setRequired(false).setMinValue(1)).addStringOption((o) => o.setName("description").setDescription("Description").setRequired(false)))
@@ -208,6 +211,65 @@ export const economyCommand: Command = {
       return;
     }
 
+
+    if (action === "coinflip" || action === "cf" || action === "flip") {
+      const amount = Number(ctx.args[1]);
+      const side = String(ctx.args[2] ?? "heads").toLowerCase();
+      if (!Number.isInteger(amount) || amount <= 0) throw new UserError("Usage: `economy coinflip <amount> <heads|tails>`.");
+      if (side !== "heads" && side !== "tails") throw new UserError("Choose heads or tails.");
+      try {
+        await economy.spend(ctx.guild.id, ctx.author.id, amount, "coinflip", `${ctx.guild.id}:${ctx.author.id}:coinflip:${Date.now()}`);
+      } catch (error) {
+        if (error instanceof Error && error.message === "INSUFFICIENT_FUNDS") throw new UserError("You do not have enough coins.");
+        throw new UserError(error instanceof Error ? error.message : "Bet failed.");
+      }
+      const win = Math.random() < 0.45;
+      if (win) {
+        await economy.award(ctx.guild.id, ctx.author.id, amount * 2, "coinflip_win", `${ctx.guild.id}:${ctx.author.id}:coinflipwin:${Date.now()}`);
+        await ctx.reply(success(`Coin: **${side}**. You win ${formatCoins(amount * 2)}!`));
+      } else {
+        const other = side === "heads" ? "tails" : "heads";
+        await ctx.reply(success(`Coin: **${other}**. You lose ${formatCoins(amount)}.`));
+      }
+      return;
+    }
+
+    if (action === "slots" || action === "slot") {
+      const amount = Number(ctx.args[1]);
+      if (!Number.isInteger(amount) || amount <= 0) throw new UserError("Usage: `economy slots <amount>`.");
+      try {
+        await economy.spend(ctx.guild.id, ctx.author.id, amount, "slots", `${ctx.guild.id}:${ctx.author.id}:slots:${Date.now()}`);
+      } catch (error) {
+        if (error instanceof Error && error.message === "INSUFFICIENT_FUNDS") throw new UserError("You do not have enough coins.");
+        throw new UserError(error instanceof Error ? error.message : "Bet failed.");
+      }
+      const symbols = ["🍒", "🍋", "🔔", "⭐", "7️⃣"];
+      const reels = [symbols[Math.floor(Math.random() * symbols.length)]!, symbols[Math.floor(Math.random() * symbols.length)]!, symbols[Math.floor(Math.random() * symbols.length)]!];
+      let payout = 0;
+      if (reels[0] === reels[1] && reels[1] === reels[2]) payout = 5;
+      else if (reels[0] === reels[1] || reels[1] === reels[2] || reels[0] === reels[2]) payout = 2;
+      if (payout > 0) {
+        await economy.award(ctx.guild.id, ctx.author.id, amount * payout, "slots_win", `${ctx.guild.id}:${ctx.author.id}:slots:${Date.now()}`);
+      }
+      await ctx.reply(card({ title: "Slots", body: `${reels.join("  ")}\n\n${payout > 0 ? `You win ${formatCoins(amount * payout)}!` : `You lose ${formatCoins(amount)}.`}` }));
+      return;
+    }
+
+    if (action === "blackjack" || action === "bj") {
+      const amount = Number(ctx.args[1]);
+      if (!Number.isInteger(amount) || amount <= 0) throw new UserError("Usage: `economy blackjack <amount>`.");
+      try {
+        const result = await economy.blackjackStart(ctx.guild.id, ctx.author.id, amount);
+        await ctx.reply(economy.blackjackPayload(result));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Blackjack failed.";
+        if (message === "INSUFFICIENT_FUNDS") throw new UserError("You do not have enough coins.");
+        if (message === "BLACKJACK_ACTIVE") throw new UserError("Finish your current blackjack hand first.");
+        throw new UserError(message);
+      }
+      return;
+    }
+
     if (action === "premium") {
       const has = await economy.hasPremium(ctx.guild.id, ctx.author.id);
       await ctx.reply(card({ title: "Premium", body: has ? "You have an active premium pass." : "You do not have an active premium pass." }));
@@ -255,6 +317,6 @@ export const economyCommand: Command = {
       return;
     }
 
-    throw new UserError("Use `economy balance`, `daily`, `work`, `transfer`, `top`, `shop`, `buy`, `premium`, `grant`, `adjust`, `shopadd`, or `shopremove`.");
+    throw new UserError("Use `economy balance`, `daily`, `work`, `coinflip`, `slots`, `blackjack`, `transfer`, `top`, `shop`, `buy`, `premium`, `grant`, `adjust`, `shopadd`, or `shopremove`.");
   },
 };

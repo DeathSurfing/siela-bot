@@ -357,6 +357,10 @@ export class SielaBot {
         await this.services.tambola.handleInteraction(interaction);
         return;
       }
+      if (interaction.isButton() && interaction.customId.startsWith("economy:bj:")) {
+        await this.services.economy.handleBlackjackInteraction(interaction);
+        return;
+      }
       if (interaction.isButton() && interaction.customId.startsWith("music:")) {
         await this.onMusicButton(interaction);
         return;

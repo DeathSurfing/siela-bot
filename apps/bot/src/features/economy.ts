@@ -8,6 +8,7 @@ import {
   type Database,
 } from "@siela/db";
 import type { Logger } from "../lib/logger.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, TextDisplayBuilder } from "discord.js";
 import type { ValkeyService } from "./valkey.js";
 
 const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -18,6 +19,18 @@ export interface EconomyBalance {
   balance: number;
   lastDailyAt: Date | null;
   dailyStreak: number;
+}
+
+interface BlackjackGame {
+  guildId: string;
+  userId: string;
+  bet: number;
+  player: string[];
+  dealer: string[];
+  status: "playing" | "finished";
+  result?: string;
+  payout?: number;
+  startedAt: number;
 }
 
 export class EconomyService {
@@ -535,6 +548,198 @@ export class EconomyService {
       .select()
       .from(economyInventory)
       .where(and(eq(economyInventory.guildId, guildId), eq(economyInventory.userId, userId)));
+  }
+
+  private readonly blackjackGames = new Map<string, BlackjackGame>();
+  private readonly blackjackShoes = new Map<string, string[]>();
+
+
+  private blackjackKey(guildId: string, userId: string): string {
+    return `${guildId}:${userId}`;
+  }
+
+  private ensureBlackjackShoe(guildId: string): string[] {
+    let shoe = this.blackjackShoes.get(guildId);
+    if (!shoe || shoe.length < 20) {
+      const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+      const suits = ["♠", "♥", "♦", "♣"];
+      const cards: string[] = [];
+      for (let deck = 0; deck < 3; deck += 1) {
+        for (const suit of suits) {
+          for (const rank of ranks) cards.push(`${rank}${suit}`);
+        }
+      }
+      for (let i = cards.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [cards[i], cards[j]] = [cards[j]!, cards[i]!];
+      }
+      shoe = cards;
+      this.blackjackShoes.set(guildId, shoe);
+    }
+    return shoe;
+  }
+
+  private drawBlackjackCard(guildId: string): string {
+    const shoe = this.ensureBlackjackShoe(guildId);
+    const card = shoe.shift();
+    if (!card) throw new Error("SHOE_EMPTY");
+    return card;
+  }
+
+  private cardRank(card: string): string {
+    return card.slice(0, -1);
+  }
+
+  private cardValue(card: string): number {
+    const rank = this.cardRank(card);
+    if (rank === "A") return 11;
+    if (["K", "Q", "J", "10"].includes(rank)) return 10;
+    return Number(rank);
+  }
+
+  private handValue(cards: string[]): number {
+    let total = 0;
+    let aces = 0;
+    for (const card of cards) {
+      total += this.cardValue(card);
+      if (this.cardRank(card) === "A") aces += 1;
+    }
+    while (total > 21 && aces > 0) {
+      total -= 10;
+      aces -= 1;
+    }
+    return total;
+  }
+
+  private isBlackjack(cards: string[]): boolean {
+    return cards.length === 2 && this.handValue(cards) === 21;
+  }
+
+  private async resolveBlackjack(game: BlackjackGame): Promise<void> {
+    const playerValue = this.handValue(game.player);
+    const dealerValue = this.handValue(game.dealer);
+    let payout = 0;
+    let result = "";
+    if (playerValue > 21) {
+      result = "Bust. You lose.";
+    } else if (this.isBlackjack(game.player) && !this.isBlackjack(game.dealer)) {
+      result = "Blackjack! You win.";
+      payout = Math.floor(game.bet * 2.5);
+    } else if (this.isBlackjack(game.dealer) && !this.isBlackjack(game.player)) {
+      result = "Dealer has blackjack. You lose.";
+    } else if (dealerValue > 21) {
+      result = "Dealer busts. You win!";
+      payout = game.bet * 2;
+    } else if (playerValue > dealerValue) {
+      result = "You win!";
+      payout = game.bet * 2;
+    } else if (playerValue < dealerValue) {
+      result = "You lose.";
+    } else {
+      result = "Push. Bet returned.";
+      payout = game.bet;
+    }
+    if (payout > 0) {
+      await this.award(game.guildId, game.userId, payout, "blackjack_win", `${game.guildId}:${game.userId}:blackjack:${game.startedAt}:win`);
+    }
+    game.result = result;
+    game.payout = payout;
+    game.status = "finished";
+  }
+
+  async blackjackStart(guildId: string, userId: string, bet: number): Promise<BlackjackGame> {
+    const key = this.blackjackKey(guildId, userId);
+    const existing = this.blackjackGames.get(key);
+    if (existing && existing.status === "playing") throw new Error("BLACKJACK_ACTIVE");
+    await this.spend(guildId, userId, bet, "blackjack_bet", `${guildId}:${userId}:blackjack:${Date.now()}`);
+    const game: BlackjackGame = {
+      guildId,
+      userId,
+      bet,
+      player: [this.drawBlackjackCard(guildId), this.drawBlackjackCard(guildId)],
+      dealer: [this.drawBlackjackCard(guildId), this.drawBlackjackCard(guildId)],
+      status: "playing",
+      startedAt: Date.now(),
+    };
+    this.blackjackGames.set(key, game);
+    if (this.isBlackjack(game.player) || this.isBlackjack(game.dealer)) {
+      await this.resolveBlackjack(game);
+    }
+    return game;
+  }
+
+  async blackjackHit(guildId: string, userId: string): Promise<BlackjackGame> {
+    const key = this.blackjackKey(guildId, userId);
+    const game = this.blackjackGames.get(key);
+    if (!game) throw new Error("NO_BLACKJACK_GAME");
+    if (game.status !== "playing") throw new Error("BLACKJACK_FINISHED");
+    game.player.push(this.drawBlackjackCard(guildId));
+    if (this.handValue(game.player) > 21) {
+      await this.resolveBlackjack(game);
+    }
+    return game;
+  }
+
+  async blackjackStand(guildId: string, userId: string): Promise<BlackjackGame> {
+    const key = this.blackjackKey(guildId, userId);
+    const game = this.blackjackGames.get(key);
+    if (!game) throw new Error("NO_BLACKJACK_GAME");
+    if (game.status !== "playing") throw new Error("BLACKJACK_FINISHED");
+    while (this.handValue(game.dealer) < 17) {
+      game.dealer.push(this.drawBlackjackCard(guildId));
+    }
+    await this.resolveBlackjack(game);
+    return game;
+  }
+
+  blackjackPayload(game: BlackjackGame): { components: any[]; flags: number } {
+    const reveal = game.status === "finished";
+    const dealerCards = reveal ? game.dealer.join(" ") : `${game.dealer[0]} ??`;
+    const playerValue = this.handValue(game.player);
+    const dealerValue = reveal ? this.handValue(game.dealer) : this.cardValue(game.dealer[0]!);
+    const lines = [
+      `**Your hand** · ${game.player.join(" ")} (${playerValue})`,
+      `**Dealer** · ${dealerCards}${reveal ? ` (${dealerValue})` : ""}`,
+    ];
+    if (game.status === "finished" && game.result) {
+      lines.push("", game.result);
+      if (game.payout && game.payout > 0) lines.push(`Payout: ${game.payout} SC`);
+    }
+    const container = new ContainerBuilder().setAccentColor(0x5865f2);
+    container.addTextDisplayComponents(new TextDisplayBuilder({ content: "## Blackjack" }));
+    container.addTextDisplayComponents(new TextDisplayBuilder({ content: lines.join("\n") }));
+    const components: any[] = [container];
+    if (game.status === "playing") {
+      components.push(new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`economy:bj:hit:${game.userId}`).setLabel("Hit").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`economy:bj:stand:${game.userId}`).setLabel("Stand").setStyle(ButtonStyle.Secondary),
+      ));
+    }
+    return { components, flags: 4096 };
+  }
+
+  async handleBlackjackInteraction(interaction: any): Promise<void> {
+    if (!interaction.isButton()) return;
+    const parts = interaction.customId.split(":");
+    if (parts[0] !== "economy" || parts[1] !== "bj") return;
+    const action = parts[2];
+    const userId = parts[3];
+    if (!userId || interaction.user.id !== userId) {
+      await interaction.reply({ content: "This is not your hand.", ephemeral: true }).catch(() => undefined);
+      return;
+    }
+    const guildId = interaction.guild?.id;
+    if (!guildId) return;
+    try {
+      let game: BlackjackGame;
+      if (action === "hit") game = await this.blackjackHit(guildId, userId);
+      else if (action === "stand") game = await this.blackjackStand(guildId, userId);
+      else return;
+      await interaction.update(this.blackjackPayload(game));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Blackjack failed.";
+      await interaction.reply({ content: message, ephemeral: true }).catch(() => undefined);
+    }
   }
 
   async rateLimit(key: string, limit: number, windowMs: number): Promise<boolean> {
