@@ -43,7 +43,9 @@ export class EconomyService {
       const cached = await redis.get(cacheKey).catch(() => null);
       if (cached) {
         try {
-          return JSON.parse(cached) as EconomyBalance;
+          const parsed = JSON.parse(cached) as EconomyBalance;
+          if (parsed.lastDailyAt) parsed.lastDailyAt = new Date(parsed.lastDailyAt as string | Date);
+          return parsed;
         } catch {
           // ignore
         }
@@ -61,7 +63,7 @@ export class EconomyService {
       .where(and(eq(economyAccounts.guildId, guildId), eq(economyAccounts.userId, userId)));
     const result: EconomyBalance = {
       balance: row?.balance ?? 0,
-      lastDailyAt: row?.lastDailyAt ?? null,
+      lastDailyAt: row?.lastDailyAt ? new Date(row.lastDailyAt as string | Date) : null,
       dailyStreak: row?.dailyStreak ?? 0,
     };
     if (redis) {
@@ -121,8 +123,9 @@ export class EconomyService {
 
     if (!updated) {
       const current = await this.getBalance(guildId, userId);
-      const nextAt = current.lastDailyAt
-        ? new Date(current.lastDailyAt.getTime() + DAILY_COOLDOWN_MS)
+      const lastDaily = current.lastDailyAt ? new Date(current.lastDailyAt as string | Date) : null;
+      const nextAt = lastDaily
+        ? new Date(lastDaily.getTime() + DAILY_COOLDOWN_MS)
         : now;
       throw new Error(`DAILY_COOLDOWN:${nextAt.toISOString()}`);
     }
