@@ -1,5 +1,6 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
+import { Readable } from "node:stream";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -131,6 +132,15 @@ export class TambolaVoice {
 
   async speak(text: string): Promise<void> {
     if (this.disabled || !this.connected) return;
+    const serviceUrl = process.env.TTS_SERVICE_URL;
+    if (serviceUrl && process.env.TTS_STREAM === "true") {
+      try {
+        await this.speakRemoteStream(text, serviceUrl);
+        return;
+      } catch (error) {
+        this.logger.warn({ err: error, text }, "tambola TTS stream failed; falling back to buffered synthesis");
+      }
+    }
     const file = await this.synthesize(text);
     if (!file || !this.player) return;
     try {
@@ -249,6 +259,22 @@ export class TambolaVoice {
       if (this.failures >= 3) this.disabled = true;
       return null;
     }
+  }
+
+  private async speakRemoteStream(text: string, serviceUrl: string): Promise<void> {
+    if (!this.player) throw new Error("audio player not ready");
+    const response = await fetch(`${serviceUrl.replace(/\/$/, "")}/synthesize-stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voice: this.kittenVoice || this.voice }),
+    });
+    if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+    const stream = Readable.fromWeb(response.body as any);
+    if (this.player.state.status !== AudioPlayerStatus.Idle) {
+      this.player.stop(true);
+    }
+    this.player.play(createAudioResource(stream, { inputType: StreamType.Arbitrary }));
+    this.logger.debug({ text }, "tambola TTS stream playback started");
   }
 
   private async synthesizeRemote(text: string, file: string, serviceUrl: string): Promise<string | null> {
