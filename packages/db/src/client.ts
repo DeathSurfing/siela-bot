@@ -1,30 +1,25 @@
 import { eq, sql } from "drizzle-orm";
-import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { migrate } from "drizzle-orm/postgres-js/migrator";
-import postgres from "postgres";
+import { drizzle, type BunSQLDatabase } from "drizzle-orm/bun-sql";
+import { migrate } from "drizzle-orm/bun-sql/migrator";
+import { SQL } from "bun";
 import * as schema from "./schema.js";
 
-export type Database = PostgresJsDatabase<typeof schema>;
+export type Database = BunSQLDatabase<typeof schema>;
 
 export interface DatabaseHandle {
   db: Database;
-  client: postgres.Sql;
+  client: SQL;
   close(): Promise<void>;
 }
 
 export function createDatabase(url: string): DatabaseHandle {
-  const client = postgres(url, {
-    max: 10,
-    idle_timeout: 20,
-    connect_timeout: 10,
-    onnotice: () => undefined,
-  });
+  const client = new SQL(url);
   const db = drizzle(client, { schema });
   return {
     db,
     client,
     async close() {
-      await client.end({ timeout: 5 });
+      client.close();
     },
   };
 }

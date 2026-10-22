@@ -13,7 +13,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
-    "types": ["node"],
+    "types": ["node", "bun-types"],
     "baseUrl": ".",
     "paths": {
       "@siela/shared": ["packages/shared/src/index.ts"],
