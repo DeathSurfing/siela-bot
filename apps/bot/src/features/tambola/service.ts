@@ -607,11 +607,6 @@ export class TambolaService {
       this.logger.info({ guildId }, "tambola voice not configured; running text-only");
       return false;
     }
-    if (session.voice?.connected) {
-      session.voiceNote = null;
-      return true;
-    }
-    session.voiceNote = "Connecting voice…";
     if (this.music.isConnected(guildId)) {
       try {
         await this.music.disconnect(guildId);
@@ -630,10 +625,7 @@ export class TambolaService {
       session.voiceNote = null;
       return true;
     }
-    if (!session.voiceChannelId) {
-      session.voiceNote = "Text only";
-      return false;
-    }
+    session.voiceNote = "Connecting voice…";
     const guild = this.client.guilds.cache.get(guildId);
     const channel = guild
       ? await guild.channels.fetch(session.voiceChannelId).catch(() => null)
