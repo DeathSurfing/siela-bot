@@ -4,6 +4,40 @@ function cleanModelText(text: string): string {
   return text.replace(/^[\s\S]*?<\/think>/i, "").trim();
 }
 
+function cleanField(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value.trim().replace(/^["']|["']$/g, "").trim();
+  return cleaned || null;
+}
+
+function sentence(value: string): string {
+  return /[.!?]$/.test(value) ? value : `${value}.`;
+}
+
+function composeStory(content: string, bias: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    const match = content.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      parsed = JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const record = parsed as Record<string, unknown>;
+  const scene = cleanField(record.scene);
+  const notice = cleanField(record.notice);
+  const escalation = cleanField(record.escalation);
+  const line = cleanField(record.line);
+  if (!scene || !notice || !escalation || !line) return null;
+  const lineText = /[.!?]$/.test(line) ? line : `${line}.`;
+  return `${sentence(scene)} ${sentence(notice)} ${sentence(escalation)} ${bias} says, "${lineText}"`;
+}
+
 const MODEL = "huihui-ai/Qwen2.5-0.5B-Instruct-abliterated-v3";
 
 const FALLBACK_SCENARIOS = [
@@ -22,7 +56,18 @@ export class DeluluService {
   ) {}
 
   async generate(bias: string): Promise<string> {
-    const prompt = `You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Address the reader directly as 'you'. Think carefully and at length before answering, but output only the final scenario. Do not include quotes around the whole response.`;
+    const prompt = `Return JSON for a funny, absurd, coherent story about BTS member ${bias} noticing the user.
+
+Keys:
+- scene: one sentence starting with "You are" in a specific ordinary place
+- notice: one sentence where ${bias} notices you and reacts dramatically
+- escalation: one sentence where the situation becomes absurd
+- line: one short line ${bias} says to you, without quotation marks
+
+Example for Jin:
+{"scene":"You are sorting socks at a laundromat.","notice":"Jin bursts out of the dryer wearing a chef's hat and declares you his muse.","escalation":"The washing machines begin to spin in perfect harmony as the customers form a conga line.","line":"I have been searching every laundromat in Seoul for someone with your sock energy."}
+
+Now write new JSON for ${bias}. Use a different place, reaction, and escalation. Do not copy the example. Use simple English.`;
 
     if (this.llmUrl) {
       try {
@@ -31,9 +76,31 @@ export class DeluluService {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             model: "default",
-            messages: [{ role: "user", content: prompt }],
+            messages: [
+              { role: "system", content: "You generate JSON only. Output only the JSON object." },
+              { role: "user", content: prompt },
+            ],
             max_tokens: 700,
-            temperature: 0.95,
+            temperature: 0.8,
+            top_p: 0.9,
+            response_format: {
+              type: "json_schema",
+              json_schema: {
+                name: "delulu",
+                strict: true,
+                schema: {
+                  type: "object",
+                  properties: {
+                    scene: { type: "string" },
+                    notice: { type: "string" },
+                    escalation: { type: "string" },
+                    line: { type: "string" },
+                  },
+                  required: ["scene", "notice", "escalation", "line"],
+                  additionalProperties: false,
+                },
+              },
+            },
           }),
           signal: AbortSignal.timeout(120_000),
         });
@@ -42,7 +109,8 @@ export class DeluluService {
           const content = json.choices?.[0]?.message?.content?.trim();
           if (content) {
             const cleaned = cleanModelText(content);
-            if (cleaned) return cleaned;
+            const story = composeStory(cleaned, bias);
+            if (story) return story;
           }
         } else {
           this.logger.warn({ status: response.status }, "local LLM request failed");

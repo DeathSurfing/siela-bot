@@ -48,9 +48,9 @@ services:
       - llmcache:/root/.cache/huggingface
     command:
       - "--hf-repo"
-      - "mradermacher/Qwen3-0.6B-heretic-abliterated-uncensored-GGUF"
+      - "Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3-gguf"
       - "--hf-file"
-      - "Qwen3-0.6B-heretic-abliterated-uncensored.Q4_K_M.gguf"
+      - "josiefied-qwen2.5-1.5b-instruct-abliterated-v3.Q4_K_M.gguf"
       - "--host"
       - "0.0.0.0"
       - "--port"
@@ -58,7 +58,7 @@ services:
       - "-c"
       - "2048"
     restart: unless-stopped
-    mem_limit: 1g
+    mem_limit: 2g
 
   tts:
     image: localhost/siela-tts:latest
