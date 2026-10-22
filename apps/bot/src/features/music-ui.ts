@@ -12,7 +12,7 @@ import {
 } from "discord.js";
 import { formatDuration, truncate, type MusicQueueState } from "@siela/shared";
 import type { ReplyPayload } from "../framework/types.js";
-import { ICONS, UI_ACCENT, actionRow, progressBar, text } from "./ui.js";
+import { EMOJI, ICONS, UI_ACCENT, actionRow, progressBar, text } from "./ui.js";
 
 function buttonId(guildId: string, action: string): string {
   return `music:${action}:${guildId}`;
@@ -78,12 +78,12 @@ export function buildMusicPayload(
       new ButtonBuilder()
         .setCustomId(buttonId(guildId, "pause"))
         .setLabel(state.paused ? "Resume" : "Pause")
-        .setEmoji(state.paused ? ICONS.play : ICONS.pause)
+        .setEmoji(state.paused ? EMOJI.play : EMOJI.pause)
         .setStyle(state.paused ? ButtonStyle.Success : ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(buttonId(guildId, "skip"))
         .setLabel("Skip")
-        .setEmoji(ICONS.skip)
+        .setEmoji(EMOJI.skip)
         .setStyle(ButtonStyle.Secondary),
     ),
   );
@@ -92,12 +92,12 @@ export function buildMusicPayload(
     .setCustomId(`music:more:${guildId}`)
     .setPlaceholder(`${ICONS.more} More controls…`)
     .addOptions(
-      { label: "Rewind 10s", value: "rewind", emoji: ICONS.rewind },
-      { label: "Forward 10s", value: "forward", emoji: ICONS.forward },
-      { label: "Shuffle queue", value: "shuffle", emoji: ICONS.shuffle },
-      { label: "Cycle loop mode", value: "loop", emoji: ICONS.loop },
-      { label: "Filter preset", value: "filter", emoji: ICONS.filter },
-      { label: "Stop and disconnect", value: "stop", emoji: ICONS.stop },
+      { label: "Rewind 10s", value: "rewind", emoji: EMOJI.rewind },
+      { label: "Forward 10s", value: "forward", emoji: EMOJI.forward },
+      { label: "Shuffle queue", value: "shuffle", emoji: EMOJI.shuffle },
+      { label: "Cycle loop mode", value: "loop", emoji: EMOJI.loop },
+      { label: "Filter preset", value: "filter", emoji: EMOJI.filter },
+      { label: "Stop and disconnect", value: "stop", emoji: EMOJI.stop },
     );
 
   container.addActionRowComponents(actionRow(more));

@@ -14,6 +14,34 @@ import type { ReplyPayload } from "../framework/types.js";
 
 export const UI_ACCENT = COLORS.primary;
 
+export const EMOJI = {
+  music: "🎵",
+  social: "💗",
+  voice: "🔊",
+  utility: "🧰",
+  admin: "🛡️",
+  play: "▶️",
+  pause: "⏸️",
+  skip: "⏭️",
+  rewind: "⏪",
+  forward: "⏩",
+  shuffle: "🔀",
+  loop: "🔁",
+  stop: "⏹️",
+  filter: "🎛️",
+  off: "🚫",
+  bass: "🔊",
+  nightcore: "🌙",
+  vaporwave: "🌴",
+  kick: "➖",
+  transfer: "🔄",
+  delete: "🗑️",
+  lock: "🔒",
+  unlock: "🔓",
+  rename: "✏️",
+  limit: "👥",
+} as const;
+
 export const ICONS = {
   music: "♪",
   social: "♥",

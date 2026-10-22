@@ -11,7 +11,7 @@ import type { BotConfig } from "@siela/config";
 import type { CommandRegistry } from "../framework/registry.js";
 import type { ReplyPayload } from "../framework/types.js";
 import { isAdmin } from "../framework/permissions.js";
-import { ICONS, actionRow, card } from "./ui.js";
+import { EMOJI, ICONS, actionRow, card } from "./ui.js";
 
 export interface HelpOptions {
   registry: CommandRegistry;
@@ -91,7 +91,7 @@ export async function buildHelpPayload(options: HelpOptions): Promise<ReplyPaylo
       categories.map((cat) => ({
         label: CATEGORY_LABELS[cat],
         value: cat,
-        emoji: ICONS[cat],
+        emoji: EMOJI[cat],
         default: category === cat,
       })),
     );
