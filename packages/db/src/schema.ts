@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
 import {
   bigserial,
+  bigint,
+  check,
   boolean,
   index,
   integer,
@@ -295,3 +297,56 @@ export type FamilyMarriageRow = typeof familyMarriages.$inferSelect;
 export type FamilyChildRow = typeof familyChildren.$inferSelect;
 export type TempVoiceChannelRow = typeof tempVoiceChannels.$inferSelect;
 export type AuditRow = typeof auditLog.$inferSelect;
+
+
+export const economyAccounts = pgTable(
+  "economy_accounts",
+  {
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    balance: bigint("balance", { mode: "number" }).notNull().default(0),
+    lastDailyAt: timestamp("last_daily_at", { withTimezone: true }),
+    lastWorkAt: timestamp("last_work_at", { withTimezone: true }),
+    dailyStreak: integer("daily_streak").notNull().default(0),
+    totalEarned: bigint("total_earned", { mode: "number" }).notNull().default(0),
+    totalSpent: bigint("total_spent", { mode: "number" }).notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.guildId, t.userId] }),
+    check("economy_balance_nonneg", sql`${t.balance} >= 0`),
+  ],
+);
+
+export const economyTransactions = pgTable(
+  "economy_transactions",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    guildId: text("guild_id").notNull(),
+    fromUserId: text("from_user_id"),
+    toUserId: text("to_user_id"),
+    amount: bigint("amount", { mode: "number" }).notNull(),
+    kind: text("kind").notNull(),
+    reason: text("reason"),
+    idempotencyKey: text("idempotency_key"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("economy_tx_idempotency_uq").on(t.guildId, t.idempotencyKey).where(sql`${t.idempotencyKey} IS NOT NULL`),
+    index("economy_tx_guild_created_idx").on(t.guildId, t.createdAt),
+  ],
+);
+
+export const premiumPasses = pgTable(
+  "premium_passes",
+  {
+    guildId: text("guild_id").notNull(),
+    userId: text("user_id").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    grantedBy: text("granted_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.guildId, t.userId] })],
+);

@@ -67,6 +67,7 @@ import { buildMusicPayload } from "./features/music-ui.js";
 import { LyricsService } from "./features/lyrics.js";
 import { buildLyricsPayload } from "./features/lyrics-ui.js";
 import { TambolaService } from "./features/tambola/service.js";
+import { EconomyService } from "./features/economy.js";
 import { EMOJI, card, confirmCard } from "./features/ui.js";
 import { PrivacyService } from "./features/privacy.js";
 import { buildHelpPayload } from "./features/help.js";
@@ -111,6 +112,7 @@ export class SielaBot {
     const settings = new SettingsService(this.dbHandle.db);
     const counters = new CounterService(this.dbHandle.db);
     this.valkey = new ValkeyService(this.config.VALKEY_URL ?? null, this.logger);
+    const economy = new EconomyService(this.dbHandle.db, this.valkey, this.logger);
     const friendship = new FriendshipService(this.dbHandle.db, this.logger, this.valkey);
     const lyrics = new LyricsService(this.logger);
     const confession = new ConfessionService(this.dbHandle.db, settings, this.client, this.logger);
@@ -155,10 +157,11 @@ export class SielaBot {
       confession,
       friendship,
       tempVc,
-      privacy: new PrivacyService(counters),
+      privacy: new PrivacyService(counters, economy),
       music,
       lyrics,
       tambola,
+      economy,
       scheduledEvents: this.scheduledEvents,
     };
     this.controlServer = new ControlServer({
@@ -314,6 +317,7 @@ export class SielaBot {
       if (!allowed) return;
       await command.execute(ctx);
       this.services.activity.recordCommand(message.guild.id, message.author.id);
+      void this.services.economy.award(message.guild.id, message.author.id, 1, "command", message.id).catch(() => undefined);
     } catch (error) {
       await this.handleCommandError(message, error);
     }
@@ -414,6 +418,7 @@ export class SielaBot {
       return;
     }
     this.services.activity.recordCommand(interaction.guild.id, interaction.user.id);
+    void this.services.economy.award(interaction.guild.id, interaction.user.id, 1, "command", interaction.id).catch(() => undefined);
   }
 
   private async onHelpSelect(interaction: StringSelectMenuInteraction): Promise<void> {

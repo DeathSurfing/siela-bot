@@ -1,0 +1,1 @@
+ALTER TABLE "economy_accounts" ADD COLUMN "last_work_at" timestamp with time zone;

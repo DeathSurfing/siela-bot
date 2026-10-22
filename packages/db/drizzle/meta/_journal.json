@@ -50,6 +50,20 @@
       "when": 1792628060145,
       "tag": "0006_common_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792690606990,
+      "tag": "0007_cool_black_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792690694773,
+      "tag": "0008_superb_thena",
+      "breakpoints": true
     }
   ]
 }

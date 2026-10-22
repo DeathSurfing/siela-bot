@@ -1,6 +1,7 @@
 import type { Command } from "../framework/types.js";
 import { helpCommand } from "./utility/help.js";
 import { pingCommand } from "./utility/ping.js";
+import { economyCommand } from "./utility/economy.js";
 import { privacyCommand } from "./utility/privacy.js";
 import { prefixCommand } from "./admin/prefix.js";
 import { welcomeCommand } from "./admin/welcome.js";
@@ -44,6 +45,7 @@ export const commands: Command[] = [
   helpCommand,
   pingCommand,
   privacyCommand,
+  economyCommand,
   birthdayCommand,
   activityCommand,
   activityTopCommand,
