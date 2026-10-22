@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { getVoiceConnection } from "@discordjs/voice";
 import {
   ChannelType,
   MessageFlags,
@@ -58,6 +59,10 @@ interface TambolaSession {
   lastGenericIndex: number | null;
   lastManualCallAt: number;
   calling: boolean;
+  ticketCooldowns: Map<string, number>;
+  lobbyActionCooldowns: Map<string, number>;
+  lastSettingsAt: number;
+  lastTicketRefreshAt: number;
 }
 
 type OutgoingMessage = Pick<
@@ -145,12 +150,19 @@ export class TambolaService {
       lastGenericIndex: null,
       lastManualCallAt: 0,
       calling: false,
+      ticketCooldowns: new Map(),
+      lobbyActionCooldowns: new Map(),
+      lastSettingsAt: 0,
+      lastTicketRefreshAt: 0,
     };
     this.byGuild.set(game.guildId, session);
     this.byId.set(game.id, session);
     try {
       session.cardMessage = await options.channel.send(
-        messageOptions(buildTambolaLobbyPayload(game, session.voiceChannelId), false),
+        messageOptions(
+          buildTambolaLobbyPayload(game, session.voiceChannelId, session.voiceNote ?? undefined),
+          false,
+        ),
       );
     } catch (error) {
       this.byGuild.delete(game.guildId);
@@ -171,6 +183,8 @@ export class TambolaService {
     member: GuildMember,
   ): Promise<{ session: TambolaSession; dmSent: boolean; payload: ReplyPayload }> {
     const session = this.require(guildId);
+    if (member.user.bot) throw new UserError("Bots cannot join Tambola.");
+    this.assertLobbyCooldown(session, member.id);
     const result = session.game.addPlayer(member.id, member.displayName);
     if (!result.ok) throw new UserError(result.reason);
     const payload = buildTambolaTicketPayload(session.game, result.player);
@@ -182,6 +196,7 @@ export class TambolaService {
   leave(guildId: string, userId: string): void {
     const session = this.require(guildId);
     if (session.game.status !== "lobby") throw new UserError("You cannot leave after the game has started.");
+    this.assertLobbyCooldown(session, userId);
     if (!session.game.removePlayer(userId)) throw new UserError("You are not in this lobby.");
     void this.updateCard(session);
   }
@@ -210,6 +225,7 @@ export class TambolaService {
     const session = this.require(guildId);
     const player = session.game.player(userId);
     if (!player) throw new UserError("You are not in this game.");
+    this.assertTicketCooldown(session, userId);
     const payload = buildTambolaTicketPayload(session.game, player);
     const dmSent = await this.sendTicketDm(
       await this.client.users.fetch(userId),
@@ -257,7 +273,7 @@ export class TambolaService {
     return buildTambolaSettingsPayload(
       session.game,
       session.voiceChannelId,
-      session.voiceNote ?? (session.voice?.connected ? "Ready" : undefined),
+      session.voiceNote ?? (session.voice?.connected ? "Ready" : "Text only"),
     );
   }
 
@@ -317,15 +333,19 @@ export class TambolaService {
         if (!member) throw new UserError("Change settings from the server lobby.");
         this.assertHost(session, member);
         if (session.game.status !== "lobby") throw new UserError("Settings can only be changed in the lobby.");
+        this.assertSettingsCooldown(session);
+        await interaction.deferUpdate();
         session.game.setAutoMark(!session.game.autoMark);
         await this.updateCard(session);
-        void this.refreshPlayerTickets(session);
-        await interaction.update(
+        void this.refreshPlayerTickets(session).catch((error) =>
+          this.logger.warn({ err: error, gameId: session.game.id }, "tambola ticket refresh failed"),
+        );
+        await interaction.editReply(
           messageOptions(
             buildTambolaSettingsPayload(
               session.game,
               session.voiceChannelId,
-              session.voiceNote ?? (session.voice?.connected ? "Ready" : undefined),
+              session.voiceNote ?? (session.voice?.connected ? "Ready" : "Text only"),
             ),
             false,
           ),
@@ -336,16 +356,19 @@ export class TambolaService {
         if (!member) throw new UserError("Change settings from the server lobby.");
         this.assertHost(session, member);
         if (session.game.status !== "lobby") throw new UserError("Settings can only be changed in the lobby.");
+        this.assertSettingsCooldown(session);
+        await interaction.deferUpdate();
         await this.clearVoice(session);
         session.voiceChannelId = null;
         session.voiceNote = "Text only";
+        this.music.unlockVoice(session.game.guildId);
         await this.updateCard(session);
-        await interaction.update(
+        await interaction.editReply(
           messageOptions(
             buildTambolaSettingsPayload(
               session.game,
               session.voiceChannelId,
-              session.voiceNote ?? (session.voice?.connected ? "Ready" : undefined),
+              session.voiceNote ?? (session.voice?.connected ? "Ready" : "Text only"),
             ),
             false,
           ),
@@ -356,6 +379,8 @@ export class TambolaService {
         if (!member) throw new UserError("Change settings from the server lobby.");
         this.assertHost(session, member);
         if (session.game.status !== "lobby") throw new UserError("Settings can only be changed in the lobby.");
+        this.assertSettingsCooldown(session);
+        if (session.voiceTask) throw new UserError("A voice change is already in progress.");
         if (!interaction.isChannelSelectMenu()) throw new UserError("Choose a voice channel.");
         const channelId = interaction.values[0];
         if (!channelId) throw new UserError("Choose a voice channel.");
@@ -387,7 +412,7 @@ export class TambolaService {
             buildTambolaSettingsPayload(
               session.game,
               session.voiceChannelId,
-              session.voiceNote ?? (session.voice?.connected ? "Ready" : undefined),
+              session.voiceNote ?? (session.voice?.connected ? "Ready" : "Text only"),
             ),
             false,
           ),
@@ -468,6 +493,7 @@ export class TambolaService {
       if (action === "ticket") {
         const player = session.game.player(interaction.user.id);
         if (!player) throw new UserError("You are not in this game.");
+        this.assertTicketCooldown(session, interaction.user.id);
         await this.deferPrivate(interaction);
         const payload = buildTambolaTicketPayload(session.game, player);
         const dmSent = await this.sendTicketDm(interaction.user, payload);
@@ -543,6 +569,7 @@ export class TambolaService {
         session.voice?.leave();
         session.voice = null;
         session.voiceNote = "Text only";
+        this.music.unlockVoice(session.game.guildId);
         void this.updateCard(session);
       }
     }
@@ -576,6 +603,7 @@ export class TambolaService {
       session.game.cancel();
       session.voice?.leave();
       session.voice = null;
+      this.music.unlockVoice(session.game.guildId);
     }
     this.byGuild.clear();
     this.byId.clear();
@@ -586,6 +614,8 @@ export class TambolaService {
     session: TambolaSession,
     member: GuildMember,
   ): Promise<void> {
+    if (member.user.bot) throw new UserError("Bots cannot join Tambola.");
+    this.assertLobbyCooldown(session, member.id);
     await this.deferPrivate(interaction);
     const result = session.game.addPlayer(member.id, member.displayName);
     if (!result.ok) throw new UserError(result.reason);
@@ -600,9 +630,15 @@ export class TambolaService {
 
   private ensureVoice(session: TambolaSession): Promise<boolean> {
     if (session.voiceTask) return session.voiceTask;
-    const task = this.connectVoice(session).finally(() => {
-      if (session.voiceTask === task) session.voiceTask = null;
-    });
+    const task = this.connectVoice(session)
+      .catch((error) => {
+        this.logger.warn({ err: error, gameId: session.game.id }, "tambola voice setup failed");
+        session.voiceNote = "Text only · TTS unavailable";
+        return false;
+      })
+      .finally(() => {
+        if (session.voiceTask === task) session.voiceTask = null;
+      });
     session.voiceTask = task;
     return task;
   }
@@ -611,6 +647,7 @@ export class TambolaService {
     const guildId = session.game.guildId;
     if (!session.voiceChannelId) {
       session.voiceNote = "Text only";
+      this.music.unlockVoice(guildId);
       this.logger.info({ guildId }, "tambola voice not configured; running text-only");
       return false;
     }
@@ -621,6 +658,7 @@ export class TambolaService {
       } catch (error) {
         this.logger.warn({ err: error, guildId }, "tambola could not stop music");
         session.voiceNote = "Text only · music active";
+        this.music.unlockVoice(guildId);
         return false;
       }
       if (session.voice) {
@@ -628,9 +666,19 @@ export class TambolaService {
         session.voice = null;
       }
     }
+    if (!session.voice?.connected && session.voice) {
+      session.voice.leave();
+      session.voice = null;
+    }
     if (session.voice?.connected) {
       session.voiceNote = null;
+      this.music.lockVoice(guildId);
       return true;
+    }
+    const lingering = getVoiceConnection(guildId);
+    if (lingering) {
+      lingering.destroy();
+      this.logger.debug({ guildId }, "tambola cleared a lingering voice connection");
     }
     session.voiceNote = "Connecting voice…";
     const guild = this.client.guilds.cache.get(guildId);
@@ -639,6 +687,7 @@ export class TambolaService {
       : null;
     if (!channel || channel.type !== ChannelType.GuildVoice) {
       session.voiceNote = "Text only · voice channel unavailable";
+      this.music.unlockVoice(guildId);
       this.logger.warn({ guildId, channelId: session.voiceChannelId }, "tambola voice channel unavailable");
       return false;
     }
@@ -651,6 +700,7 @@ export class TambolaService {
     }
     if (!joined) {
       session.voiceNote = "Text only · TTS unavailable";
+      this.music.unlockVoice(guildId);
       return false;
     }
     if (
@@ -659,10 +709,12 @@ export class TambolaService {
       session.voiceChannelId !== channel.id
     ) {
       voice.leave();
+      this.music.unlockVoice(guildId);
       return false;
     }
     session.voice = voice;
     session.voiceNote = null;
+    this.music.lockVoice(guildId);
     this.logger.info({ guildId, channelId: session.voiceChannelId }, "tambola voice ready");
     return true;
   }
@@ -728,7 +780,14 @@ export class TambolaService {
     session.voice = null;
     if (voice) {
       if (winner) void voice.speak("Full house! Congratulations!");
-      setTimeout(() => voice.leave(), 6_000);
+      setTimeout(() => {
+        voice.leave();
+        if (!this.byGuild.has(session.game.guildId)) {
+          this.music.unlockVoice(session.game.guildId);
+        }
+      }, 6_000);
+    } else {
+      this.music.unlockVoice(session.game.guildId);
     }
     this.detach(session);
   }
@@ -739,6 +798,7 @@ export class TambolaService {
     await this.updateCard(session, note);
     session.voice?.leave();
     session.voice = null;
+    this.music.unlockVoice(session.game.guildId);
     this.detach(session);
   }
 
@@ -799,6 +859,8 @@ export class TambolaService {
   }
 
   private async refreshPlayerTickets(session: TambolaSession): Promise<void> {
+    if (Date.now() - session.lastTicketRefreshAt < 10_000) return;
+    session.lastTicketRefreshAt = Date.now();
     for (const player of session.game.players.values()) {
       const user = await this.client.users.fetch(player.userId).catch(() => null);
       if (!user) continue;
@@ -820,6 +882,29 @@ export class TambolaService {
       this.logger.debug({ err: error }, "tambola ticket DM failed");
       return false;
     }
+  }
+
+  private assertLobbyCooldown(session: TambolaSession, userId: string): void {
+    const last = session.lobbyActionCooldowns.get(userId) ?? 0;
+    if (Date.now() - last < 2_000) {
+      throw new UserError("Wait a moment before joining or leaving again.");
+    }
+    session.lobbyActionCooldowns.set(userId, Date.now());
+  }
+
+  private assertSettingsCooldown(session: TambolaSession): void {
+    if (Date.now() - session.lastSettingsAt < 2_000) {
+      throw new UserError("Wait a moment before changing settings again.");
+    }
+    session.lastSettingsAt = Date.now();
+  }
+
+  private assertTicketCooldown(session: TambolaSession, userId: string): void {
+    const last = session.ticketCooldowns.get(userId) ?? 0;
+    if (Date.now() - last < 8_000) {
+      throw new UserError("Wait a few seconds before requesting your ticket again.");
+    }
+    session.ticketCooldowns.set(userId, Date.now());
   }
 
   private assertHost(session: TambolaSession, member: GuildMember): void {

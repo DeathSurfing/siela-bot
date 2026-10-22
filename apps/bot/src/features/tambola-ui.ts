@@ -182,6 +182,11 @@ export function buildTambolaGamePayload(
   container.addTextDisplayComponents(
     text(`**Last call** · ${last ? `\`${last}\`` : "Waiting"}   **Called** · ${game.called.length}/90`),
   );
+  if (game.remainingCalls === 0) {
+    container.addTextDisplayComponents(
+      text("-# All 90 numbers called · Full House claims are open."),
+    );
+  }
   container.addTextDisplayComponents(
     text(
       `**Status** · ${game.status === "paused" ? "Paused" : "Live"} · ${game.intervalSeconds}s calls · Marking ${game.autoMark ? "Auto" : "Manual"} · ${voiceChannelId ? voiceLabel(game, voiceChannelId) : voiceNote ?? "Text only"}`,

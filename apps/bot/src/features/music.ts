@@ -608,6 +608,7 @@ class GuildPlayer {
 export class MusicService extends EventEmitter {
   readonly logger: Logger;
   private readonly players = new Map<string, GuildPlayer>();
+  private readonly voiceLocks = new Set<string>();
   private readonly cacheDir = "/tmp/siela-music-cache";
   private readonly cacheMaxBytes = 250 * 1024 * 1024;
   private readonly cacheInFlight = new Map<string, Promise<string | null>>();
@@ -850,6 +851,18 @@ export class MusicService extends EventEmitter {
 
   isConnected(guildId: string): boolean {
     return this.players.has(guildId);
+  }
+
+  lockVoice(guildId: string): void {
+    this.voiceLocks.add(guildId);
+  }
+
+  unlockVoice(guildId: string): void {
+    this.voiceLocks.delete(guildId);
+  }
+
+  isVoiceLocked(guildId: string): boolean {
+    return this.voiceLocks.has(guildId);
   }
 
   channelId(guildId: string): string | null {
@@ -1179,6 +1192,9 @@ export class MusicService extends EventEmitter {
   }
 
   private async ensurePlayer(member: GuildMember, voiceChannelId?: string): Promise<GuildPlayer> {
+    if (this.voiceLocks.has(member.guild.id)) {
+      throw new UserError("Tambola is using the voice channel. Finish the game before playing music.");
+    }
     const channelId = voiceChannelId ?? member.voice.channelId;
     if (!channelId) throw new UserError("Join a voice channel first.");
     const channel = member.guild.channels.cache.get(channelId);

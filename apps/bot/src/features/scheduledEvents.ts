@@ -73,6 +73,7 @@ export class ScheduledEventService {
     private readonly logger: Logger,
     private readonly enabled: boolean,
     private readonly prayer: Prayer,
+    private readonly isVoiceBusy?: (guildId: string) => boolean,
   ) {}
 
   start(guild: Guild): void {
@@ -223,6 +224,9 @@ export class ScheduledEventService {
   }
 
   async test(kind: string, guild: Guild): Promise<{ phase: string; channel: string; audio: string }> {
+    if (this.isVoiceBusy?.(guild.id) || this.music?.isVoiceLocked(guild.id)) {
+      throw new Error("Tambola is using the voice channel. End it before testing event audio.");
+    }
     const normalized = kind.toLowerCase().replace(/[^a-z]/g, "");
     const phase = PHASES.find((candidate) => {
       if (candidate.key === "chalisa") return normalized === "hanumanchalisa" || normalized === "chalisa";
@@ -239,6 +243,10 @@ export class ScheduledEventService {
   }
 
   private async runPhase(guild: Guild, phase: Phase): Promise<void> {
+    if (this.isVoiceBusy?.(guild.id) || this.music?.isVoiceLocked(guild.id)) {
+      this.logger.info({ guildId: guild.id, phase: phase.key }, "scheduled event skipped because Tambola is using voice");
+      return;
+    }
     const path = findAudio(phase.audioName);
     if (!path) {
       throw new Error(`Missing audio file: assets/events/${phase.audioName}.ogg|mp3|wav|m4a|flac`);

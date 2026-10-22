@@ -129,12 +129,14 @@ export class SielaBot {
     );
     this.music = music;
     const tambola = new TambolaService(this.client, music, this.config, this.logger);
-    this.randomVc = new RandomVcService(music, this.logger);
+    const isVoiceBusy = (guildId: string): boolean => Boolean(tambola.get(guildId));
+    this.randomVc = new RandomVcService(music, this.logger, isVoiceBusy);
     this.scheduledEvents = new ScheduledEventService(
       music,
       this.logger,
       this.config.EVENT_SCHEDULE_ENABLED,
       this.config.EVENT_PRAYER,
+      isVoiceBusy,
     );
     const activity = new ActivityService(this.dbHandle.db, friendship, tempVc, music, this.logger);
     this.services = {

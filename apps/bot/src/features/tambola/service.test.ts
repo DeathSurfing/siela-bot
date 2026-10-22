@@ -61,6 +61,9 @@ function fakeInteraction(
     async deferReply() {
       this.deferred = true;
     },
+    async deferUpdate() {
+      this.deferred = true;
+    },
     async editReply(payload: unknown) {
       state.edited = payload;
       return {};
@@ -76,7 +79,11 @@ function createService() {
     warn: vi.fn(),
     error: vi.fn(),
   };
-  const music = { isConnected: () => false };
+  const music = {
+    isConnected: () => false,
+    lockVoice: vi.fn(),
+    unlockVoice: vi.fn(),
+  };
   const client = {
     users: { fetch: async (id: string) => fakeUser(id, id) },
     guilds: { cache: new Map() },
@@ -158,7 +165,7 @@ describe("TambolaService", () => {
     );
     await service.handleInteraction(interaction as never);
     expect(session.game.autoMark).toBe(true);
-    expect(interaction.getState().updated).not.toBeNull();
+    expect(interaction.getState().edited).not.toBeNull();
     service.stop();
   });
 

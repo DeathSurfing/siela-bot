@@ -39,6 +39,7 @@ export class RandomVcService {
   constructor(
     private readonly music: MusicService | null,
     private readonly logger: Logger,
+    private readonly isVoiceBusy?: (guildId: string) => boolean,
   ) {}
 
   start(guild: Guild): void {
@@ -86,7 +87,13 @@ export class RandomVcService {
     const guild = this.guild;
     if (!guild) return;
     this.schedule();
-    if (this.music?.isConnected(guild.id)) return;
+    if (
+      this.music?.isConnected(guild.id) ||
+      this.music?.isVoiceLocked(guild.id) ||
+      this.isVoiceBusy?.(guild.id)
+    ) {
+      return;
+    }
     const channel = this.pickChannel(guild);
     if (!channel) return;
 

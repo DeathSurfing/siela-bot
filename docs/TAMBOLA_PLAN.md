@@ -21,7 +21,7 @@ Add a 90-ball Tambola/Housie game mode that runs inside Discord:
 
 - A host opens a lobby and starts a game.
 - Players join and receive a private ticket by DM.
-- The bot calls numbers every 8 seconds and announces them in voice with TTS.
+- The bot calls numbers every 12 seconds by default (fast 8s, slow 15s) and announces them in voice with TTS.
 - Players manually mark called numbers on their tickets.
 - Players claim Top Line, Middle Line, Bottom Line, or Full House.
 - The bot validates every claim server-side.
@@ -30,15 +30,15 @@ Add a 90-ball Tambola/Housie game mode that runs inside Discord:
 ## Player flow
 
 1. Host runs `/tambola host`.
-2. Bot posts a lobby card with **Join**, **Leave**, **Start**, and **Rules** buttons.
+2. Bot posts a lobby card with **Join**, **Leave**, **Start**, **Settings**, and **Rules** buttons.
 3. Players join. Each player gets their ticket by DM.
 4. Host starts when at least two players have joined.
-5. Bot posts the live game card, joins the selected voice channel, and begins calling.
-6. Every 8 seconds the bot:
+5. The bot joins the selected voice channel when the lobby opens, then posts the live game card and begins calling when the host starts.
+6. Every 12 seconds by default, the bot:
    - Calls a number from the shuffled 1–90 deck.
    - Announces it with TTS.
    - Updates the live card with the last call and called board.
-7. Players open their DM ticket and tap the called number to mark it.
+7. With auto-marking on, called numbers are marked automatically. With it off, players open their DM ticket and tap the called number to mark it.
 8. Players claim a pattern from the claim select on their ticket or the game card.
 9. The bot validates the claim and updates the game card.
 10. Full House ends the game; the final card lists the winners.
@@ -142,7 +142,7 @@ Stats, leaderboards, and game history are deferred.
 ```text
 ## ♬ Tambola · Lobby
 Host · @user
-Players 3/20 · Auto-call 8s
+Players 3/20 · Auto-call 12s
 Voice · #General
 1. @a
 2. @b
@@ -160,7 +160,7 @@ If no voice channel is available, `Voice · Text only`.
 ## ♬ Tambola · Live
 **Last call** · 42
 **Called** · 12/90
-**Next call** · 8s
+**Next call** · 12s
 
 **Called board**
 01 · 03 · · 06 · · · 10
@@ -242,7 +242,7 @@ For each number call:
 4. Play the MP3 in the Tambola voice channel.
 5. Delete or evict old cache files when the cache grows too large.
 
-One request per call is enough; Edge TTS takes roughly 1–2 seconds for a short phrase, well inside the 8-second interval.
+One request per call is enough; Edge TTS takes roughly 1–2 seconds for a short phrase, well inside the 12-second interval.
 
 ### TTS service
 
@@ -382,7 +382,7 @@ Avoid repeating the same generic line twice in a row.
 
 ### Voice channel
 
-- The bot joins the selected voice channel at game start.
+- The bot joins the selected voice channel when the lobby opens.
 - If music is connected, TTS is disabled for that game because the bot can only have one voice connection and one active audio player per guild. The game runs text-only and the card says so.
 - If Edge TTS fails, times out, or the voice connection fails, TTS is disabled and the game continues text-only.
 - The bot leaves voice when the game ends or is cancelled.
@@ -473,7 +473,7 @@ lobby ──start──> active ──pause──> paused
 - Owns `Map<guildId, TambolaSession>` and `Map<gameId, TambolaSession>`.
 - Posts and edits lobby/game cards.
 - Sends DM tickets and fallback ephemeral tickets.
-- Runs the 8-second auto-call timer.
+- Runs the 12-second auto-call timer (host-selectable fast/slow).
 - Routes `tambola:` buttons and select menus.
 - Handles DM interactions where `interaction.guild` is null by resolving the game ID.
 - Cleans up on channel deletion, guild member removal, and shutdown.
