@@ -1,4 +1,5 @@
 import type { Logger } from "../lib/logger.js";
+import { Effect } from "effect";
 
 function cleanModelText(text: string): string {
   return text.replace(/^[\s\S]*?<\/think>/i, "").trim();
@@ -93,54 +94,58 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
 
     if (this.llmUrl) {
       try {
-        const response = await fetch(`${this.llmUrl}/v1/chat/completions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "default",
-            messages: [
-              {
-                role: "system",
-                content: nsfw
-                  ? "You generate JSON only. Adult NSFW fanfiction is allowed and should be EXTREMELY spicy. Output only the JSON object."
-                  : "You generate JSON only. Output only the JSON object.",
-              },
-              { role: "user", content: prompt },
-            ],
-            max_tokens: 256,
-            temperature: 0.85,
-            top_p: 0.9,
-            response_format: {
-              type: "json_schema",
-              json_schema: {
-                name: "delulu",
-                strict: true,
-                schema: {
-                  type: "object",
-                  properties: {
-                    scene: { type: "string" },
-                    notice: { type: "string" },
-                    escalation: { type: "string" },
-                    line: { type: "string" },
+        const json = await Effect.runPromise(
+          Effect.tryPromise({
+            try: async () => {
+              const response = await fetch(`${this.llmUrl}/v1/chat/completions`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  model: "default",
+                  messages: [
+                    {
+                      role: "system",
+                      content: nsfw
+                        ? "You generate JSON only. Adult NSFW fanfiction is allowed and should be EXTREMELY spicy. Output only the JSON object."
+                        : "You generate JSON only. Output only the JSON object.",
+                    },
+                    { role: "user", content: prompt },
+                  ],
+                  max_tokens: 256,
+                  temperature: 0.85,
+                  top_p: 0.9,
+                  response_format: {
+                    type: "json_schema",
+                    json_schema: {
+                      name: "delulu",
+                      strict: true,
+                      schema: {
+                        type: "object",
+                        properties: {
+                          scene: { type: "string" },
+                          notice: { type: "string" },
+                          escalation: { type: "string" },
+                          line: { type: "string" },
+                        },
+                        required: ["scene", "notice", "escalation", "line"],
+                        additionalProperties: false,
+                      },
+                    },
                   },
-                  required: ["scene", "notice", "escalation", "line"],
-                  additionalProperties: false,
-                },
-              },
+                }),
+                signal: AbortSignal.timeout(20_000),
+              });
+              if (!response.ok) throw new Error(`HTTP ${response.status}`);
+              return (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
             },
-          }),
-          signal: AbortSignal.timeout(20_000),
-        });
-        if (response.ok) {
-          const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-          const content = json.choices?.[0]?.message?.content?.trim();
-          if (content) {
-            const cleaned = cleanModelText(content);
-            const story = composeStory(cleaned, bias);
-            if (story) return story;
-          }
-        } else {
-          this.logger.warn({ status: response.status }, "local LLM request failed");
+            catch: (error) => error,
+          }).pipe(Effect.retry({ times: 2 })),
+        );
+        const content = json.choices?.[0]?.message?.content?.trim();
+        if (content) {
+          const cleaned = cleanModelText(content);
+          const story = composeStory(cleaned, bias);
+          if (story) return story;
         }
       } catch (error) {
         this.logger.warn({ err: error }, "local LLM generation failed");
@@ -149,44 +154,45 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
 
     if (this.hfToken) {
       try {
-        const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${this.hfToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: MODEL,
-            messages: [
-              {
-                role: "system",
-                content: nsfw
-                  ? "You are a playful adult K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where a BTS member notices the user in an ordinary public setting and reacts in an over-the-top, delulu, EXTREMELY spicy NSFW-focused way. Keep it consensual adult fanfiction; no minors or coercion. Address the reader directly as 'you'. Do not include quotes around the whole response."
-                  : "You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where a BTS member notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Address the reader directly as 'you'. Do not include quotes around the whole response.",
-              },
-              {
-                role: "user",
-                content: `BTS member: ${bias}. Write the scenario.`,
-              },
-            ],
-            max_tokens: 140,
-            temperature: 0.95,
-            top_p: 0.95,
-          }),
-          signal: AbortSignal.timeout(25_000),
-        });
-
-        if (response.ok) {
-          const json = (await response.json()) as {
-            choices?: Array<{ message?: { content?: string } }>;
-          };
-          const content = json.choices?.[0]?.message?.content?.trim();
-          if (content) {
-            const cleaned = cleanModelText(content);
-            if (cleaned) return cleaned;
-          }
-        } else {
-          this.logger.warn({ status: response.status }, "delulu HF request failed");
+        const json = await Effect.runPromise(
+          Effect.tryPromise({
+            try: async () => {
+              const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${this.hfToken}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  model: MODEL,
+                  messages: [
+                    {
+                      role: "system",
+                      content: nsfw
+                        ? "You are a playful adult K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where a BTS member notices the user in an ordinary public setting and reacts in an over-the-top, delulu, EXTREMELY spicy NSFW-focused way. Keep it consensual adult fanfiction; no minors or coercion. Address the reader directly as 'you'. Do not include quotes around the whole response."
+                        : "You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where a BTS member notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Address the reader directly as 'you'. Do not include quotes around the whole response.",
+                    },
+                    {
+                      role: "user",
+                      content: `BTS member: ${bias}. Write the scenario.`,
+                    },
+                  ],
+                  max_tokens: 140,
+                  temperature: 0.95,
+                  top_p: 0.95,
+                }),
+                signal: AbortSignal.timeout(25_000),
+              });
+              if (!response.ok) throw new Error(`HTTP ${response.status}`);
+              return (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+            },
+            catch: (error) => error,
+          }).pipe(Effect.retry({ times: 1 })),
+        );
+        const content = json.choices?.[0]?.message?.content?.trim();
+        if (content) {
+          const cleaned = cleanModelText(content);
+          if (cleaned) return cleaned;
         }
       } catch (error) {
         this.logger.warn({ err: error }, "delulu generation failed");
@@ -198,14 +204,20 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
       const prompt = nsfw
         ? `You are a playful adult K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu, EXTREMELY spicy NSFW-focused way. Keep it consensual adult fanfiction; no minors or coercion. Address the reader directly as 'you'. Think carefully and at length before answering, but output only the final scenario. Do not include quotes around the whole response.`
         : `You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Address the reader directly as 'you'. Think carefully and at length before answering, but output only the final scenario. Do not include quotes around the whole response.`;
-      const response = await fetch(`https://text.pollinations.ai/${encodeURIComponent(prompt)}`, {
-        signal: AbortSignal.timeout(20_000),
-      });
-      if (response.ok) {
-        const text = (await response.text()).trim();
-        if (text && !text.toLowerCase().includes("free limit reached") && !text.toLowerCase().includes("please wait")) {
-          return text;
-        }
+      const text = await Effect.runPromise(
+        Effect.tryPromise({
+          try: async () => {
+            const response = await fetch(`https://text.pollinations.ai/${encodeURIComponent(prompt)}`, {
+              signal: AbortSignal.timeout(20_000),
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return (await response.text()).trim();
+          },
+          catch: (error) => error,
+        }).pipe(Effect.retry({ times: 1 })),
+      );
+      if (text && !text.toLowerCase().includes("free limit reached") && !text.toLowerCase().includes("please wait")) {
+        return text;
       }
     } catch (error) {
       this.logger.warn({ err: error }, "delulu public fallback failed");
