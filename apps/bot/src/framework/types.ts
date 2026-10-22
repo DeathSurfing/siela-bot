@@ -32,7 +32,6 @@ import type { ConfessionService } from "../features/confession.js";
 import type { FriendshipService } from "../features/friendship.js";
 import type { BirthdayService } from "../features/birthday.js";
 import type { TempVcService } from "../features/tempvc.js";
-import type { TtsService } from "../features/tts.js";
 import type { MusicService } from "../features/music.js";
 import type { PrivacyService } from "../features/privacy.js";
 import type { CommandRegistry } from "./registry.js";
@@ -53,7 +52,6 @@ export interface Services {
   friendship: FriendshipService;
   birthday: BirthdayService;
   tempVc: TempVcService;
-  tts: TtsService;
   privacy: PrivacyService;
   music: MusicService | null;
 }

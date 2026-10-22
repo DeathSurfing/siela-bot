@@ -51,8 +51,6 @@ const botSchema = z.object({
   BOT_OWNER_ID: optionalSnowflake,
   HF_TOKEN: z.string().optional(),
   LLM_URL: z.string().url().optional(),
-  TTS_URL: z.string().url().optional(),
-  TTS_VOICES_DIR: z.string().default("/app/voices"),
 
   LOG_LEVEL: logLevel.default("info"),
   AUDIT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),

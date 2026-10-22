@@ -32,7 +32,3 @@ logs/
 .DS_Store
 .idea/
 .vscode/
-
-# Local voice-cloning reference clips
-deploy/podman/voices/*
-!deploy/podman/voices/README.md
