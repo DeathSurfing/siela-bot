@@ -202,7 +202,7 @@ export const familyTreeCommand: Command = {
   name: "familytree",
   aliases: ["tree", "family"],
   category: "social",
-  description: "Show a family tree as a Mermaid diagram.",
+  description: "Show a family tree as an image.",
   usage: "[user]",
   examples: ["familytree", "familytree @user"],
   cooldownMs: 5_000,
