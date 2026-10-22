@@ -64,6 +64,7 @@ services:
       - /opt/nvidia-libs:/opt/nvidia-libs:ro
     environment:
       LD_LIBRARY_PATH: /opt/nvidia-libs
+      CUDA_FORCE_PTX_JIT: "1"
     devices:
       - /dev/nvidia0:/dev/nvidia0
       - /dev/nvidiactl:/dev/nvidiactl
