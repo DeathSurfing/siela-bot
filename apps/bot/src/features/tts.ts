@@ -21,11 +21,23 @@ export class TtsService {
     private readonly logger: Logger,
   ) {}
 
+  private cleanupIfDisconnected(guildId: string): void {
+    const session = this.sessions.get(guildId);
+    if (!session) return;
+    if (!session.voice.connected) {
+      session.voice.leave();
+      this.sessions.delete(guildId);
+      this.music?.unlockVoice(guildId);
+    }
+  }
+
   isEnabled(guildId: string): boolean {
+    this.cleanupIfDisconnected(guildId);
     return this.sessions.get(guildId)?.enabled ?? false;
   }
 
   isEnabledChannel(guildId: string, channelId: string): boolean {
+    this.cleanupIfDisconnected(guildId);
     const session = this.sessions.get(guildId);
     return Boolean(session?.enabled && session.channelId === channelId);
   }
