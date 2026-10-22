@@ -1,0 +1,6 @@
+# Fast code-only deploy overlay.
+# Build apps/bot/dist locally, sync it to the server, then restart siela-bot.
+services:
+  bot:
+    volumes:
+      - ../../apps/bot/dist:/app/dist:ro

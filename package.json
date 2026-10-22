@@ -3,19 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@12.14.0",
+  "packageManager": "bun@1.4.2",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "build": "pnpm -r --if-present build",
-    "typecheck": "pnpm -r --if-present typecheck",
-    "test": "pnpm -r --if-present test",
-    "db:generate": "pnpm --filter @siela/db generate",
-    "db:migrate": "pnpm --filter @siela/bot migrate",
-    "dev:bot": "pnpm --filter @siela/bot dev",
-    "dev:mcp": "pnpm --filter @siela/mcp dev",
+    "build": "bun run --cwd apps/bot build && bun run --cwd apps/mcp build",
+    "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/config typecheck && bun run --cwd packages/db typecheck && bun run --cwd apps/mcp typecheck && bun run --cwd apps/bot typecheck",
+    "test": "bun run --cwd packages/shared test && bun run --cwd apps/bot test",
+    "db:generate": "bun run --cwd packages/db generate",
+    "db:migrate": "bun run --cwd apps/bot migrate",
+    "dev:bot": "bun run --cwd apps/bot dev",
+    "dev:mcp": "bun run --cwd apps/mcp dev",
     "podman:config": "podman compose -p siela -f deploy/podman/compose.yaml config",
     "podman:smoke": "./scripts/podman-compose-smoke.sh"
-  }
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
 }
