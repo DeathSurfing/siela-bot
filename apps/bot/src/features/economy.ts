@@ -94,7 +94,7 @@ export class EconomyService {
           balance: sql`${economyAccounts.balance} + ${amount}`,
           totalEarned: sql`${economyAccounts.totalEarned} + ${amount}`,
           lastDailyAt: now,
-          dailyStreak: sql`CASE WHEN ${economyAccounts.lastDailyAt} IS NULL OR ${economyAccounts.lastDailyAt} < ${streakCutoff} THEN 1 ELSE ${economyAccounts.dailyStreak} + 1 END`,
+          dailyStreak: sql`CASE WHEN ${economyAccounts.lastDailyAt} IS NULL OR ${economyAccounts.lastDailyAt} < ${streakCutoff.toISOString()}::timestamptz THEN 1 ELSE ${economyAccounts.dailyStreak} + 1 END`,
           updatedAt: now,
         })
         .where(
