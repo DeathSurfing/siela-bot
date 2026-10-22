@@ -56,11 +56,15 @@ services:
     mem_limit: 256m
 
   llm:
-    image: ghcr.io/ggml-org/llama.cpp:server
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
     container_name: siela-llm
     networks: [edge, control]
     volumes:
       - llmcache:/root/.cache/huggingface
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
     command:
       - "--hf-repo"
       - "Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3-gguf"
@@ -70,6 +74,8 @@ services:
       - "0.0.0.0"
       - "--port"
       - "8080"
+      - "--n-gpu-layers"
+      - "99"
       - "-c"
       - "2048"
     restart: unless-stopped
