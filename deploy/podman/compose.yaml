@@ -115,6 +115,15 @@ services:
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
+    environment:
+      LLM_URL: ${LLM_URL:-http://llm:8080}
+      VALKEY_URL: ${VALKEY_URL:-redis://valkey:6379}
+      TTS_BACKEND: ${TTS_BACKEND:-kitten}
+      TTS_VOICE: ${TTS_VOICE:-Bruno}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3002/healthz || exit 1"]
       interval: 15s

@@ -37,6 +37,9 @@ export class TambolaVoice {
   private readonly voice: string;
   private readonly rate: string;
   private readonly cacheDir: string;
+  private readonly backend: string;
+  private readonly kittenScript: string;
+  private readonly kittenVoice: string;
   private synthesisChain: Promise<unknown> = Promise.resolve();
   private failures = 0;
   private synthesized = 0;
@@ -49,6 +52,9 @@ export class TambolaVoice {
     this.voice = options.voice ?? DEFAULT_VOICE;
     this.rate = options.rate ?? DEFAULT_RATE;
     this.cacheDir = options.cacheDir ?? CACHE_DIR;
+    this.backend = process.env.TTS_BACKEND ?? "edge";
+    this.kittenScript = process.env.KITTEN_TTS_SCRIPT ?? "/app/assets/tts/kitten_tts.py";
+    this.kittenVoice = process.env.TTS_VOICE ?? "Bruno";
     mkdirSync(this.cacheDir, { recursive: true });
   }
 
@@ -153,30 +159,49 @@ export class TambolaVoice {
     const key = createHash("sha1")
       .update(`${this.voice}\u0000${this.rate}\u0000${text}`)
       .digest("hex");
-    const file = join(this.cacheDir, `${key}.mp3`);
+    const extension = this.backend === "kitten" ? "wav" : "mp3";
+    const file = join(this.cacheDir, `${key}.${extension}`);
     if (existsSync(file)) {
       const size = statSync(file).size;
       if (size > 0) return file;
       rmSync(file, { force: true });
     }
 
-    const temp = join(this.cacheDir, `${key}.${randomUUID()}.tmp.mp3`);
+    const temp = this.backend === "kitten"
+      ? join(this.cacheDir, `${key}.${randomUUID()}.tmp.wav`)
+      : join(this.cacheDir, `${key}.${randomUUID()}.tmp.mp3`);
     try {
-      await execFileAsync(
-        "python3",
-        [
-          "-m",
-          "edge_tts",
-          "--voice",
-          this.voice,
-          `--rate=${this.rate}`,
-          "--text",
-          text,
-          "--write-media",
-          temp,
-        ],
-        { timeout: 12_000, maxBuffer: 1024 * 1024 },
-      );
+      if (this.backend === "kitten") {
+        await execFileAsync(
+          "python3",
+          [
+            this.kittenScript,
+            "--voice",
+            this.kittenVoice,
+            "--text",
+            text,
+            "--output",
+            temp,
+          ],
+          { timeout: 120_000, maxBuffer: 1024 * 1024 },
+        );
+      } else {
+        await execFileAsync(
+          "python3",
+          [
+            "-m",
+            "edge_tts",
+            "--voice",
+            this.voice,
+            `--rate=${this.rate}`,
+            "--text",
+            text,
+            "--write-media",
+            temp,
+          ],
+          { timeout: 12_000, maxBuffer: 1024 * 1024 },
+        );
+      }
       if (!existsSync(temp) || statSync(temp).size === 0) {
         throw new Error("edge-tts produced an empty file");
       }
@@ -197,7 +222,7 @@ export class TambolaVoice {
   private pruneCache(): void {
     try {
       const files = readdirSync(this.cacheDir)
-        .filter((name) => name.endsWith(".mp3"))
+        .filter((name) => name.endsWith(".mp3") || name.endsWith(".wav"))
         .map((name) => {
           const path = join(this.cacheDir, name);
           return { path, mtime: statSync(path).mtimeMs };
