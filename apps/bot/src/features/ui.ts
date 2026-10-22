@@ -8,6 +8,7 @@ import {
   SeparatorBuilder,
   SeparatorSpacingSize,
   TextDisplayBuilder,
+  type Guild,
   type Message,
   type MessageActionRowComponentBuilder,
 } from "discord.js";
@@ -252,4 +253,16 @@ export function attachConfirmation(options: {
         .catch(() => undefined);
     }
   });
+}
+
+export async function fetchMemberNames(guild: Guild, ids: string[]): Promise<Map<string, string>> {
+  const names = new Map<string, string>();
+  const unique = [...new Set(ids)];
+  for (let index = 0; index < unique.length; index += 100) {
+    const batch = unique.slice(index, index + 100);
+    const members = await guild.members.fetch({ user: batch }).catch(() => null);
+    if (!members) continue;
+    for (const member of members.values()) names.set(member.id, member.displayName);
+  }
+  return names;
 }

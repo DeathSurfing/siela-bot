@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { friendshipProgress, friendshipTier } from "../../features/friendship.js";
-import { attachPagination, card, pagedCard, progressBar, rankLabel } from "../../features/ui.js";
+import { attachPagination, card, fetchMemberNames, pagedCard, progressBar, rankLabel } from "../../features/ui.js";
 
 function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -68,9 +68,7 @@ export const friendshipTopCommand: Command = {
       await ctx.reply({ content: "No friendship levels yet.", ephemeral: true });
       return;
     }
-    const ids = [...new Set(rows.flatMap((row) => [row.userA, row.userB]))];
-    const members = await ctx.guild.members.fetch({ user: ids }).catch(() => null);
-    const names = new Map((members ? [...members.values()] : []).map((member) => [member.id, member.displayName]));
+    const names = await fetchMemberNames(ctx.guild, rows.flatMap((row) => [row.userA, row.userB]));
     const perPage = 10;
     const totalPages = Math.max(1, Math.ceil(rows.length / perPage));
     const buildPage = (page: number, disabled = false) => {
