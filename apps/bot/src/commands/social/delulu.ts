@@ -31,6 +31,22 @@ export const deluluCommand: Command = {
       });
       return;
     }
+    const cost = nsfw ? 15 : 5;
+    try {
+      await ctx.services.economy.spend(
+        ctx.guild.id,
+        ctx.author.id,
+        cost,
+        "delulu",
+        `delulu:${ctx.guild.id}:${ctx.author.id}:${Date.now()}`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Payment failed.";
+      if (message === "INSUFFICIENT_FUNDS") {
+        throw new UserError(`You need ${cost} SC to run delulu${nsfw ? " NSFW" : ""}.`);
+      }
+      throw new UserError(message);
+    }
     await ctx.defer();
     const scenario = await ctx.services.delulu.generate(row.bias, nsfw);
     await ctx.edit(
