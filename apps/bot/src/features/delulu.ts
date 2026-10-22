@@ -102,7 +102,7 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
               {
                 role: "system",
                 content: nsfw
-                  ? "You generate JSON only. Adult NSFW fanfiction is allowed. Output only the JSON object."
+                  ? "You generate JSON only. Adult NSFW fanfiction is allowed and should be EXTREMELY spicy. Output only the JSON object."
                   : "You generate JSON only. Output only the JSON object.",
               },
               { role: "user", content: prompt },
@@ -161,7 +161,7 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
               {
                 role: "system",
                 content: nsfw
-                  ? "You are a playful adult K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where a BTS member notices the user in an ordinary public setting and reacts in an over-the-top, delulu, NSFW-focused way. Keep it consensual, adult, and suggestive rather than explicit. Address the reader directly as 'you'. Do not include quotes around the whole response."
+                  ? "You are a playful adult K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where a BTS member notices the user in an ordinary public setting and reacts in an over-the-top, delulu, EXTREMELY spicy NSFW-focused way. Keep it consensual adult fanfiction; no minors or coercion. Address the reader directly as 'you'. Do not include quotes around the whole response."
                   : "You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where a BTS member notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Address the reader directly as 'you'. Do not include quotes around the whole response.",
               },
               {
@@ -196,7 +196,7 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
     // Public no-token fallback so /delulu works without HF_TOKEN.
     try {
       const prompt = nsfw
-        ? `You are a playful adult K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu, NSFW-focused way. Keep it consensual, adult, and suggestive rather than explicit. Address the reader directly as 'you'. Think carefully and at length before answering, but output only the final scenario. Do not include quotes around the whole response.`
+        ? `You are a playful adult K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu, EXTREMELY spicy NSFW-focused way. Keep it consensual adult fanfiction; no minors or coercion. Address the reader directly as 'you'. Think carefully and at length before answering, but output only the final scenario. Do not include quotes around the whole response.`
         : `You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Address the reader directly as 'you'. Think carefully and at length before answering, but output only the final scenario. Do not include quotes around the whole response.`;
       const response = await fetch(`https://text.pollinations.ai/${encodeURIComponent(prompt)}`, {
         signal: AbortSignal.timeout(20_000),

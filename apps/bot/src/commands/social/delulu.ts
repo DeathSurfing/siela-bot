@@ -1,7 +1,6 @@
 import { SlashCommandBuilder } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { card } from "../../features/ui.js";
-import { isNsfwChannel } from "../../framework/permissions.js";
 import { UserError } from "../../lib/errors.js";
 
 export const deluluCommand: Command = {
@@ -31,9 +30,6 @@ export const deluluCommand: Command = {
         ephemeral: true,
       });
       return;
-    }
-    if (nsfw && !isNsfwChannel(ctx.channel)) {
-      throw new UserError("The NSFW delulu can only be used in an NSFW channel.");
     }
     await ctx.defer();
     const scenario = await ctx.services.delulu.generate(row.bias, nsfw);
