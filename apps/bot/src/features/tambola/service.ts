@@ -218,7 +218,10 @@ export class TambolaService {
       throw new UserError(message);
     }
     const ticket = session.game.addTicket(userId);
-    if (!ticket) throw new UserError("Could not generate a ticket.");
+    if (!ticket) {
+      await this.economy.award(guildId, userId, 25, "tambola_ticket_refund", `tambola:${session.game.id}:ticket-refund:${userId}:${nextNumber}`).catch(() => undefined);
+      throw new UserError("Could not generate a ticket. Your coins have been refunded.");
+    }
     await this.updateCard(session);
     return player.tickets.length;
   }
@@ -237,7 +240,10 @@ export class TambolaService {
       if (message === "INSUFFICIENT_FUNDS") throw new UserError("You need 10 SC to buy auto-marking.");
       throw new UserError(message);
     }
-    if (!session.game.setPlayerAutoMark(userId, true)) throw new UserError("Could not enable auto-marking.");
+    if (!session.game.setPlayerAutoMark(userId, true)) {
+      await this.economy.award(guildId, userId, 10, "tambola_automark_refund", `tambola:${session.game.id}:automark-refund:${userId}`).catch(() => undefined);
+      throw new UserError("Could not enable auto-marking. Your coins have been refunded.");
+    }
     await this.updateCard(session);
   }
 

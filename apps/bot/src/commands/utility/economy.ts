@@ -45,7 +45,7 @@ export const economyCommand: Command = {
     const action = (ctx.args[0] ?? "balance").toLowerCase();
 
     if (action === "balance" || action === "bal") {
-      const targetId = ctx.args[1] ?? ctx.author.id;
+      const targetId = (ctx.args[1] ?? ctx.author.id).replace(/^<@!?/, "").replace(/>$/, "");
       if (targetId === ctx.author.id || ctx.args[1]) {
         // allow
       }
@@ -97,7 +97,7 @@ export const economyCommand: Command = {
     }
 
     if (action === "transfer" || action === "give" || action === "pay") {
-      const targetId = ctx.args[1];
+      const targetId = (ctx.args[1] ?? "").replace(/^<@!?/, "").replace(/>$/, "");
       const amount = Number(ctx.args[2]);
       if (!targetId) throw new UserError("Usage: `economy transfer <user> <amount>`.");
       if (!Number.isInteger(amount) || amount <= 0) throw new UserError("Amount must be a positive number.");
@@ -174,15 +174,21 @@ export const economyCommand: Command = {
         return;
       }
       if (key === "premium_30d") {
+        let spent = false;
+        const paymentId = `${ctx.guild.id}:${ctx.author.id}:premium:${Date.now()}`;
         try {
-          await economy.spend(ctx.guild.id, ctx.author.id, 2000, "premium_purchase", `${ctx.guild.id}:${ctx.author.id}:premium:${Date.now()}`);
+          await economy.spend(ctx.guild.id, ctx.author.id, 2000, "premium_purchase", paymentId);
+          spent = true;
           const expiresAt = await economy.grantPremium(ctx.guild.id, ctx.author.id, 30, ctx.author.id);
           await ctx.services.audit.log({ guildId: ctx.guild.id, actorId: ctx.author.id, source: "discord", action: "economy.premium.purchase", targetType: "user", targetId: ctx.author.id, after: { days: 30 } });
           await ctx.reply(success(`Premium granted until ${expiresAt.toISOString().slice(0, 10)}.`));
         } catch (error) {
           const message = error instanceof Error ? error.message : "Purchase failed.";
+          if (spent && message !== "INSUFFICIENT_FUNDS") {
+            await economy.award(ctx.guild.id, ctx.author.id, 2000, "premium_refund", `${paymentId}:refund`).catch(() => undefined);
+          }
           if (message === "INSUFFICIENT_FUNDS") throw new UserError("You need 2000 SC for premium.");
-          throw new UserError(message);
+          throw new UserError(spent ? "Premium grant failed. Your coins have been refunded." : message);
         }
         return;
       }
@@ -211,13 +217,14 @@ export const economyCommand: Command = {
       if (!isAdmin(ctx.member, ctx.services.config, ctx.guild)) {
         throw new UserError("You need admin permissions for that.");
       }
-      const key = ctx.args[1];
-      const price = Number(ctx.args[2]);
       const slash = ctx.source === "slash";
-      const name = slash ? String(ctx.args[3] ?? "").trim() : ctx.args.slice(3).join(" ").trim();
-      const roleId = slash && ctx.args[4] && /^\d{17,20}$/.test(ctx.args[4]) ? ctx.args[4] : null;
-      const stock = slash && ctx.args[5] && /^\d+$/.test(ctx.args[5]) ? Number(ctx.args[5]) : null;
-      const description = slash && ctx.args[6] ? ctx.args.slice(6).join(" ").trim() : null;
+      const opts = slash ? (ctx.interaction?.options as any) : null;
+      const key = slash ? String(opts?.getString?.("key") ?? ctx.args[1] ?? "").trim() : ctx.args[1];
+      const price = slash ? Number(opts?.getInteger?.("price") ?? ctx.args[2]) : Number(ctx.args[2]);
+      const name = slash ? String(opts?.getString?.("name") ?? "").trim() : ctx.args.slice(3).join(" ").trim();
+      const roleId = slash ? (opts?.getRole?.("role")?.id ?? null) : null;
+      const stock = slash ? (opts?.getInteger?.("stock") ?? null) : null;
+      const description = slash ? (opts?.getString?.("description") ?? null) : null;
       if (!key || !Number.isInteger(price) || price <= 0 || !name) {
         throw new UserError("Usage: `economy shopadd <key> <price> <name>`.");
       }
@@ -323,7 +330,7 @@ export const economyCommand: Command = {
       if (!isAdmin(ctx.member, ctx.services.config, ctx.guild)) {
         throw new UserError("You need admin permissions for that.");
       }
-      const targetId = ctx.args[1];
+      const targetId = (ctx.args[1] ?? "").replace(/^<@!?/, "").replace(/>$/, "");
       const days = Number(ctx.args[2]);
       if (!targetId || !Number.isInteger(days) || days < 1) {
         throw new UserError("Usage: `economy grant <user> <days>`.");
@@ -340,7 +347,7 @@ export const economyCommand: Command = {
       if (!isAdmin(ctx.member, ctx.services.config, ctx.guild)) {
         throw new UserError("You need admin permissions for that.");
       }
-      const targetId = ctx.args[1];
+      const targetId = (ctx.args[1] ?? "").replace(/^<@!?/, "").replace(/>$/, "");
       const amount = Number(ctx.args[2]);
       const reason = ctx.args.slice(3).join(" ").trim();
       if (!targetId || !Number.isInteger(amount) || amount === 0 || !reason) {

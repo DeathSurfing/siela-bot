@@ -8,7 +8,7 @@ import {
   type Database,
 } from "@siela/db";
 import type { Logger } from "../lib/logger.js";
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, TextDisplayBuilder } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, ContainerBuilder, TextDisplayBuilder } from "discord.js";
 import type { ValkeyService } from "./valkey.js";
 
 const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -102,7 +102,19 @@ export class EconomyService {
     const now = new Date();
     const cutoff = new Date(now.getTime() - DAILY_COOLDOWN_MS);
     const streakCutoff = new Date(now.getTime() - STREAK_WINDOW_MS);
-    const amount = DAILY_BASE;
+
+    const [account] = await this.db
+      .select({ lastDailyAt: economyAccounts.lastDailyAt, dailyStreak: economyAccounts.dailyStreak })
+      .from(economyAccounts)
+      .where(and(eq(economyAccounts.guildId, guildId), eq(economyAccounts.userId, userId)));
+    const lastDaily = account?.lastDailyAt ? new Date(account.lastDailyAt as string | Date) : null;
+    if (lastDaily && lastDaily.getTime() > cutoff.getTime()) {
+      throw new Error(`DAILY_COOLDOWN:${new Date(lastDaily.getTime() + DAILY_COOLDOWN_MS).toISOString()}`);
+    }
+    const multiplier = lastDaily && lastDaily.getTime() >= streakCutoff.getTime()
+      ? Math.min((account?.dailyStreak ?? 0) + 1, 7)
+      : 1;
+    const amount = DAILY_BASE * multiplier;
 
     const updated = await this.db.transaction(async (tx) => {
       const rows = await tx
@@ -111,7 +123,7 @@ export class EconomyService {
           balance: sql`${economyAccounts.balance} + ${amount}`,
           totalEarned: sql`${economyAccounts.totalEarned} + ${amount}`,
           lastDailyAt: now,
-          dailyStreak: sql`CASE WHEN ${economyAccounts.lastDailyAt} IS NULL OR ${economyAccounts.lastDailyAt} < ${streakCutoff.toISOString()}::timestamptz THEN 1 ELSE ${economyAccounts.dailyStreak} + 1 END`,
+          dailyStreak: multiplier,
           updatedAt: now,
         })
         .where(
@@ -121,58 +133,29 @@ export class EconomyService {
             or(isNull(economyAccounts.lastDailyAt), lte(economyAccounts.lastDailyAt, cutoff)),
           ),
         )
-        .returning({
-          balance: economyAccounts.balance,
-          dailyStreak: economyAccounts.dailyStreak,
-        });
+        .returning({ dailyStreak: economyAccounts.dailyStreak });
       if (!rows.length) return null;
       await tx.insert(economyTransactions).values({
         guildId,
         toUserId: userId,
         amount,
         kind: "daily",
-        reason: "daily claim",
+        reason: `daily claim x${multiplier}`,
       });
       return rows[0]!;
     });
 
     if (!updated) {
       const current = await this.getBalance(guildId, userId);
-      const lastDaily = current.lastDailyAt ? new Date(current.lastDailyAt as string | Date) : null;
-      const nextAt = lastDaily
-        ? new Date(lastDaily.getTime() + DAILY_COOLDOWN_MS)
+      const retryLast = current.lastDailyAt ? new Date(current.lastDailyAt as string | Date) : null;
+      const nextAt = retryLast
+        ? new Date(retryLast.getTime() + DAILY_COOLDOWN_MS)
         : now;
       throw new Error(`DAILY_COOLDOWN:${nextAt.toISOString()}`);
     }
 
     await this.invalidateBalance(guildId, userId);
-    const nextAt = new Date(now.getTime() + DAILY_COOLDOWN_MS);
-    const multiplier = Math.min(updated.dailyStreak, 7);
-    const finalAmount = amount * multiplier;
-    // The base update above only added DAILY_BASE; apply streak bonus now.
-    if (multiplier > 1) {
-      const bonus = amount * (multiplier - 1);
-      await this.db.transaction(async (tx) => {
-        await tx
-          .update(economyAccounts)
-          .set({
-            balance: sql`${economyAccounts.balance} + ${bonus}`,
-            totalEarned: sql`${economyAccounts.totalEarned} + ${bonus}`,
-            updatedAt: new Date(),
-          })
-          .where(and(eq(economyAccounts.guildId, guildId), eq(economyAccounts.userId, userId)));
-        await tx.insert(economyTransactions).values({
-          guildId,
-          toUserId: userId,
-          amount: bonus,
-          kind: "daily",
-          reason: `daily streak bonus x${multiplier}`,
-        });
-      });
-      await this.invalidateBalance(guildId, userId);
-    }
-
-    return { amount: finalAmount, streak: updated.dailyStreak, nextAt };
+    return { amount, streak: updated.dailyStreak, nextAt: new Date(now.getTime() + DAILY_COOLDOWN_MS) };
   }
 
 
@@ -183,12 +166,13 @@ export class EconomyService {
       .from(economyAccounts)
       .where(and(eq(economyAccounts.guildId, guildId), eq(economyAccounts.userId, userId)));
     const now = new Date();
-    if (account?.lastWorkAt && account.lastWorkAt.getTime() > now.getTime() - 2 * 60 * 60 * 1000) {
-      throw new Error(`WORK_COOLDOWN:${new Date(account.lastWorkAt.getTime() + 2 * 60 * 60 * 1000).toISOString()}`);
+    const cutoff = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+    if (account?.lastWorkAt && new Date(account.lastWorkAt as string | Date).getTime() > cutoff.getTime()) {
+      throw new Error(`WORK_COOLDOWN:${new Date(new Date(account.lastWorkAt as string | Date).getTime() + 2 * 60 * 60 * 1000).toISOString()}`);
     }
     const amount = 1 + Math.floor(Math.random() * 4);
-    await this.db.transaction(async (tx) => {
-      await tx
+    const updated = await this.db.transaction(async (tx) => {
+      const rows = await tx
         .update(economyAccounts)
         .set({
           balance: sql`${economyAccounts.balance} + ${amount}`,
@@ -196,7 +180,15 @@ export class EconomyService {
           lastWorkAt: now,
           updatedAt: now,
         })
-        .where(and(eq(economyAccounts.guildId, guildId), eq(economyAccounts.userId, userId)));
+        .where(
+          and(
+            eq(economyAccounts.guildId, guildId),
+            eq(economyAccounts.userId, userId),
+            or(isNull(economyAccounts.lastWorkAt), lte(economyAccounts.lastWorkAt, cutoff)),
+          ),
+        )
+        .returning({ userId: economyAccounts.userId });
+      if (!rows.length) return false;
       await tx.insert(economyTransactions).values({
         guildId,
         toUserId: userId,
@@ -204,7 +196,18 @@ export class EconomyService {
         kind: "work",
         reason: "work shift",
       });
+      return true;
     });
+    if (!updated) {
+      const [latest] = await this.db
+        .select({ lastWorkAt: economyAccounts.lastWorkAt })
+        .from(economyAccounts)
+        .where(and(eq(economyAccounts.guildId, guildId), eq(economyAccounts.userId, userId)));
+      const nextAt = latest?.lastWorkAt
+        ? new Date(new Date(latest.lastWorkAt as string | Date).getTime() + 2 * 60 * 60 * 1000)
+        : now;
+      throw new Error(`WORK_COOLDOWN:${nextAt.toISOString()}`);
+    }
     await this.invalidateBalance(guildId, userId);
     return { amount, nextAt: new Date(now.getTime() + 2 * 60 * 60 * 1000) };
   }
@@ -519,28 +522,60 @@ export class EconomyService {
   }
 
   async buyItem(guildId: string, userId: string, key: string): Promise<{ item: typeof economyShopItems.$inferSelect; roleGranted: boolean }> {
-    const item = await this.getShopItem(guildId, key.toLowerCase());
-    if (!item) throw new Error("ITEM_NOT_FOUND");
-    if (item.stock !== null && item.stock <= 0) throw new Error("OUT_OF_STOCK");
+    await this.ensureAccount(guildId, userId);
+    let item: typeof economyShopItems.$inferSelect | null = null;
+    await this.db.transaction(async (tx) => {
+      const [lockedItem] = await tx
+        .select()
+        .from(economyShopItems)
+        .where(and(eq(economyShopItems.guildId, guildId), eq(economyShopItems.key, key.toLowerCase())))
+        .for("update");
+      if (!lockedItem) throw new Error("ITEM_NOT_FOUND");
+      if (lockedItem.stock !== null && lockedItem.stock <= 0) throw new Error("OUT_OF_STOCK");
+      item = lockedItem;
 
-    await this.spend(guildId, userId, item.price, "shop_purchase", `shop:${guildId}:${userId}:${item.key}:${Date.now()}`);
+      const debited = await tx
+        .update(economyAccounts)
+        .set({
+          balance: sql`${economyAccounts.balance} - ${lockedItem.price}`,
+          totalSpent: sql`${economyAccounts.totalSpent} + ${lockedItem.price}`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(economyAccounts.guildId, guildId),
+            eq(economyAccounts.userId, userId),
+            gte(economyAccounts.balance, lockedItem.price),
+          ),
+        )
+        .returning({ userId: economyAccounts.userId });
+      if (!debited.length) throw new Error("INSUFFICIENT_FUNDS");
 
-    if (item.stock !== null) {
-      await this.db
-        .update(economyShopItems)
-        .set({ stock: item.stock - 1 })
-        .where(and(eq(economyShopItems.guildId, guildId), eq(economyShopItems.key, item.key)));
-    }
+      if (lockedItem.stock !== null) {
+        await tx
+          .update(economyShopItems)
+          .set({ stock: lockedItem.stock - 1 })
+          .where(and(eq(economyShopItems.guildId, guildId), eq(economyShopItems.key, lockedItem.key)));
+      }
 
-    await this.db
-      .insert(economyInventory)
-      .values({ guildId, userId, itemKey: item.key, quantity: 1 })
-      .onConflictDoUpdate({
-        target: [economyInventory.guildId, economyInventory.userId, economyInventory.itemKey],
-        set: { quantity: sql`${economyInventory.quantity} + 1`, updatedAt: new Date() },
+      await tx
+        .insert(economyInventory)
+        .values({ guildId, userId, itemKey: lockedItem.key, quantity: 1 })
+        .onConflictDoUpdate({
+          target: [economyInventory.guildId, economyInventory.userId, economyInventory.itemKey],
+          set: { quantity: sql`${economyInventory.quantity} + 1`, updatedAt: new Date() },
+        });
+
+      await tx.insert(economyTransactions).values({
+        guildId,
+        fromUserId: userId,
+        amount: lockedItem.price,
+        kind: "shop_purchase",
+        reason: `shop:${lockedItem.key}`,
       });
-
-    return { item, roleGranted: Boolean(item.roleId) };
+    });
+    await this.invalidateBalance(guildId, userId);
+    return { item: item!, roleGranted: Boolean(item!.roleId) };
   }
 
   async inventory(guildId: string, userId: string) {
@@ -718,7 +753,7 @@ export class EconomyService {
     return { components, flags: 4096 };
   }
 
-  async handleBlackjackInteraction(interaction: any): Promise<void> {
+  async handleBlackjackInteraction(interaction: ButtonInteraction): Promise<void> {
     if (!interaction.isButton()) return;
     const parts = interaction.customId.split(":");
     if (parts[0] !== "economy" || parts[1] !== "bj") return;

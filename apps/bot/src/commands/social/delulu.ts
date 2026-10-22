@@ -20,7 +20,8 @@ export const deluluCommand: Command = {
         .setRequired(false),
     ),
   async execute(ctx: CommandContext) {
-    const nsfw = ctx.args.some((arg) =>
+    const optionNsfw = (ctx.interaction?.options as { getBoolean?: (name: string) => boolean | null } | undefined)?.getBoolean?.("nsfw");
+    const nsfw = optionNsfw ?? ctx.args.some((arg) =>
       ["true", "nsfw", "on", "1"].includes(arg.toLowerCase()),
     );
     const row = await ctx.services.bias.get(ctx.guild.id, ctx.author.id);
@@ -32,13 +33,14 @@ export const deluluCommand: Command = {
       return;
     }
     const cost = nsfw ? 15 : 5;
+    const paymentId = `delulu:${ctx.guild.id}:${ctx.author.id}:${Date.now()}`;
     try {
       await ctx.services.economy.spend(
         ctx.guild.id,
         ctx.author.id,
         cost,
         "delulu",
-        `delulu:${ctx.guild.id}:${ctx.author.id}:${Date.now()}`,
+        paymentId,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Payment failed.";
@@ -47,7 +49,6 @@ export const deluluCommand: Command = {
       }
       throw new UserError(message);
     }
-    const paymentId = `delulu:${ctx.guild.id}:${ctx.author.id}:${Date.now()}`;
     await ctx.defer();
     try {
       const scenario = await ctx.services.delulu.generate(row.bias, nsfw);
@@ -59,9 +60,19 @@ export const deluluCommand: Command = {
         }),
       );
     } catch (error) {
-      await ctx.services.economy
-        .award(ctx.guild.id, ctx.author.id, cost, "delulu_refund", `${paymentId}:refund`)
-        .catch(() => undefined);
+      try {
+        await ctx.services.economy.award(ctx.guild.id, ctx.author.id, cost, "delulu_refund", `${paymentId}:refund`);
+      } catch (refundError) {
+        await ctx.services.audit.log({
+          guildId: ctx.guild.id,
+          actorId: ctx.author.id,
+          source: "discord",
+          action: "delulu.refund_failed",
+          targetType: "user",
+          targetId: ctx.author.id,
+          after: { cost, error: refundError instanceof Error ? refundError.message : String(refundError) },
+        });
+      }
       throw new UserError("Delulu generation failed. Your coins have been refunded.");
     }
   },
