@@ -51,6 +51,7 @@ const botSchema = z.object({
   BOT_OWNER_ID: optionalSnowflake,
   HF_TOKEN: z.string().optional(),
   LLM_URL: z.string().url().optional(),
+  VALKEY_URL: z.string().url().optional(),
 
   LOG_LEVEL: logLevel.default("info"),
   AUDIT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
@@ -89,6 +90,7 @@ export function loadBotConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     MCP_TOKEN: readSecret("MCP_TOKEN", env) ?? env.MCP_TOKEN,
     HF_TOKEN: readSecret("HF_TOKEN", env) ?? env.HF_TOKEN,
     LLM_URL: readSecret("LLM_URL", env) ?? env.LLM_URL,
+    VALKEY_URL: readSecret("VALKEY_URL", env) ?? env.VALKEY_URL,
   });
   if (!parsed.success) {
     const details = parsed.error.issues

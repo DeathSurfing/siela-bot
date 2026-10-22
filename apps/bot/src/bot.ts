@@ -56,6 +56,7 @@ import { FamilyService } from "./features/family.js";
 import { DeluluService } from "./features/delulu.js";
 import { ConfessionService } from "./features/confession.js";
 import { FriendshipService } from "./features/friendship.js";
+import { ValkeyService } from "./features/valkey.js";
 import { BirthdayService } from "./features/birthday.js";
 import { parseTempVcPanelCustomId, tempVcPanelCustomId, TempVcService } from "./features/tempvc.js";
 
@@ -77,6 +78,7 @@ export class SielaBot {
   private readonly unknownCommandNotices = new Map<string, number>();
   private readonly controlServer: ControlServer;
   private readonly healthServer: HealthServer;
+  private readonly valkey: ValkeyService;
   private guildId: string | null = null;
   private initializedGuildId: string | null = null;
   private music: MusicService | null = null;
@@ -101,7 +103,8 @@ export class SielaBot {
     this.registry = new CommandRegistry().register(...commands);
     const settings = new SettingsService(this.dbHandle.db);
     const counters = new CounterService(this.dbHandle.db);
-    const friendship = new FriendshipService(this.dbHandle.db, this.logger);
+    this.valkey = new ValkeyService(this.config.VALKEY_URL ?? null, this.logger);
+    const friendship = new FriendshipService(this.dbHandle.db, this.logger, this.valkey);
     const confession = new ConfessionService(this.dbHandle.db, settings, this.client, this.logger);
     const tempVc = new TempVcService(this.client, this.dbHandle.db, settings, this.logger, this.config.adminRoleIds);
     const music = new MusicService(
@@ -158,6 +161,8 @@ export class SielaBot {
 
   async start(): Promise<void> {
     this.registerEvents();
+    await this.valkey.start();
+    this.services.friendship.start();
     await Promise.all([
       this.controlServer.start(this.config.CONTROL_API_HOST, this.config.CONTROL_API_PORT),
       this.healthServer.start(),
@@ -890,6 +895,8 @@ export class SielaBot {
     await Promise.allSettled([this.controlServer.stop(), this.healthServer.stop()]);
     if (this.music) await this.music.shutdown().catch(() => undefined);
     await this.services.activity.stop();
+    await this.services.friendship.stop();
+    await this.valkey.stop();
     this.services.birthday.stop();
     this.client.destroy();
     await this.dbHandle.close();

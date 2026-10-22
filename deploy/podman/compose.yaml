@@ -22,6 +22,7 @@ networks:
 volumes:
   pgdata:
   llmcache:
+  valkeydata:
 
 services:
   postgres:
@@ -38,6 +39,21 @@ services:
       timeout: 5s
       retries: 10
     mem_limit: 512m
+
+  valkey:
+    image: docker.io/valkey/valkey:8-alpine
+    container_name: siela-valkey
+    command: ["valkey-server", "--appendonly", "yes"]
+    volumes:
+      - valkeydata:/data
+    networks: [data]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m
 
   llm:
     image: ghcr.io/ggml-org/llama.cpp:server
@@ -87,8 +103,10 @@ services:
       - postgres
       - migrate
       - llm
+      - valkey
     environment:
       LLM_URL: ${LLM_URL:-http://llm:8080}
+      VALKEY_URL: ${VALKEY_URL:-redis://valkey:6379}
     restart: unless-stopped
     init: true
     read_only: true

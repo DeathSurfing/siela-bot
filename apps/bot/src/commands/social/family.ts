@@ -8,8 +8,9 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
-import type { FamilyTree } from "../../features/family.js";
 import { card } from "../../features/ui.js";
+import { generateFamilyTreeCard } from "../../features/familyCard.js";
+import { ServiceUnavailableError } from "../../lib/errors.js";
 
 function normalizeId(value: string | undefined): string | undefined {
   return value?.replace(/^<@!?|>$/g, "");
@@ -77,24 +78,6 @@ async function requestConsent(
       resolve(approved);
     });
   });
-}
-
-function mermaidDiagram(tree: FamilyTree, names: Map<string, string>): string {
-  const lines = ["graph TD"];
-  for (const id of tree.nodes) {
-    const label = (names.get(id) ?? id).replace(/["`[\]]/g, "").slice(0, 28);
-    lines.push(`  u${id}["${label}"]`);
-  }
-  const seen = new Set<string>();
-  for (const edge of tree.edges) {
-    const key = `${edge.type}:${edge.from}:${edge.to}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    if (edge.type === "marriage") lines.push(`  u${edge.from} --- u${edge.to}`);
-    else lines.push(`  u${edge.from} --> u${edge.to}`);
-  }
-  if (tree.truncated) lines.push('  note["... family continues ..."]');
-  return lines.join("\n");
 }
 
 export const marryCommand: Command = {
@@ -238,31 +221,18 @@ export const familyTreeCommand: Command = {
         names.set(id, member?.displayName ?? id);
       }),
     );
-    const diagram = mermaidDiagram(tree, names);
-    const encoded = Buffer.from(diagram).toString("base64");
-    const imageUrl = `https://mermaid.ink/img/${encoded}`;
-    let sentImage = false;
-    if (encoded.length <= 1800) {
-      try {
-        const response = await fetch(imageUrl, { signal: AbortSignal.timeout(20_000) });
-        if (response.ok) {
-          const buffer = Buffer.from(await response.arrayBuffer());
-          const attachment = new AttachmentBuilder(buffer, { name: "family-tree.jpg" });
-          await ctx.reply({
-            content: [`-# Marriage — · Parent →`, tree.truncated ? "Family tree truncated for size." : null]
-              .filter(Boolean)
-              .join("\n"),
-            files: [attachment],
-          });
-          sentImage = true;
-        }
-      } catch {
-        sentImage = false;
-      }
+    let buffer: Buffer;
+    try {
+      buffer = await generateFamilyTreeCard(tree, names, rootId);
+    } catch {
+      throw new ServiceUnavailableError("Could not render the family tree.");
     }
-    if (!sentImage) {
-      const content = `\`\`\`mermaid\n${diagram}\n\`\`\`${tree.truncated ? "\nFamily tree truncated for size." : ""}`;
-      await ctx.reply({ content });
-    }
+    const attachment = new AttachmentBuilder(buffer, { name: "family-tree.png" });
+    await ctx.reply({
+      content: [`-# Marriage — · Parent →`, tree.truncated ? "Family tree truncated for size." : null]
+        .filter(Boolean)
+        .join("\n"),
+      files: [attachment],
+    });
   },
 };

@@ -44,6 +44,8 @@ export class ActivityService {
   private readonly activity = new Map<string, Map<string, ActivityDelta>>();
   private readonly dirtyActivity = new Set<string>();
   private timer: NodeJS.Timeout | null = null;
+  private pairTimer: NodeJS.Timeout | null = null;
+  private pairTicking = false;
   private lastPurgeDate: string | null = null;
 
   constructor(
@@ -193,13 +195,38 @@ export class ActivityService {
     }
   }
 
+  private accruePairState(pair: PairSession, now: number): { xp: number; seconds: number } {
+    const seconds = Math.max(0, Math.floor((now - pair.lastTimeFlushedAt) / 1000));
+    if (seconds > 0) pair.lastTimeFlushedAt += seconds * 1000;
+    const xp = Math.floor((now - pair.lastAwardedAt) / VOICE_XP_INTERVAL_MS);
+    if (xp > 0) pair.lastAwardedAt += xp * VOICE_XP_INTERVAL_MS;
+    return { xp, seconds };
+  }
+
   private async closePair(guildId: string, a: string, b: string, pair: PairSession, now: number): Promise<void> {
-    const elapsed = Math.max(0, Math.floor((now - pair.lastTimeFlushedAt) / 1000));
-    if (elapsed > 0) await this.friendship.addTimeTogether(guildId, a, b, elapsed);
-    const awardedMinutes = Math.floor((now - pair.lastAwardedAt) / VOICE_XP_INTERVAL_MS);
-    if (awardedMinutes > 0) {
-      await this.friendship.addXp(guildId, a, b, awardedMinutes);
-      pair.lastAwardedAt += awardedMinutes * VOICE_XP_INTERVAL_MS;
+    const { xp, seconds } = this.accruePairState(pair, now);
+    if (xp > 0 || seconds > 0) {
+      await this.friendship.addBatch([{ guildId, firstUserId: a, secondUserId: b, xp, seconds }]);
+    }
+  }
+
+  private async accruePairs(): Promise<void> {
+    if (this.pairTicking) return;
+    this.pairTicking = true;
+    try {
+      const now = Date.now();
+      const deltas: Array<{ guildId: string; firstUserId: string; secondUserId: string; xp: number; seconds: number }> = [];
+      for (const [key, pair] of this.pairSessions) {
+        const [guildId, a, b] = key.split(":") as [string, string, string];
+        if (!guildId || !a || !b) continue;
+        const accrued = this.accruePairState(pair, now);
+        if (accrued.xp > 0 || accrued.seconds > 0) {
+          deltas.push({ guildId, firstUserId: a, secondUserId: b, ...accrued });
+        }
+      }
+      if (deltas.length) await this.friendship.addBatch(deltas);
+    } finally {
+      this.pairTicking = false;
     }
   }
 
@@ -281,18 +308,6 @@ export class ActivityService {
       }
     }
 
-    for (const [key, pair] of this.pairSessions) {
-      const [guildId, a, b] = key.split(":") as [string, string, string];
-      const elapsed = Math.max(0, Math.floor((now - pair.lastTimeFlushedAt) / 1000));
-      if (elapsed > 0) await this.friendship.addTimeTogether(guildId!, a!, b!, elapsed);
-      const awardedMinutes = Math.floor((now - pair.lastAwardedAt) / VOICE_XP_INTERVAL_MS);
-      if (awardedMinutes > 0) {
-        await this.friendship.addXp(guildId!, a!, b!, awardedMinutes);
-        pair.lastAwardedAt += awardedMinutes * VOICE_XP_INTERVAL_MS;
-      }
-      pair.lastTimeFlushedAt = now;
-    }
-
     for (const dirty of [...this.dirtyActivity]) {
       const [guildId, userId] = dirty.split(":") as [string, string];
       const delta = this.activity.get(guildId)?.get(userId);
@@ -348,6 +363,10 @@ export class ActivityService {
       void this.tick().catch((error) => this.logger.warn({ err: error }, "activity tick failed"));
     }, FLUSH_INTERVAL_MS);
     this.timer.unref?.();
+    this.pairTimer = setInterval(() => {
+      void this.accruePairs().catch((error) => this.logger.warn({ err: error }, "friendship pair tick failed"));
+    }, 1_000);
+    this.pairTimer.unref?.();
     setTimeout(() => {
       void this.tick().catch((error) => this.logger.warn({ err: error }, "activity tick failed"));
     }, 10_000).unref?.();
@@ -358,6 +377,11 @@ export class ActivityService {
       clearInterval(this.timer);
       this.timer = null;
     }
+    if (this.pairTimer) {
+      clearInterval(this.pairTimer);
+      this.pairTimer = null;
+    }
+    await this.accruePairs().catch(() => undefined);
     await this.flush().catch(() => undefined);
   }
 

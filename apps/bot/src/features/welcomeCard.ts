@@ -1,31 +1,5 @@
-import { existsSync } from "node:fs";
-import { createCanvas, GlobalFonts, loadImage } from "@napi-rs/canvas";
-
-const FONT_CANDIDATES = [
-  "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
-  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-  "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
-  "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-];
-
-let fontFamily = "sans-serif";
-let registered = false;
-
-function ensureFont(): void {
-  if (registered) return;
-  registered = true;
-  for (const path of FONT_CANDIDATES) {
-    if (existsSync(path)) {
-      try {
-        GlobalFonts.registerFromPath(path, "Siela");
-        fontFamily = "Siela";
-        return;
-      } catch {
-        // keep trying
-      }
-    }
-  }
-}
+import { createCanvas, loadImage } from "@napi-rs/canvas";
+import { canvasFont } from "./canvas.js";
 
 export interface WelcomeCardInput {
   displayName: string;
@@ -47,7 +21,7 @@ function clean(value: string, max: number): string {
 }
 
 export async function generateWelcomeCard(input: WelcomeCardInput): Promise<Buffer> {
-  ensureFont();
+  const fontFamily = canvasFont();
   const width = 900;
   const height = 280;
   const canvas = createCanvas(width, height);
