@@ -29,7 +29,6 @@ export const deluluCommand: Command = {
           .setColor(COLORS.social)
           .setTitle(`✨ Delulu: ${row.bias} notices you`)
           .setDescription(scenario)
-          .setFooter({ text: "Completely fictional. Your delulu is valid." }),
       ],
     });
   },

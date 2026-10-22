@@ -26,6 +26,7 @@ import type { WelcomeService } from "../features/welcome.js";
 import type { ActivityService } from "../features/activity.js";
 import type { AutoRoleService } from "../features/autorole.js";
 import type { BiasService } from "../features/bias.js";
+import type { FamilyService } from "../features/family.js";
 import type { DeluluService } from "../features/delulu.js";
 import type { ConfessionService } from "../features/confession.js";
 import type { FriendshipService } from "../features/friendship.js";
@@ -45,6 +46,7 @@ export interface Services {
   activity: ActivityService;
   autoRole: AutoRoleService;
   bias: BiasService;
+  family: FamilyService;
   delulu: DeluluService;
   confession: ConfessionService;
   friendship: FriendshipService;

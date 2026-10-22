@@ -51,6 +51,7 @@ import { WelcomeService } from "./features/welcome.js";
 import { AutoRoleService } from "./features/autorole.js";
 import { ActivityService } from "./features/activity.js";
 import { BiasService } from "./features/bias.js";
+import { FamilyService } from "./features/family.js";
 import { DeluluService } from "./features/delulu.js";
 import { ConfessionService } from "./features/confession.js";
 import { FriendshipService } from "./features/friendship.js";
@@ -124,6 +125,7 @@ export class SielaBot {
       welcome: new WelcomeService(settings, this.logger),
       autoRole: new AutoRoleService(settings, this.logger),
       bias: new BiasService(this.dbHandle.db),
+      family: new FamilyService(this.dbHandle.db, this.logger),
       delulu: new DeluluService(this.config.HF_TOKEN ?? null, this.logger),
       birthday: new BirthdayService(this.dbHandle.db, settings, this.client, this.logger),
       confession,

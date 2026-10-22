@@ -43,6 +43,13 @@
       "when": 1792626368372,
       "tag": "0005_tense_scalphunter",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792628060145,
+      "tag": "0006_common_gauntlet",
+      "breakpoints": true
     }
   ]
 }

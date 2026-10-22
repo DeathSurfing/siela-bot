@@ -223,6 +223,40 @@ export const confessions = pgTable(
   (table) => [uniqueIndex("confessions_guild_number_uq").on(table.guildId, table.number)],
 );
 
+export const familyMarriages = pgTable(
+  "family_marriages",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    spouseA: text("spouse_a").notNull(),
+    spouseB: text("spouse_b").notNull(),
+    status: varchar("status", { length: 16 }).notNull().default("active"),
+    marriedAt: timestamp("married_at", { withTimezone: true }).notNull().defaultNow(),
+    divorcedAt: timestamp("divorced_at", { withTimezone: true }),
+    divorcedBy: text("divorced_by"),
+  },
+  (table) => [index("family_marriages_guild_spouse_a_idx").on(table.guildId, table.spouseA), index("family_marriages_guild_spouse_b_idx").on(table.guildId, table.spouseB)],
+);
+
+export const familyChildren = pgTable(
+  "family_children",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    parentId: text("parent_id").notNull(),
+    childId: text("child_id").notNull(),
+    status: varchar("status", { length: 16 }).notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    endedBy: text("ended_by"),
+  },
+  (table) => [index("family_children_guild_parent_idx").on(table.guildId, table.parentId), index("family_children_guild_child_idx").on(table.guildId, table.childId)],
+);
+
 export const auditLog = pgTable(
   "audit_log",
   {
@@ -257,5 +291,7 @@ export type UserBirthdayRow = typeof userBirthdays.$inferSelect;
 export type FriendshipLevelRow = typeof friendshipLevels.$inferSelect;
 export type MemberActivityRow = typeof memberActivity.$inferSelect;
 export type ConfessionRow = typeof confessions.$inferSelect;
+export type FamilyMarriageRow = typeof familyMarriages.$inferSelect;
+export type FamilyChildRow = typeof familyChildren.$inferSelect;
 export type TempVoiceChannelRow = typeof tempVoiceChannels.$inferSelect;
 export type AuditRow = typeof auditLog.$inferSelect;

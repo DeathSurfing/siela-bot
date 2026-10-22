@@ -1,0 +1,159 @@
+import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { COLORS } from "@siela/shared";
+import type { Command, CommandContext } from "../../framework/types.js";
+import type { FamilyTree } from "../../features/family.js";
+
+function normalizeId(value: string | undefined): string | undefined {
+  return value?.replace(/^<@!?|>$/g, "");
+}
+
+async function resolveMember(ctx: CommandContext, value: string | undefined) {
+  const id = normalizeId(value);
+  if (!id) return null;
+  return ctx.guild.members.fetch(id).catch(() => null);
+}
+
+function mermaidDiagram(tree: FamilyTree, names: Map<string, string>): string {
+  const lines = ["graph TD"];
+  for (const id of tree.nodes) {
+    const label = (names.get(id) ?? id).replace(/["`[\]]/g, "").slice(0, 28);
+    lines.push(`  u${id}["${label}"]`);
+  }
+  const seen = new Set<string>();
+  for (const edge of tree.edges) {
+    const key = `${edge.type}:${edge.from}:${edge.to}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (edge.type === "marriage") lines.push(`  u${edge.from} --- u${edge.to}`);
+    else lines.push(`  u${edge.from} --> u${edge.to}`);
+  }
+  if (tree.truncated) lines.push('  note["... family continues ..."]');
+  return lines.join("\n");
+}
+
+export const marryCommand: Command = {
+  name: "marry",
+  category: "social",
+  description: "Marry another member and link your family trees.",
+  usage: "<user>",
+  examples: ["marry @user"],
+  cooldownMs: 5_000,
+  slash: new SlashCommandBuilder()
+    .setName("marry")
+    .setDescription("Marry a member")
+    .addUserOption((option) => option.setName("user").setDescription("Member").setRequired(true)),
+  async execute(ctx: CommandContext) {
+    const target = await resolveMember(ctx, ctx.args[0]);
+    if (!target || target.user.bot || target.id === ctx.author.id) {
+      await ctx.reply({ content: "Choose a different human member.", ephemeral: true });
+      return;
+    }
+    await ctx.services.family.marry(ctx.guild.id, ctx.author.id, target.id);
+    await ctx.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(COLORS.social)
+          .setDescription(`💍 **${ctx.member.displayName}** married **${target.displayName}**!`),
+      ],
+    });
+  },
+};
+
+export const divorceCommand: Command = {
+  name: "divorce",
+  category: "social",
+  description: "End your current marriage.",
+  usage: "",
+  examples: ["divorce"],
+  cooldownMs: 5_000,
+  slash: new SlashCommandBuilder().setName("divorce").setDescription("Divorce your spouse"),
+  async execute(ctx: CommandContext) {
+    const spouseId = await ctx.services.family.divorce(ctx.guild.id, ctx.author.id);
+    const spouse = await ctx.guild.members.fetch(spouseId).catch(() => null);
+    await ctx.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(COLORS.social)
+          .setDescription(`💔 **${ctx.member.displayName}** divorced **${spouse?.displayName ?? spouseId}**.`),
+      ],
+    });
+  },
+};
+
+export const adoptCommand: Command = {
+  name: "adopt",
+  category: "social",
+  description: "Adopt a member into your family tree.",
+  usage: "<user>",
+  examples: ["adopt @user"],
+  cooldownMs: 5_000,
+  slash: new SlashCommandBuilder()
+    .setName("adopt")
+    .setDescription("Adopt a member")
+    .addUserOption((option) => option.setName("user").setDescription("Member").setRequired(true)),
+  async execute(ctx: CommandContext) {
+    const target = await resolveMember(ctx, ctx.args[0]);
+    if (!target || target.user.bot || target.id === ctx.author.id) {
+      await ctx.reply({ content: "Choose a different human member.", ephemeral: true });
+      return;
+    }
+    await ctx.services.family.adopt(ctx.guild.id, ctx.author.id, target.id);
+    await ctx.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(COLORS.social)
+          .setDescription(`👶 **${ctx.member.displayName}** adopted **${target.displayName}**.`),
+      ],
+    });
+  },
+};
+
+export const runawayCommand: Command = {
+  name: "runaway",
+  category: "social",
+  description: "Remove a family relationship by running away.",
+  usage: "[user]",
+  examples: ["runaway", "runaway @user"],
+  cooldownMs: 5_000,
+  slash: new SlashCommandBuilder()
+    .setName("runaway")
+    .setDescription("Run away from a family relationship")
+    .addUserOption((option) => option.setName("user").setDescription("Related member").setRequired(false)),
+  async execute(ctx: CommandContext) {
+    const target = ctx.args[0] ? await resolveMember(ctx, ctx.args[0]) : null;
+    const removed = await ctx.services.family.runaway(ctx.guild.id, ctx.author.id, target?.id);
+    await ctx.reply({
+      content: removed > 0 ? `🏃 Ran away from ${removed} family relationship(s).` : "No family relationship was changed.",
+      ephemeral: true,
+    });
+  },
+};
+
+export const familyTreeCommand: Command = {
+  name: "familytree",
+  aliases: ["tree", "family"],
+  category: "social",
+  description: "Show a family tree as a Mermaid diagram.",
+  usage: "[user]",
+  examples: ["familytree", "familytree @user"],
+  cooldownMs: 5_000,
+  slash: new SlashCommandBuilder()
+    .setName("familytree")
+    .setDescription("Show a family tree")
+    .addUserOption((option) => option.setName("user").setDescription("Root member").setRequired(false)),
+  async execute(ctx: CommandContext) {
+    const target = ctx.args[0] ? await resolveMember(ctx, ctx.args[0]) : null;
+    const rootId = target?.id ?? ctx.author.id;
+    const tree = await ctx.services.family.buildTree(ctx.guild.id, rootId, 30);
+    const names = new Map<string, string>();
+    await Promise.all(
+      tree.nodes.map(async (id) => {
+        const member = await ctx.guild.members.fetch(id).catch(() => null);
+        names.set(id, member?.displayName ?? id);
+      }),
+    );
+    const diagram = mermaidDiagram(tree, names);
+    const content = `\`\`\`mermaid\n${diagram}\n\`\`\`${tree.truncated ? "\nFamily tree truncated for size." : ""}`;
+    await ctx.reply({ content });
+  },
+};
