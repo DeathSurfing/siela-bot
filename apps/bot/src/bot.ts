@@ -317,7 +317,10 @@ export class SielaBot {
       if (!allowed) return;
       await command.execute(ctx);
       this.services.activity.recordCommand(message.guild.id, message.author.id);
-      void this.services.economy.award(message.guild.id, message.author.id, 1, "command", message.id).catch(() => undefined);
+      void (async () => {
+        const allowed = await this.services.economy.rateLimit(`command:${message.guild.id}:${message.author.id}`, 5, 60 * 60 * 1000).catch(() => true);
+        if (allowed) await this.services.economy.award(message.guild.id, message.author.id, 1, "command", message.id).catch(() => undefined);
+      })();
     } catch (error) {
       await this.handleCommandError(message, error);
     }
@@ -391,7 +394,7 @@ export class SielaBot {
 
   private async onChatInput(interaction: ChatInputCommandInteraction): Promise<void> {
     if (!interaction.inGuild() || !interaction.guild) return;
-    if (!this.guildId || interaction.guild.id !== this.guildId) return;
+    if (!this.guildId || interaction.guild!.id !== this.guildId) return;
     const command = this.registry.get(interaction.commandName);
     if (!command) return;
     const member = interaction.member instanceof Object && "roles" in interaction.member
@@ -417,8 +420,11 @@ export class SielaBot {
       await this.handleCommandError(ctx, error);
       return;
     }
-    this.services.activity.recordCommand(interaction.guild.id, interaction.user.id);
-    void this.services.economy.award(interaction.guild.id, interaction.user.id, 1, "command", interaction.id).catch(() => undefined);
+    this.services.activity.recordCommand(interaction.guild!.id, interaction.user.id);
+    void (async () => {
+      const allowed = await this.services.economy.rateLimit(`command:${interaction.guild!.id}:${interaction.user.id}`, 5, 60 * 60 * 1000).catch(() => true);
+      if (allowed) await this.services.economy.award(interaction.guild!.id, interaction.user.id, 1, "command", interaction.id).catch(() => undefined);
+    })();
   }
 
   private async onHelpSelect(interaction: StringSelectMenuInteraction): Promise<void> {

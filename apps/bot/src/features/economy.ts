@@ -10,7 +10,7 @@ import type { ValkeyService } from "./valkey.js";
 
 const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const STREAK_WINDOW_MS = 36 * 60 * 60 * 1000;
-const DAILY_BASE = 50;
+const DAILY_BASE = 10;
 
 export interface EconomyBalance {
   balance: number;
@@ -129,7 +129,7 @@ export class EconomyService {
 
     await this.invalidateBalance(guildId, userId);
     const nextAt = new Date(now.getTime() + DAILY_COOLDOWN_MS);
-    const multiplier = Math.min(updated.dailyStreak, 30);
+    const multiplier = Math.min(updated.dailyStreak, 7);
     const finalAmount = amount * multiplier;
     // The base update above only added DAILY_BASE; apply streak bonus now.
     if (multiplier > 1) {
@@ -165,10 +165,10 @@ export class EconomyService {
       .from(economyAccounts)
       .where(and(eq(economyAccounts.guildId, guildId), eq(economyAccounts.userId, userId)));
     const now = new Date();
-    if (account?.lastWorkAt && account.lastWorkAt.getTime() > now.getTime() - 60 * 60 * 1000) {
-      throw new Error(`WORK_COOLDOWN:${new Date(account.lastWorkAt.getTime() + 60 * 60 * 1000).toISOString()}`);
+    if (account?.lastWorkAt && account.lastWorkAt.getTime() > now.getTime() - 2 * 60 * 60 * 1000) {
+      throw new Error(`WORK_COOLDOWN:${new Date(account.lastWorkAt.getTime() + 2 * 60 * 60 * 1000).toISOString()}`);
     }
-    const amount = 10 + Math.floor(Math.random() * 31);
+    const amount = 1 + Math.floor(Math.random() * 4);
     await this.db.transaction(async (tx) => {
       await tx
         .update(economyAccounts)
@@ -188,7 +188,7 @@ export class EconomyService {
       });
     });
     await this.invalidateBalance(guildId, userId);
-    return { amount, nextAt: new Date(now.getTime() + 60 * 60 * 1000) };
+    return { amount, nextAt: new Date(now.getTime() + 2 * 60 * 60 * 1000) };
   }
 
   async transfer(guildId: string, fromUserId: string, toUserId: string, amount: number): Promise<void> {

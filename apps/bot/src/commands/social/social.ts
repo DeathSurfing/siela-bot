@@ -47,8 +47,11 @@ function socialCommand(kind: InteractionKind): Command {
 
       const count = await ctx.services.counters.increment(ctx.guild.id, ctx.author.id, target.id, kind);
       await ctx.services.friendship.addXp(ctx.guild.id, ctx.author.id, target.id, 1).catch(() => undefined);
-      const idempotencyKey = ctx.interaction?.id ?? ctx.message?.id ?? `${ctx.guild.id}:${ctx.author.id}:${target.id}:${kind}:${count}`;
-      await ctx.services.economy.award(ctx.guild.id, ctx.author.id, 2, "social", idempotencyKey).catch(() => undefined);
+      const allowed = await ctx.services.economy.rateLimit(`social:${ctx.guild.id}:${ctx.author.id}`, 20, 24 * 60 * 60 * 1000).catch(() => true);
+      if (allowed) {
+        const idempotencyKey = ctx.interaction?.id ?? ctx.message?.id ?? `${ctx.guild.id}:${ctx.author.id}:${target.id}:${kind}:${count}`;
+        await ctx.services.economy.award(ctx.guild.id, ctx.author.id, 1, "social", idempotencyKey).catch(() => undefined);
+      }
       const gif = await fetchInteractionGif(kind);
       const container = new ContainerBuilder()
         .setAccentColor(UI_ACCENT)
