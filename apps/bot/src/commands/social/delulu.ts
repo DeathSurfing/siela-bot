@@ -1,4 +1,4 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { AttachmentBuilder, EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import { COLORS } from "@siela/shared";
 import type { Command, CommandContext } from "../../framework/types.js";
 
@@ -23,13 +23,14 @@ export const deluluCommand: Command = {
     }
     await ctx.defer();
     const scenario = await ctx.services.delulu.generate(row.bias);
+    const audio = await ctx.services.tts.synthesize(scenario, row.bias);
+    const embed = new EmbedBuilder()
+      .setColor(COLORS.social)
+      .setTitle(`✨ Delulu: ${row.bias} notices you`)
+      .setDescription(scenario);
     await ctx.edit({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(COLORS.social)
-          .setTitle(`✨ Delulu: ${row.bias} notices you`)
-          .setDescription(scenario)
-      ],
+      embeds: [embed],
+      files: audio ? [new AttachmentBuilder(audio, { name: "delulu.wav" })] : undefined,
     });
   },
 };

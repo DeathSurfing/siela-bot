@@ -22,6 +22,7 @@ networks:
 volumes:
   pgdata:
   llmcache:
+  ttscache:
 
 services:
   postgres:
@@ -59,6 +60,18 @@ services:
     restart: unless-stopped
     mem_limit: 1g
 
+  tts:
+    image: localhost/siela-tts:latest
+    build:
+      context: ../..
+      dockerfile: deploy/podman/Containerfile.tts
+    container_name: siela-tts
+    networks: [edge, control]
+    volumes:
+      - ttscache:/root/.cache/huggingface
+    restart: unless-stopped
+    mem_limit: 2g
+
   migrate:
     image: localhost/siela-bot:latest
     build:
@@ -87,8 +100,13 @@ services:
       - postgres
       - migrate
       - llm
+      - tts
     environment:
       LLM_URL: ${LLM_URL:-http://llm:8080}
+      TTS_URL: ${TTS_URL:-http://tts:8000}
+      TTS_VOICES_DIR: /app/voices
+    volumes:
+      - ./voices:/app/voices:ro
     restart: unless-stopped
     init: true
     read_only: true

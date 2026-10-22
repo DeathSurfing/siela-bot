@@ -57,6 +57,7 @@ import { ConfessionService } from "./features/confession.js";
 import { FriendshipService } from "./features/friendship.js";
 import { BirthdayService } from "./features/birthday.js";
 import { parseTempVcPanelCustomId, tempVcPanelCustomId, TempVcService } from "./features/tempvc.js";
+import { TtsService } from "./features/tts.js";
 
 import { MusicService, type MusicFilterPreset } from "./features/music.js";
 import { buildMusicControls } from "./features/music-ui.js";
@@ -131,6 +132,7 @@ export class SielaBot {
       confession,
       friendship,
       tempVc,
+      tts: new TtsService(this.config.TTS_URL ?? null, this.config.TTS_VOICES_DIR, this.logger),
       privacy: new PrivacyService(counters),
       music,
     };
