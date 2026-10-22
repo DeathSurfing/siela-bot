@@ -1,5 +1,9 @@
 import type { Logger } from "../lib/logger.js";
 
+function cleanModelText(text: string): string {
+  return text.replace(/^[\s\S]*?<\/think>/i, "").trim();
+}
+
 const MODEL = "huihui-ai/Qwen2.5-0.5B-Instruct-abliterated-v3";
 
 const FALLBACK_SCENARIOS = [
@@ -18,7 +22,7 @@ export class DeluluService {
   ) {}
 
   async generate(bias: string): Promise<string> {
-    const prompt = `You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Do not include quotes around the whole response.`;
+    const prompt = `You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Do not include quotes around the whole response. /no_think`;
 
     if (this.llmUrl) {
       try {
@@ -36,7 +40,10 @@ export class DeluluService {
         if (response.ok) {
           const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
           const content = json.choices?.[0]?.message?.content?.trim();
-          if (content) return content;
+          if (content) {
+            const cleaned = cleanModelText(content);
+            if (cleaned) return cleaned;
+          }
         } else {
           this.logger.warn({ status: response.status }, "local LLM request failed");
         }
@@ -78,7 +85,10 @@ export class DeluluService {
             choices?: Array<{ message?: { content?: string } }>;
           };
           const content = json.choices?.[0]?.message?.content?.trim();
-          if (content) return content;
+          if (content) {
+            const cleaned = cleanModelText(content);
+            if (cleaned) return cleaned;
+          }
         } else {
           this.logger.warn({ status: response.status }, "delulu HF request failed");
         }
@@ -89,7 +99,7 @@ export class DeluluService {
 
     // Public no-token fallback so /delulu works without HF_TOKEN.
     try {
-      const prompt = `You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Do not include quotes around the whole response.`;
+      const prompt = `You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Do not include quotes around the whole response. /no_think`;
       const response = await fetch(`https://text.pollinations.ai/${encodeURIComponent(prompt)}`, {
         signal: AbortSignal.timeout(20_000),
       });

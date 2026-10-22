@@ -47,9 +47,9 @@ services:
       - llmcache:/root/.cache/huggingface
     command:
       - "--hf-repo"
-      - "mradermacher/Qwen2.5-0.5B-Instruct-abliterated-v3-GGUF"
+      - "mradermacher/Qwen3-0.6B-heretic-abliterated-uncensored-GGUF"
       - "--hf-file"
-      - "Qwen2.5-0.5B-Instruct-abliterated-v3.Q4_K_M.gguf"
+      - "Qwen3-0.6B-heretic-abliterated-uncensored.Q4_K_M.gguf"
       - "--host"
       - "0.0.0.0"
       - "--port"
