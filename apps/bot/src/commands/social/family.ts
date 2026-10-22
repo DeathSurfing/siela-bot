@@ -27,7 +27,7 @@ async function requestConsent(
   target: { id: string; displayName: string },
   action: string,
 ): Promise<boolean> {
-  const requestId = randomUUID();
+  const requestId = randomUUID().slice(0, 8);
   const approveId = `family:consent:${action}:approve:${ctx.author.id}:${target.id}:${requestId}`;
   const rejectId = `family:consent:${action}:reject:${ctx.author.id}:${target.id}:${requestId}`;
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
