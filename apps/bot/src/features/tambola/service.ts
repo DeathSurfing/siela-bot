@@ -99,6 +99,10 @@ export class TambolaService {
     return this.byGuild.get(guildId) ?? null;
   }
 
+  isUsingVoice(guildId: string): boolean {
+    return Boolean(this.get(guildId)?.voice?.connected);
+  }
+
   require(guildId: string): TambolaSession {
     const session = this.get(guildId);
     if (!session) throw new UserError("No Tambola game is running in this server.");

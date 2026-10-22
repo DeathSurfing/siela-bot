@@ -133,7 +133,7 @@ export class SielaBot {
     this.music = music;
     const tambola = new TambolaService(this.client, music, this.config, this.logger, economy);
     const tts = new TtsService(music, this.config, this.logger);
-    music.setVoiceBusyChecker((guildId) => Boolean(tambola.get(guildId)) || tts.isEnabled(guildId));
+    music.setVoiceBusyChecker((guildId) => tambola.isUsingVoice(guildId) || tts.isEnabled(guildId));
     const isVoiceBusy = (guildId: string): boolean => Boolean(tambola.get(guildId));
     this.randomVc = new RandomVcService(music, this.logger, isVoiceBusy);
     this.scheduledEvents = new ScheduledEventService(
