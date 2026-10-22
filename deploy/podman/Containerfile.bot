@@ -13,6 +13,7 @@ COPY packages/shared/package.json packages/shared/package.json
 RUN bun install --frozen-lockfile
 COPY . .
 RUN bun run --cwd apps/bot build
+RUN mkdir -p /out && cp -Lr /app/apps/bot/dist /out/dist && cp -Lr /app/node_modules /out/node_modules && mkdir -p /out/assets /out/packages/db && cp -r /app/apps/bot/assets /out/assets && cp -r /app/packages/db/drizzle /out/packages/db/drizzle
 
 FROM node:24-alpine AS runtime
 RUN apk add --no-cache ffmpeg mpv python3 py3-pip ca-certificates fontconfig ttf-dejavu font-noto-cjk \
@@ -20,9 +21,6 @@ RUN apk add --no-cache ffmpeg mpv python3 py3-pip ca-certificates fontconfig ttf
 ENV NODE_ENV=production
 ENV XDG_CACHE_HOME=/tmp
 WORKDIR /app
-COPY --from=build /app/apps/bot/dist ./dist
-COPY --from=build /app/apps/bot/assets ./assets
-COPY --from=build /app/packages/db/drizzle ./packages/db/drizzle
-COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /out/ ./
 USER node
 CMD ["node", "dist/index.js"]
