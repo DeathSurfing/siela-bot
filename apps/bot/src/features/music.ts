@@ -24,6 +24,7 @@ import type { Logger } from "../lib/logger.js";
 import type { SettingsService } from "./settings.js";
 
 const execFileAsync = promisify(execFile);
+const AUDIO_FORMAT = "bestaudio[abr<=312]/bestaudio/best[abr<=312]/best";
 
 export interface MusicServiceOptions {
   backend: "mpv" | "ffmpeg";
@@ -208,7 +209,7 @@ class GuildPlayer {
           "--no-cache-dir",
           "-g",
           "-f",
-          "bestaudio/best",
+          AUDIO_FORMAT,
           "--no-playlist",
           "--no-warnings",
           "--quiet",
@@ -310,7 +311,7 @@ class GuildPlayer {
           "--no-part",
           "--no-cache-dir",
           "-f",
-          "bestaudio/best",
+          AUDIO_FORMAT,
           "-o",
           "-",
           "--no-playlist",
@@ -530,7 +531,7 @@ export class MusicService extends EventEmitter {
             "--no-part",
             "--no-cache-dir",
             "-f",
-            "bestaudio/best",
+            AUDIO_FORMAT,
             "-o",
             output,
             "--no-playlist",
