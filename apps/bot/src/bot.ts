@@ -67,6 +67,7 @@ import { buildMusicPayload } from "./features/music-ui.js";
 import { LyricsService } from "./features/lyrics.js";
 import { buildLyricsPayload } from "./features/lyrics-ui.js";
 import { TambolaService } from "./features/tambola/service.js";
+import { TtsService } from "./features/tts.js";
 import { EconomyService } from "./features/economy.js";
 import { EMOJI, card, confirmCard } from "./features/ui.js";
 import { PrivacyService } from "./features/privacy.js";
@@ -131,6 +132,7 @@ export class SielaBot {
     );
     this.music = music;
     const tambola = new TambolaService(this.client, music, this.config, this.logger, economy);
+    const tts = new TtsService(music, this.config, this.logger);
     const isVoiceBusy = (guildId: string): boolean => Boolean(tambola.get(guildId));
     this.randomVc = new RandomVcService(music, this.logger, isVoiceBusy);
     this.scheduledEvents = new ScheduledEventService(
@@ -161,6 +163,7 @@ export class SielaBot {
       music,
       lyrics,
       tambola,
+      tts,
       economy,
       scheduledEvents: this.scheduledEvents,
     };
@@ -288,6 +291,11 @@ export class SielaBot {
       if (message.author.bot || !message.inGuild() || message.webhookId) return;
       if (!this.guildId || message.guild.id !== this.guildId) return;
       this.services.activity.recordMessage(message.guild.id, message.author.id);
+      if (this.services.tts.isEnabledChannel(message.guild.id, message.channel.id)) {
+        if (!message.content.startsWith("/") && !message.content.startsWith("!")) {
+          void this.services.tts.speak(message.guild.id, message.content).catch(() => undefined);
+        }
+      }
       const prefix = await this.services.settings.getPrefix(message.guild.id);
       const parsed = parsePrefixCommand(message.content, prefix, this.client.user?.id ?? "");
       if (!parsed) return;
@@ -967,6 +975,7 @@ export class SielaBot {
     await Promise.allSettled([this.controlServer.stop(), this.healthServer.stop()]);
     if (this.music) await this.music.shutdown().catch(() => undefined);
     this.services.tambola.stop();
+    this.services.tts.stop();
     this.services.tempVc.stop();
     this.randomVc.stop();
     this.scheduledEvents.stop();
