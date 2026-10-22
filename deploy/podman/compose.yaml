@@ -80,7 +80,8 @@ services:
       - "--max-model-len"
       - "2048"
     restart: unless-stopped
-    mem_limit: 2g
+    shm_size: 2gb
+    mem_limit: 4g
 
   migrate:
     image: localhost/siela-bot:latest
