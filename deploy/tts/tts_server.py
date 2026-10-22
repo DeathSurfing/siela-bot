@@ -17,7 +17,7 @@ tts: PocketTTSOnnx | None = None
 def load_model() -> None:
     global tts
     tts = PocketTTSOnnx(
-        models_dir="/app",
+        models_dir="/app/onnx",
         language="english_2026-04",
         precision="int8",
         temperature=0.7,
