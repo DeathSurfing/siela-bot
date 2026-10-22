@@ -1,7 +1,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import {
@@ -251,6 +251,31 @@ export class TambolaVoice {
     }
   }
 
+  private async synthesizeRemote(text: string, file: string, serviceUrl: string): Promise<string | null> {
+    if (this.disabled) return null;
+    try {
+      const response = await fetch(`${serviceUrl.replace(/\/$/, "")}/synthesize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, voice: this.kittenVoice || this.voice }),
+        signal: AbortSignal.timeout(120_000),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = Buffer.from(await response.arrayBuffer());
+      if (data.length === 0) throw new Error("empty audio response");
+      writeFileSync(file, data);
+      this.synthesized += 1;
+      if (this.synthesized === 1) this.logger.info({ text }, "tambola TTS first clip ready");
+      if (this.synthesized % 20 === 0) this.pruneCache();
+      return file;
+    } catch (error) {
+      this.failures += 1;
+      this.logger.warn({ err: error, text, failures: this.failures }, "tambola TTS synthesis failed");
+      if (this.failures >= 3) this.disabled = true;
+      return null;
+    }
+  }
+
   private synthesize(text: string): Promise<string | null> {
     const run = this.synthesisChain.then(() => this.synthesizeNow(text));
     this.synthesisChain = run.catch(() => undefined);
@@ -268,6 +293,11 @@ export class TambolaVoice {
       const size = statSync(file).size;
       if (size > 0) return file;
       rmSync(file, { force: true });
+    }
+
+    const serviceUrl = process.env.TTS_SERVICE_URL;
+    if (serviceUrl) {
+      return this.synthesizeRemote(text, file, serviceUrl);
     }
 
     const temp = this.backend === "kitten" || this.backend === "kitten-mini"

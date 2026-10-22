@@ -82,6 +82,22 @@ services:
     restart: unless-stopped
     mem_limit: 2g
 
+  tts:
+    build:
+      context: ./tts
+      dockerfile: Containerfile.tts
+    container_name: siela-tts
+    networks: [data]
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    restart: unless-stopped
+    mem_limit: 8g
+
   migrate:
     image: localhost/siela-bot:latest
     build:
@@ -111,9 +127,11 @@ services:
       - migrate
       - llm
       - valkey
+      - tts
     environment:
       LLM_URL: ${LLM_URL:-http://llm:8080}
       VALKEY_URL: ${VALKEY_URL:-redis://valkey:6379}
+      TTS_SERVICE_URL: ${TTS_SERVICE_URL:-http://tts:8000}
     restart: unless-stopped
     init: true
     read_only: true
