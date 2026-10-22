@@ -4,7 +4,7 @@
 
 FROM oven/bun:1 AS build
 WORKDIR /app
-COPY package.json bun.lock .npmrc tsconfig.base.json ./
+COPY package.json bun.lock .npmrc bunfig.toml tsconfig.base.json ./
 COPY apps/bot/package.json apps/bot/package.json
 COPY apps/mcp/package.json apps/mcp/package.json
 COPY packages/config/package.json packages/config/package.json
