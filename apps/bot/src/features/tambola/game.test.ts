@@ -108,7 +108,7 @@ describe("TambolaGame", () => {
   it("validates marks against the ticket and called numbers", () => {
     const game = makeGame();
     const player = game.player("host")!;
-    const ticket = ticketNumbers(player.ticket);
+    const ticket = ticketNumbers(player.tickets[0]!);
     game.start();
 
     const beforeCall = game.mark("host", ticket[0]!);
@@ -130,12 +130,12 @@ describe("TambolaGame", () => {
     callAll(game);
 
     expect(game.claim("host", "top_line")).toMatchObject({ ok: false, code: "unmarked" });
-    const top = rowNumbers(player.ticket, 0);
+    const top = rowNumbers(player.tickets[0]!, 0);
     for (const number of top) game.mark("host", number);
     expect(game.claim("host", "top_line")).toMatchObject({ ok: true, pattern: "top_line" });
     expect(game.claim("host", "top_line")).toMatchObject({ ok: false, code: "already_claimed" });
 
-    for (const number of ticketNumbers(player.ticket)) game.mark("host", number);
+    for (const number of ticketNumbers(player.tickets[0]!)) game.mark("host", number);
     expect(game.claim("host", "full_house")).toMatchObject({ ok: true, pattern: "full_house" });
     expect(game.status).toBe("finished");
     expect(game.winnerId).toBe("host");
@@ -160,7 +160,7 @@ describe("TambolaGame", () => {
     game.addPlayer("player", "Player");
     game.start();
     const player = game.player("host")!;
-    const ticket = ticketNumbers(player.ticket);
+    const ticket = ticketNumbers(player.tickets[0]!);
     let called: number | null = null;
     for (let index = 0; index < 90 && called === null; index += 1) {
       const number = game.nextCall();
@@ -189,7 +189,7 @@ describe("TambolaGame", () => {
     game.addPlayer("player", "Player");
     game.start();
     const player = game.player("host")!;
-    const ticket = ticketNumbers(player.ticket);
+    const ticket = ticketNumbers(player.tickets[0]!);
     let called: number | null = null;
     for (let index = 0; index < 90 && called === null; index += 1) {
       const number = game.nextCall();

@@ -25,8 +25,9 @@ export interface TambolaTicket {
 export interface TambolaPlayer {
   userId: string;
   displayName: string;
-  ticket: TambolaTicket;
+  tickets: TambolaTicket[];
   marked: Set<number>;
+  autoMark: boolean;
   joinedAt: number;
 }
 
@@ -212,8 +213,9 @@ export class TambolaGame {
     const player: TambolaPlayer = {
       userId,
       displayName,
-      ticket: generateTicket(this.rng),
+      tickets: [generateTicket(this.rng)],
       marked: new Set(),
+      autoMark: this.autoMark,
       joinedAt: Date.now(),
     };
     this.players.set(userId, player);
@@ -250,9 +252,10 @@ export class TambolaGame {
     if (number === undefined) return null;
     this.called.push(number);
     this.calledSet.add(number);
-    if (this.autoMark) {
-      for (const player of this.players.values()) {
-        if (ticketNumbers(player.ticket).includes(number)) player.marked.add(number);
+    for (const player of this.players.values()) {
+      if (!player.autoMark) continue;
+      if (player.tickets.some((ticket) => ticketNumbers(ticket).includes(number))) {
+        player.marked.add(number);
       }
     }
     return number;
@@ -280,7 +283,7 @@ export class TambolaGame {
     }
     const player = this.players.get(userId);
     if (!player) return { ok: false, code: "not_player", reason: "You are not in this game." };
-    if (!ticketNumbers(player.ticket).includes(number)) {
+    if (!player.tickets.some((ticket) => ticketNumbers(ticket).includes(number))) {
       return { ok: false, code: "not_on_ticket", reason: "That number is not on your ticket." };
     }
     if (!this.calledSet.has(number)) {
@@ -303,9 +306,21 @@ export class TambolaGame {
       return { ok: false, code: "already_claimed", reason: `${CLAIM_LABELS[pattern]} has already been claimed.` };
     }
 
+    let ticket: TambolaTicket | null = null;
+    for (const candidate of player.tickets) {
+      const candidateRequired = pattern === "full_house"
+        ? ticketNumbers(candidate)
+        : rowNumbers(candidate, pattern === "top_line" ? 0 : pattern === "middle_line" ? 1 : 2);
+      if (candidateRequired.every((number) => player.marked.has(number))) {
+        ticket = candidate;
+        break;
+      }
+    }
+    if (!ticket) ticket = player.tickets[0] ?? null;
+    if (!ticket) return { ok: false, code: "not_player", reason: "You do not have a ticket." };
     const required = pattern === "full_house"
-      ? ticketNumbers(player.ticket)
-      : rowNumbers(player.ticket, pattern === "top_line" ? 0 : pattern === "middle_line" ? 1 : 2);
+      ? ticketNumbers(ticket)
+      : rowNumbers(ticket, pattern === "top_line" ? 0 : pattern === "middle_line" ? 1 : 2);
     const unmarked = required.filter((number) => !player.marked.has(number));
     if (unmarked.length) {
       const notCalled = unmarked.filter((number) => !this.calledSet.has(number));
@@ -332,9 +347,25 @@ export class TambolaGame {
     return { ok: true, pattern, userId };
   }
 
+  addTicket(userId: string): TambolaTicket | null {
+    const player = this.players.get(userId);
+    if (!player || this.status !== "lobby") return null;
+    const ticket = generateTicket(this.rng);
+    player.tickets.push(ticket);
+    return ticket;
+  }
+
+  setPlayerAutoMark(userId: string, value: boolean): boolean {
+    const player = this.players.get(userId);
+    if (!player) return false;
+    player.autoMark = value;
+    return true;
+  }
+
   setAutoMark(value: boolean): void {
     if (this.status !== "lobby") return;
     this.autoMark = value;
+    for (const player of this.players.values()) player.autoMark = value;
   }
 
   transferHost(userId: string): boolean {

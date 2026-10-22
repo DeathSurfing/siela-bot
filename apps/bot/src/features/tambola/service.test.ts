@@ -186,7 +186,7 @@ describe("TambolaService", () => {
     await service.start("guild", host as never);
     const game = session.game;
     const playerTicket = game.player("player")!;
-    const ticket = ticketNumbers(playerTicket.ticket);
+    const ticket = ticketNumbers(playerTicket.tickets[0]!);
     let target: number | null = null;
     while (target === null) {
       const called = game.nextCall();
@@ -219,7 +219,7 @@ describe("TambolaService", () => {
     const game = session.game;
     for (let index = 0; index < 90; index += 1) game.nextCall();
     const playerState = game.player("player")!;
-    for (const number of rowNumbers(playerState.ticket, 0)) game.mark("player", number);
+    for (const number of rowNumbers(playerState.tickets[0]!, 0)) game.mark("player", number);
     const interaction = fakeInteraction(
       `tambola:claimselect:${game.id}`,
       "player",

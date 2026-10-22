@@ -16,6 +16,7 @@ import {
   CLAIM_PATTERNS,
   type TambolaGame,
   type TambolaPlayer,
+  ticketNumbers,
 } from "./tambola/game.js";
 
 function id(game: TambolaGame, action: string, extra?: string): string {
@@ -103,6 +104,14 @@ export function buildTambolaLobbyPayload(
       new ButtonBuilder()
         .setCustomId(id(game, "rules"))
         .setLabel("Rules")
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  );
+  container.addActionRowComponents(
+    actionRow(
+      new ButtonBuilder()
+        .setCustomId(id(game, "buyticket"))
+        .setLabel("Buy ticket")
         .setStyle(ButtonStyle.Secondary),
     ),
   );
@@ -245,26 +254,27 @@ export function buildTambolaTicketPayload(game: TambolaGame, player: TambolaPlay
   const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
   const playable = game.status !== "finished" && game.status !== "cancelled";
   container.addTextDisplayComponents(text(`## ${ICONS.music} Your Tambola ticket`));
-  container.addTextDisplayComponents(text(`Game \`${game.id}\` · ${player.marked.size}/15 marked`));
+  container.addTextDisplayComponents(text(`Game \`${game.id}\` · ${player.tickets.length} ticket${player.tickets.length === 1 ? "" : "s"} · ${player.marked.size} marked`));
   container.addTextDisplayComponents(
     text(
-      game.autoMark
-        ? "-# Auto-marking is on. Use Refresh to see your marks."
+      player.autoMark
+        ? "-# Auto-marking is on for you. Use Refresh to see your marks."
         : "-# `*` = marked · Tap a called number to mark it.",
     ),
   );
 
-  for (const row of player.ticket.rows) {
-    const numbers = row.filter((number): number is number => number !== null);
+  const numbers = [...new Set(player.tickets.flatMap((ticket) => ticketNumbers(ticket)))].sort((a, b) => a - b);
+  for (let index = 0; index < numbers.length; index += 5) {
+    const chunk = numbers.slice(index, index + 5);
     container.addActionRowComponents(
       actionRow(
-        ...numbers.map((number) => {
+        ...chunk.map((number) => {
           const marked = player.marked.has(number);
           return new ButtonBuilder()
             .setCustomId(id(game, "mark", String(number)))
             .setLabel(String(number))
             .setStyle(marked ? ButtonStyle.Success : game.calledSet.has(number) ? ButtonStyle.Primary : ButtonStyle.Secondary)
-            .setDisabled(!playable || marked || game.autoMark);
+            .setDisabled(!playable || marked || player.autoMark);
         }),
       ),
     );
@@ -286,15 +296,22 @@ export function buildTambolaTicketPayload(game: TambolaGame, player: TambolaPlay
   container.addActionRowComponents(
     new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select),
   );
-  container.addActionRowComponents(
-    actionRow(
+  const ticketButtons = [
+    new ButtonBuilder()
+      .setCustomId(id(game, "refresh"))
+      .setLabel("Refresh")
+      .setEmoji(EMOJI.loop)
+      .setStyle(ButtonStyle.Secondary),
+  ];
+  if (!player.autoMark) {
+    ticketButtons.push(
       new ButtonBuilder()
-        .setCustomId(id(game, "refresh"))
-        .setLabel("Refresh")
-        .setEmoji(EMOJI.loop)
-        .setStyle(ButtonStyle.Secondary),
-    ),
-  );
+        .setCustomId(id(game, "buyautomark"))
+        .setLabel("Buy auto-mark")
+        .setStyle(ButtonStyle.Primary),
+    );
+  }
+  container.addActionRowComponents(actionRow(...ticketButtons));
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
@@ -303,7 +320,7 @@ export function buildTambolaClaimPayload(game: TambolaGame, player: TambolaPlaye
   const available = CLAIM_PATTERNS.filter((pattern) => !game.claims.has(pattern));
   const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
   container.addTextDisplayComponents(text(`## ${ICONS.music} Claim a pattern`));
-  container.addTextDisplayComponents(text(`Game \`${game.id}\` · ${player.marked.size}/15 marked`));
+  container.addTextDisplayComponents(text(`Game \`${game.id}\` · ${player.tickets.length} ticket${player.tickets.length === 1 ? "" : "s"} · ${player.marked.size} marked`));
   container.addTextDisplayComponents(
     text(
       available.length

@@ -366,6 +366,51 @@ export class EconomyService {
     return result;
   }
 
+
+  async spend(
+    guildId: string,
+    userId: string,
+    amount: number,
+    kind: string,
+    idempotencyKey?: string,
+  ): Promise<void> {
+    if (!Number.isInteger(amount) || amount <= 0) throw new Error("INVALID_AMOUNT");
+    await this.ensureAccount(guildId, userId);
+    if (idempotencyKey) {
+      const [existing] = await this.db
+        .select({ id: economyTransactions.id })
+        .from(economyTransactions)
+        .where(and(eq(economyTransactions.guildId, guildId), eq(economyTransactions.idempotencyKey, idempotencyKey)));
+      if (existing) return;
+    }
+    await this.db.transaction(async (tx) => {
+      const debited = await tx
+        .update(economyAccounts)
+        .set({
+          balance: sql`${economyAccounts.balance} - ${amount}`,
+          totalSpent: sql`${economyAccounts.totalSpent} + ${amount}`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(economyAccounts.guildId, guildId),
+            eq(economyAccounts.userId, userId),
+            gte(economyAccounts.balance, amount),
+          ),
+        )
+        .returning({ userId: economyAccounts.userId });
+      if (!debited.length) throw new Error("INSUFFICIENT_FUNDS");
+      await tx.insert(economyTransactions).values({
+        guildId,
+        fromUserId: userId,
+        amount,
+        kind,
+        idempotencyKey: idempotencyKey ?? null,
+      });
+    });
+    await this.invalidateBalance(guildId, userId);
+  }
+
   async hasPremium(guildId: string, userId: string): Promise<boolean> {
     const [row] = await this.db
       .select({ expiresAt: premiumPasses.expiresAt })

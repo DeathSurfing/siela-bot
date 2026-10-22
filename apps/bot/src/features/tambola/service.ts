@@ -20,6 +20,7 @@ import type { ReplyPayload } from "../../framework/types.js";
 import { UserError } from "../../lib/errors.js";
 import type { Logger } from "../../lib/logger.js";
 import type { MusicService } from "../music.js";
+import type { EconomyService } from "./../economy.js";
 import { UI_ACCENT, text } from "../ui.js";
 import {
   buildTambolaClaimPayload,
@@ -90,6 +91,7 @@ export class TambolaService {
     private readonly music: MusicService,
     private readonly config: BotConfig,
     private readonly logger: Logger,
+    private readonly economy: EconomyService | null = null,
   ) {}
 
   get(guildId: string): TambolaSession | null {
@@ -199,6 +201,44 @@ export class TambolaService {
     this.assertLobbyCooldown(session, userId);
     if (!session.game.removePlayer(userId)) throw new UserError("You are not in this lobby.");
     void this.updateCard(session);
+  }
+
+  async buyTicket(guildId: string, userId: string): Promise<number> {
+    const session = this.require(guildId);
+    if (session.game.status !== "lobby") throw new UserError("Tickets can only be bought in the lobby.");
+    const player = session.game.player(userId);
+    if (!player) throw new UserError("Join the lobby before buying a ticket.");
+    if (!this.economy) throw new UserError("Economy is not available.");
+    const nextNumber = player.tickets.length + 1;
+    try {
+      await this.economy.spend(guildId, userId, 25, "tambola_ticket", `tambola:${session.game.id}:ticket:${userId}:${nextNumber}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Purchase failed.";
+      if (message === "INSUFFICIENT_FUNDS") throw new UserError("You need 25 SC to buy a ticket.");
+      throw new UserError(message);
+    }
+    const ticket = session.game.addTicket(userId);
+    if (!ticket) throw new UserError("Could not generate a ticket.");
+    await this.updateCard(session);
+    return player.tickets.length;
+  }
+
+  async buyAutoMark(guildId: string, userId: string): Promise<void> {
+    const session = this.require(guildId);
+    if (session.game.status !== "lobby") throw new UserError("Auto-mark can only be bought in the lobby.");
+    const player = session.game.player(userId);
+    if (!player) throw new UserError("Join the lobby before buying auto-mark.");
+    if (player.autoMark) throw new UserError("You already have auto-marking.");
+    if (!this.economy) throw new UserError("Economy is not available.");
+    try {
+      await this.economy.spend(guildId, userId, 10, "tambola_automark", `tambola:${session.game.id}:automark:${userId}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Purchase failed.";
+      if (message === "INSUFFICIENT_FUNDS") throw new UserError("You need 10 SC to buy auto-marking.");
+      throw new UserError(message);
+    }
+    if (!session.game.setPlayerAutoMark(userId, true)) throw new UserError("Could not enable auto-marking.");
+    await this.updateCard(session);
   }
 
   async start(guildId: string, member: GuildMember): Promise<void> {
@@ -545,6 +585,22 @@ export class TambolaService {
           return;
         }
         await interaction.update(messageOptions(buildTambolaTicketPayload(session.game, player), false));
+        return;
+      }
+      if (action === "buyticket") {
+        if (!member) throw new UserError("Buy tickets from the server lobby.");
+        await this.deferPrivate(interaction);
+        const count = await this.buyTicket(session.game.guildId, member.id);
+        await this.editPrivate(interaction, { content: `You now have ${count} ticket${count === 1 ? "" : "s"}.`, ephemeral: true });
+        return;
+      }
+      if (action === "buyautomark") {
+        if (!member) throw new UserError("Buy auto-mark from your ticket.");
+        await this.deferPrivate(interaction);
+        await this.buyAutoMark(session.game.guildId, member.id);
+        const player = session.game.player(interaction.user.id);
+        const payload = player ? buildTambolaTicketPayload(session.game, player) : null;
+        await this.editPrivate(interaction, payload ? payload : { content: "Auto-marking enabled.", ephemeral: true });
         return;
       }
       if (action === "refresh") {
