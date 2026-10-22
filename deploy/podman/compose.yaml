@@ -86,28 +86,6 @@ services:
     shm_size: 2gb
     mem_limit: 12g
 
-  tts:
-    build:
-      context: ./tts
-      dockerfile: Containerfile.tts
-    container_name: siela-tts
-    networks: [data, edge]
-    volumes:
-      - /opt/nvidia-libs:/opt/nvidia-libs:ro
-    environment:
-      LD_LIBRARY_PATH: /opt/nvidia-libs
-      KITTEN_TTS_MODEL: KittenML/kitten-tts-2
-      KITTEN_TTS_BACKEND: vllm
-      KITTEN_TTS_VLLM_OPTIONS: '{"quantization":"w4a16","gpu_memory_utilization":0.35}'
-      TTS_VOICE: Bruno
-    devices:
-      - /dev/nvidia0:/dev/nvidia0
-      - /dev/nvidiactl:/dev/nvidiactl
-      - /dev/nvidia-uvm:/dev/nvidia-uvm
-    restart: unless-stopped
-    shm_size: 2gb
-    mem_limit: 12g
-
   migrate:
     image: localhost/siela-bot:latest
     build:
@@ -137,12 +115,9 @@ services:
       - migrate
       - llm
       - valkey
-      - tts
     environment:
       LLM_URL: ${LLM_URL:-http://llm:8000}
       VALKEY_URL: ${VALKEY_URL:-redis://valkey:6379}
-      TTS_SERVICE_URL: ${TTS_SERVICE_URL:-http://tts:8000}
-      TTS_STREAM: "true"
     restart: unless-stopped
     init: true
     read_only: true
