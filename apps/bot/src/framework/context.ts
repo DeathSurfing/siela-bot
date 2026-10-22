@@ -46,6 +46,7 @@ export async function createPrefixContext(options: {
         components: data.components,
         files: data.files,
         allowedMentions: data.allowedMentions,
+        flags: data.flags,
       });
       return lastReply;
     },
@@ -61,6 +62,7 @@ export async function createPrefixContext(options: {
         components: data.components,
         files: data.files,
         allowedMentions: data.allowedMentions,
+        flags: data.flags,
       });
       return lastReply;
     },
@@ -73,6 +75,7 @@ export async function createPrefixContext(options: {
         components: data.components,
         files: data.files,
         allowedMentions: data.allowedMentions,
+        flags: data.flags,
       });
     },
   };
@@ -115,6 +118,7 @@ export async function createSlashContext(options: {
           components: data.components,
           files: data.files,
           allowedMentions: data.allowedMentions,
+          flags: data.flags,
         });
       }
       if (replied || interaction.replied) {
@@ -125,6 +129,7 @@ export async function createSlashContext(options: {
           files: data.files,
           ephemeral: data.ephemeral,
           allowedMentions: data.allowedMentions,
+          flags: data.flags,
         });
       }
       replied = true;
@@ -135,6 +140,7 @@ export async function createSlashContext(options: {
         files: data.files,
         ephemeral: data.ephemeral,
         allowedMentions: data.allowedMentions,
+        flags: data.flags,
       });
       return interaction.fetchReply();
     },
@@ -153,6 +159,7 @@ export async function createSlashContext(options: {
           components: data.components,
           files: data.files,
           allowedMentions: data.allowedMentions,
+          flags: data.flags,
         });
       }
       return ctx.reply(data);
@@ -166,6 +173,7 @@ export async function createSlashContext(options: {
         files: data.files,
         ephemeral: data.ephemeral,
         allowedMentions: data.allowedMentions,
+        flags: data.flags,
       });
     },
   };

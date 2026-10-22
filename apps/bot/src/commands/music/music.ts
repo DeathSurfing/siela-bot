@@ -2,7 +2,8 @@ import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import { COLORS, formatDuration, parseDuration, truncate } from "@siela/shared";
 import type { Command, CommandContext } from "../../framework/types.js";
 import type { MusicService } from "../../features/music.js";
-import { buildMusicControls } from "../../features/music-ui.js";
+import { buildMusicPayload } from "../../features/music-ui.js";
+import { card, success } from "../../features/ui.js";
 import { canManageMusic } from "../../framework/permissions.js";
 import { UserError } from "../../lib/errors.js";
 
@@ -30,22 +31,6 @@ function trackLine(track: { title: string; author: string; length: number; isStr
   return `**${truncate(track.title, 80)}** — ${truncate(track.author, 40)} ${track.isStream ? "🔴 live" : `\`${formatDuration(track.length)}\``}`;
 }
 
-function stateEmbed(ctx: CommandContext) {
-  const state = music(ctx).state(ctx.guild.id);
-  if (!state?.current) throw new UserError("Nothing is playing.");
-  const embed = new EmbedBuilder()
-    .setColor(COLORS.music)
-    .setTitle("Now playing")
-    .setDescription(trackLine(state.current))
-    .addFields(
-      { name: "Position", value: `${formatDuration(state.position)} / ${state.current.isStream ? "live" : formatDuration(state.current.length)}`, inline: true },
-      { name: "Volume", value: `${state.volume}%`, inline: true },
-      { name: "Loop", value: state.loop, inline: true },
-      { name: "Up next", value: state.upcoming.length ? trackLine(state.upcoming[0]!) : "queue is empty", inline: false },
-    );
-  if (state.current.artworkUrl) embed.setThumbnail(state.current.artworkUrl);
-  return embed;
-}
 
 const playCommand: Command = {
   name: "play",
@@ -68,29 +53,18 @@ const playCommand: Command = {
   async execute(ctx: CommandContext) {
     const query = ctx.args[0];
     if (!query) throw new UserError("Provide a search query or URL.");
-    await ctx.reply({ content: "🔎 Loading…" });
+    if (ctx.source === "prefix") {
+      await ctx.reply(card({ title: "Loading", body: "Resolving track…" }));
+    } else {
+      await ctx.defer();
+    }
     try {
       const result = await music(ctx).play(ctx.member, query, ctx.args[1]);
-      await ctx.edit({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(COLORS.music)
-            .setTitle(result.added > 1 ? "Playlist added" : "Added to queue")
-            .setDescription(
-              [
-                trackLine(result.first),
-                "",
-                result.added > 1
-                  ? `**${result.added}** tracks imported. Use the buttons below to control playback.`
-                  : "Use the buttons below to control playback.",
-              ].join("\n"),
-            ),
-        ],
-        components: buildMusicControls(ctx.guild.id, music(ctx).state(ctx.guild.id)),
-      });
+      const notice = result.added > 1 ? `Added ${result.added} tracks to the queue.` : "Added to the queue.";
+      await ctx.edit(buildMusicPayload(ctx.guild.id, music(ctx).state(ctx.guild.id), notice));
     } catch (error) {
       const message = error instanceof Error ? error.message : "That play request failed.";
-      await ctx.edit({ content: message }).catch(() => undefined);
+      await ctx.edit(card({ title: "Could not play", body: message })).catch(() => undefined);
     }
   },
 };
@@ -112,7 +86,7 @@ const joinCommand: Command = {
   async execute(ctx) {
     const channelId = ctx.args[0]?.replace(/^<#|>$/g, "");
     const joined = await music(ctx).join(ctx.member, channelId);
-    await ctx.reply({ content: `Joined <#${joined}>.`, ephemeral: true });
+    await ctx.reply(success(`Joined <#${joined}>.`));
   },
 };
 
@@ -126,7 +100,7 @@ const pauseCommand: Command = {
   async execute(ctx) {
     requireSameVoice(ctx);
     await music(ctx).pause(ctx.guild.id);
-    await ctx.reply({ content: "Paused.", ephemeral: true });
+    await ctx.reply(success("Paused."));
   },
 };
 
@@ -140,7 +114,7 @@ const resumeCommand: Command = {
   async execute(ctx) {
     requireSameVoice(ctx);
     await music(ctx).resume(ctx.guild.id);
-    await ctx.reply({ content: "Resumed.", ephemeral: true });
+    await ctx.reply(success("Resumed."));
   },
 };
 
@@ -159,7 +133,7 @@ const skipCommand: Command = {
     requireSameVoice(ctx);
     await requireDj(ctx);
     await music(ctx).skip(ctx.guild.id, Number(ctx.args[0] ?? 1) || 1);
-    await ctx.reply({ content: "Skipped.", ephemeral: true });
+    await ctx.reply(success("Skipped."));
   },
 };
 
@@ -174,7 +148,7 @@ const stopCommand: Command = {
     requireSameVoice(ctx);
     await requireDj(ctx);
     await music(ctx).stop(ctx.guild.id);
-    await ctx.reply({ content: "Stopped and cleared.", ephemeral: true });
+    await ctx.reply(success("Stopped and cleared."));
   },
 };
 
@@ -231,10 +205,7 @@ const nowPlayingCommand: Command = {
   examples: ["nowplaying"],
   slash: new SlashCommandBuilder().setName("nowplaying").setDescription("Show the current track"),
   async execute(ctx) {
-    await ctx.reply({
-      embeds: [stateEmbed(ctx)],
-      components: buildMusicControls(ctx.guild.id, music(ctx).state(ctx.guild.id)),
-    });
+    await ctx.reply(buildMusicPayload(ctx.guild.id, music(ctx).state(ctx.guild.id)));
   },
 };
 
@@ -255,7 +226,7 @@ const volumeCommand: Command = {
     const value = Number(ctx.args[0]);
     if (!Number.isInteger(value) || value < 0 || value > 150) throw new UserError("Volume must be 0-150.");
     const actual = await music(ctx).volume(ctx.guild.id, value);
-    await ctx.reply({ content: `Volume set to **${actual}%**.`, ephemeral: true });
+    await ctx.reply(success(`Volume set to **${actual}%**.`));
   },
 };
 
@@ -275,7 +246,7 @@ const seekCommand: Command = {
     const position = parseDuration(ctx.args[0] ?? "");
     if (position === null) throw new UserError("Use seconds or mm:ss.");
     await music(ctx).seek(ctx.guild.id, position);
-    await ctx.reply({ content: `Seeked to ${formatDuration(position)}.`, ephemeral: true });
+    await ctx.reply(success(`Seeked to ${formatDuration(position)}.`));
   },
 };
 
@@ -300,7 +271,7 @@ const loopCommand: Command = {
     const mode = ctx.args[0]?.toLowerCase();
     if (mode !== "off" && mode !== "track" && mode !== "queue") throw new UserError("Use off, track, or queue.");
     await music(ctx).loop(ctx.guild.id, mode);
-    await ctx.reply({ content: `Loop mode: **${mode}**.`, ephemeral: true });
+    await ctx.reply(success(`Loop mode: **${mode}**.`));
   },
 };
 
@@ -314,7 +285,7 @@ const shuffleCommand: Command = {
   async execute(ctx) {
     requireSameVoice(ctx);
     await music(ctx).shuffle(ctx.guild.id);
-    await ctx.reply({ content: "Queue shuffled.", ephemeral: true });
+    await ctx.reply(success("Queue shuffled."));
   },
 };
 
@@ -332,7 +303,7 @@ const removeCommand: Command = {
     requireSameVoice(ctx);
     await requireDj(ctx);
     const removed = await music(ctx).remove(ctx.guild.id, Number(ctx.args[0]));
-    await ctx.reply({ content: `Removed **${removed.title}**.`, ephemeral: true });
+    await ctx.reply(success(`Removed **${removed.title}**.`));
   },
 };
 
@@ -347,7 +318,7 @@ const clearCommand: Command = {
     requireSameVoice(ctx);
     await requireDj(ctx);
     await music(ctx).clear(ctx.guild.id);
-    await ctx.reply({ content: "Queue cleared.", ephemeral: true });
+    await ctx.reply(success("Queue cleared."));
   },
 };
 
@@ -363,7 +334,7 @@ const clearQueueCommand: Command = {
     requireSameVoice(ctx);
     await requireDj(ctx);
     await music(ctx).clear(ctx.guild.id);
-    await ctx.reply({ content: "Queue cleared.", ephemeral: true });
+    await ctx.reply(success("Queue cleared."));
   },
 };
 
@@ -382,7 +353,7 @@ const moveCommand: Command = {
     requireSameVoice(ctx);
     await requireDj(ctx);
     await music(ctx).move(ctx.guild.id, Number(ctx.args[0]), Number(ctx.args[1]));
-    await ctx.reply({ content: "Track moved.", ephemeral: true });
+    await ctx.reply(success("Track moved."));
   },
 };
 
@@ -400,7 +371,7 @@ const jumpCommand: Command = {
     requireSameVoice(ctx);
     await requireDj(ctx);
     await music(ctx).jump(ctx.guild.id, Number(ctx.args[0]));
-    await ctx.reply({ content: "Jumped.", ephemeral: true });
+    await ctx.reply(success("Jumped."));
   },
 };
 
@@ -415,7 +386,7 @@ const disconnectCommand: Command = {
   async execute(ctx) {
     await requireDj(ctx);
     await music(ctx).disconnect(ctx.guild.id);
-    await ctx.reply({ content: "Disconnected.", ephemeral: true });
+    await ctx.reply(success("Disconnected."));
   },
 };
 
@@ -436,7 +407,7 @@ const autoplayCommand: Command = {
     const value = ctx.args[0]?.toLowerCase();
     if (value !== "on" && value !== "off") throw new UserError("Use on or off.");
     await music(ctx).autoplay(ctx.guild.id, value === "on");
-    await ctx.reply({ content: `Autoplay **${value}**.`, ephemeral: true });
+    await ctx.reply(success(`Autoplay **${value}**.`));
   },
 };
 
@@ -469,7 +440,7 @@ const filtersCommand: Command = {
       throw new UserError("Use off, bassboost, nightcore, or vaporwave.");
     }
     await music(ctx).filters(ctx.guild.id, preset);
-    await ctx.reply({ content: `Filter preset: **${preset}**.`, ephemeral: true });
+    await ctx.reply(success(`Filter preset: **${preset}**.`));
   },
 };
 

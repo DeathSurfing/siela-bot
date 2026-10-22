@@ -1,5 +1,6 @@
 import type {
   ActionRowBuilder,
+  BaseMessageOptions,
   AttachmentBuilder,
   ButtonBuilder,
   ChatInputCommandInteraction,
@@ -59,9 +60,10 @@ export interface Services {
 export interface ReplyPayload {
   content?: string;
   embeds?: EmbedBuilder[];
-  components?: ActionRowBuilder<MessageActionRowComponentBuilder>[];
+  components?: BaseMessageOptions["components"];
   files?: AttachmentBuilder[];
   ephemeral?: boolean;
+  flags?: number;
   allowedMentions?: MessageMentionOptions;
 }
 

@@ -1,16 +1,15 @@
 import {
-  ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
-  EmbedBuilder,
+  ContainerBuilder,
+  MessageFlags,
   PermissionFlagsBits,
-  UserSelectMenuBuilder,
+  StringSelectMenuBuilder,
   type CategoryChannel,
   type Client,
   type Guild,
   type GuildMember,
-  type MessageActionRowComponentBuilder,
   type VoiceChannel,
   type VoiceState,
 } from "discord.js";
@@ -20,6 +19,8 @@ import { COLORS, renderTemplate, sanitizeChannelName, type TempVoiceChannel } fr
 import type { SettingsService } from "./settings.js";
 import type { Logger } from "../lib/logger.js";
 import { UserError } from "../lib/errors.js";
+import type { ReplyPayload } from "../framework/types.js";
+import { UI_ACCENT, actionRow, separator, text } from "./ui.js";
 
 const OWNER_ALLOW = {
   ViewChannel: true,
@@ -54,8 +55,6 @@ const BOT_ALLOW = {
   EmbedLinks: true,
 } as const;
 
-export const TEMP_VC_PANEL_MARKER = "tempvc-panel";
-
 export function tempVcPanelCustomId(action: string, channelId: string): string {
   return `tempvc:${action}:${channelId}`;
 }
@@ -66,10 +65,7 @@ export function parseTempVcPanelCustomId(customId: string): { action: string; ch
   return { action, channelId };
 }
 
-export interface TempVcPanelPayload {
-  embeds: EmbedBuilder[];
-  components: ActionRowBuilder<MessageActionRowComponentBuilder>[];
-}
+export type TempVcPanelPayload = ReplyPayload;
 
 export class TempVcService {
   private readonly creating = new Set<string>();
@@ -139,66 +135,45 @@ export class TempVcService {
   }
 
   private panelPayloadFor(channel: VoiceChannel, row: TempVoiceChannelRow): TempVcPanelPayload {
-    const embed = new EmbedBuilder()
-      .setColor(COLORS.voice)
-      .setTitle("Temporary VC controls")
-      .setDescription(
-        [
-          `<@${row.ownerId}> owns this voice channel.`,
-          "Use the buttons and member menus below to manage it.",
-          "This panel is in the channel's text chat, so members can coordinate here too.",
-        ].join("\n"),
+    const status = row.locked ? "Locked" : "Open";
+    const limit = row.userLimit === 0 ? "unlimited" : String(row.userLimit);
+    const memberCount = [...channel.members.values()].filter((member) => !member.user.bot).length;
+    const container = new ContainerBuilder()
+      .setAccentColor(UI_ACCENT)
+      .addTextDisplayComponents(text(`## ${channel.name}`))
+      .addTextDisplayComponents(
+        text(`-# <@${row.ownerId}> · ${status} · ${memberCount}/${limit} members`),
       )
-      .addFields(
-        { name: "Status", value: row.locked ? "🔒 Locked" : "🔓 Open", inline: true },
-        { name: "User limit", value: row.userLimit === 0 ? "Unlimited" : String(row.userLimit), inline: true },
-        { name: "In channel", value: String(channel.members.size), inline: true },
+      .addSeparatorComponents(separator())
+      .addActionRowComponents(
+        actionRow(
+          new ButtonBuilder()
+            .setCustomId(tempVcPanelCustomId("lock", row.channelId))
+            .setLabel(row.locked ? "Unlock" : "Lock")
+            .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId(tempVcPanelCustomId("rename", row.channelId))
+            .setLabel("Rename")
+            .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId(tempVcPanelCustomId("limit", row.channelId))
+            .setLabel("Limit")
+            .setStyle(ButtonStyle.Secondary),
+        ),
       )
-      .setFooter({ text: `${TEMP_VC_PANEL_MARKER}:${row.channelId}` });
-
-    const lockButton = new ButtonBuilder()
-      .setCustomId(tempVcPanelCustomId("lock", row.channelId))
-      .setLabel(row.locked ? "Unlock" : "Lock")
-      .setEmoji(row.locked ? "🔓" : "🔒")
-      .setStyle(row.locked ? ButtonStyle.Success : ButtonStyle.Secondary);
-    const renameButton = new ButtonBuilder()
-      .setCustomId(tempVcPanelCustomId("rename", row.channelId))
-      .setLabel("Rename")
-      .setEmoji("✏️")
-      .setStyle(ButtonStyle.Primary);
-    const limitButton = new ButtonBuilder()
-      .setCustomId(tempVcPanelCustomId("limit", row.channelId))
-      .setLabel("Limit")
-      .setEmoji("👥")
-      .setStyle(ButtonStyle.Secondary);
-    const deleteButton = new ButtonBuilder()
-      .setCustomId(tempVcPanelCustomId("delete", row.channelId))
-      .setLabel("Delete VC")
-      .setEmoji("🗑️")
-      .setStyle(ButtonStyle.Danger);
-
-    const actionRow = new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
-      lockButton,
-      renameButton,
-      limitButton,
-      deleteButton,
-    );
-    const kickRow = new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
-      new UserSelectMenuBuilder()
-        .setCustomId(tempVcPanelCustomId("kick", row.channelId))
-        .setPlaceholder("Kick a member from this VC")
-        .setMinValues(1)
-        .setMaxValues(1),
-    );
-    const transferRow = new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
-      new UserSelectMenuBuilder()
-        .setCustomId(tempVcPanelCustomId("transfer", row.channelId))
-        .setPlaceholder("Transfer ownership to a member")
-        .setMinValues(1)
-        .setMaxValues(1),
-    );
-
-    return { embeds: [embed], components: [actionRow, kickRow, transferRow] };
+      .addActionRowComponents(
+        actionRow(
+          new StringSelectMenuBuilder()
+            .setCustomId(tempVcPanelCustomId("manage", row.channelId))
+            .setPlaceholder("Manage members…")
+            .addOptions(
+              { label: "Kick member", value: "kick", description: "Remove someone from this VC" },
+              { label: "Transfer ownership", value: "transfer", description: "Give this VC to another member" },
+              { label: "Delete channel", value: "delete", description: "Delete this temporary VC" },
+            ),
+        ),
+      );
+    return { components: [container], flags: MessageFlags.IsComponentsV2 };
   }
 
   async panelPayload(channelId: string): Promise<TempVcPanelPayload> {
@@ -213,10 +188,11 @@ export class TempVcService {
       this.logger.warn({ err: error, channelId }, "temp VC panel history unavailable");
       return null;
     });
+    const marker = tempVcPanelCustomId("lock", channelId);
     const existing = messages?.find(
       (message) =>
         message.author.id === this.client.user?.id &&
-        message.embeds.some((embed) => embed.footer?.text?.startsWith(TEMP_VC_PANEL_MARKER)),
+        message.components.some((component) => JSON.stringify(component.toJSON()).includes(marker)),
     );
     if (existing) {
       await existing.edit(payload).catch((error) => {

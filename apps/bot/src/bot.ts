@@ -12,6 +12,7 @@ import {
   Partials,
   StringSelectMenuBuilder,
   TextInputBuilder,
+  UserSelectMenuBuilder,
   TextInputStyle,
   type ButtonInteraction,
   type Guild,
@@ -59,7 +60,8 @@ import { BirthdayService } from "./features/birthday.js";
 import { parseTempVcPanelCustomId, tempVcPanelCustomId, TempVcService } from "./features/tempvc.js";
 
 import { MusicService, type MusicFilterPreset } from "./features/music.js";
-import { buildMusicControls } from "./features/music-ui.js";
+import { buildMusicPayload } from "./features/music-ui.js";
+import { card, confirmCard } from "./features/ui.js";
 import { PrivacyService } from "./features/privacy.js";
 import { buildHelpPayload } from "./features/help.js";
 import { ControlServer } from "./control/server.js";
@@ -317,7 +319,11 @@ export class SielaBot {
         await this.onMusicFilterSelect(interaction);
         return;
       }
-      if ((interaction.isButton() || interaction.isUserSelectMenu()) && interaction.customId.startsWith("tempvc:")) {
+      if (interaction.isStringSelectMenu() && interaction.customId.startsWith("music:more:")) {
+        await this.onMusicMoreSelect(interaction);
+        return;
+      }
+      if ((interaction.isButton() || interaction.isUserSelectMenu() || interaction.isStringSelectMenu()) && interaction.customId.startsWith("tempvc:")) {
         await this.onTempVcComponent(interaction);
         return;
       }
@@ -380,14 +386,31 @@ export class SielaBot {
       category: interaction.values[0],
     });
     await interaction.update({
-      embeds: payload.embeds,
       components: payload.components,
+      flags: payload.flags,
     });
   }
 
   private async onMusicButton(interaction: ButtonInteraction): Promise<void> {
     const [prefix, action, guildId] = interaction.customId.split(":");
-    if (prefix !== "music" || !guildId || !this.guildId || guildId !== this.guildId) return;
+    if (prefix !== "music" || !action || !guildId) return;
+    await this.handleMusicAction(interaction, action, guildId);
+  }
+
+  private async onMusicMoreSelect(interaction: StringSelectMenuInteraction): Promise<void> {
+    const [prefix, kind, guildId] = interaction.customId.split(":");
+    if (prefix !== "music" || kind !== "more" || !guildId) return;
+    const action = interaction.values[0];
+    if (!action) return;
+    await this.handleMusicAction(interaction, action, guildId);
+  }
+
+  private async handleMusicAction(
+    interaction: ButtonInteraction | StringSelectMenuInteraction,
+    action: string,
+    guildId: string,
+  ): Promise<void> {
+    if (!this.guildId || guildId !== this.guildId) return;
     const guild = interaction.guild;
     if (!guild) return;
     const music = this.services.music;
@@ -414,33 +437,33 @@ export class SielaBot {
       if (action === "pause") {
         if (state.paused) await music.resume(guild.id);
         else await music.pause(guild.id);
-        await interaction.update({ components: buildMusicControls(guild.id, music.state(guild.id)) });
+        await interaction.update(buildMusicPayload(guild.id, music.state(guild.id)));
         return;
       }
       if (action === "rewind" || action === "forward") {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferUpdate();
         const delta = action === "rewind" ? -10_000 : 10_000;
         await music.seek(guild.id, state.position + delta);
-        await interaction.editReply({
-          content: action === "rewind" ? "Rewound 10 seconds." : "Forwarded 10 seconds.",
-        });
+        await interaction.editReply(buildMusicPayload(guild.id, music.state(guild.id)));
         return;
       }
       if (action === "skip") {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferUpdate();
         await music.skip(guild.id);
-        await interaction.editReply({ content: "Skipped." });
+        await interaction.editReply(buildMusicPayload(guild.id, music.state(guild.id)));
         return;
       }
       if (action === "shuffle") {
+        await interaction.deferUpdate();
         await music.shuffle(guild.id);
-        await interaction.reply({ content: "Queue shuffled.", ephemeral: true });
+        await interaction.editReply(buildMusicPayload(guild.id, music.state(guild.id)));
         return;
       }
       if (action === "loop") {
         const next = state.loop === "off" ? "track" : state.loop === "track" ? "queue" : "off";
+        await interaction.deferUpdate();
         await music.loop(guild.id, next);
-        await interaction.update({ components: buildMusicControls(guild.id, music.state(guild.id)) });
+        await interaction.editReply(buildMusicPayload(guild.id, music.state(guild.id)));
         return;
       }
       if (action === "filter") {
@@ -453,10 +476,10 @@ export class SielaBot {
                 .setCustomId(`music:filter:${guild.id}`)
                 .setPlaceholder("Choose a filter")
                 .addOptions(
-                  { label: "Off", value: "off", emoji: "🚫", description: "No audio filter" },
-                  { label: "Bass boost", value: "bassboost", emoji: "🔊", description: "Extra low end" },
-                  { label: "Nightcore", value: "nightcore", emoji: "🌙", description: "Faster and higher" },
-                  { label: "Vaporwave", value: "vaporwave", emoji: "🌴", description: "Slower and deeper" },
+                  { label: "Off", value: "off", description: "No audio filter" },
+                  { label: "Bass boost", value: "bassboost", description: "Extra low end" },
+                  { label: "Nightcore", value: "nightcore", description: "Faster and higher" },
+                  { label: "Vaporwave", value: "vaporwave", description: "Slower and deeper" },
                 ),
             ),
           ],
@@ -464,9 +487,10 @@ export class SielaBot {
         return;
       }
       if (action === "stop") {
+        await interaction.deferUpdate();
         await music.stop(guild.id);
         await music.disconnect(guild.id);
-        await interaction.update({ content: "Music stopped.", embeds: [], components: [] });
+        await interaction.editReply(card({ title: "Stopped", body: "The player has been disconnected." }));
         return;
       }
       await replyError("Unknown music control.");
@@ -515,7 +539,7 @@ export class SielaBot {
   }
 
   private async requireTempVcPanelAccess(
-    interaction: ButtonInteraction | UserSelectMenuInteraction | ModalSubmitInteraction,
+    interaction: ButtonInteraction | UserSelectMenuInteraction | StringSelectMenuInteraction | ModalSubmitInteraction,
   ): Promise<{
     action: string;
     channelId: string;
@@ -552,7 +576,7 @@ export class SielaBot {
   }
 
   private async replyTempVcError(
-    interaction: ButtonInteraction | UserSelectMenuInteraction | ModalSubmitInteraction,
+    interaction: ButtonInteraction | UserSelectMenuInteraction | StringSelectMenuInteraction | ModalSubmitInteraction,
     error: unknown,
   ): Promise<void> {
     const message = error instanceof UserError ? error.message : "That VC action failed.";
@@ -565,7 +589,7 @@ export class SielaBot {
   }
 
   private auditTempVcPanel(
-    interaction: ButtonInteraction | UserSelectMenuInteraction | ModalSubmitInteraction,
+    interaction: ButtonInteraction | UserSelectMenuInteraction | StringSelectMenuInteraction | ModalSubmitInteraction,
     action: string,
     channelId: string,
     after?: unknown,
@@ -585,7 +609,7 @@ export class SielaBot {
   }
 
   private async onTempVcComponent(
-    interaction: ButtonInteraction | UserSelectMenuInteraction,
+    interaction: ButtonInteraction | UserSelectMenuInteraction | StringSelectMenuInteraction,
   ): Promise<void> {
     const context = await this.requireTempVcPanelAccess(interaction);
     if (!context) return;
@@ -664,13 +688,48 @@ export class SielaBot {
         await interaction.deferReply({ ephemeral: true });
         await this.services.tempVc.delete(channelId, "Owner deleted temporary VC from panel");
         await this.auditTempVcPanel(interaction, "vc.panel.delete", channelId);
-        await interaction.editReply({ content: "Temporary VC deleted.", components: [] }).catch(() => undefined);
+        await interaction.editReply(card({ title: "Deleted", body: "Temporary VC deleted." })).catch(() => undefined);
         return;
       }
 
       if (action === "delete-cancel") {
-        await interaction.update({ content: "Delete cancelled.", embeds: [], components: [] });
+        await interaction.update(card({ title: "Cancelled", body: "No changes were made." }));
         return;
+      }
+
+      if (action === "manage") {
+        if (!interaction.isStringSelectMenu()) throw new UserError("Choose a management action.");
+        const choice = interaction.values[0];
+        await interaction.update(await this.services.tempVc.panelPayload(channelId));
+        if (choice === "delete") {
+          await interaction.followUp(
+            confirmCard({
+              title: "Delete this channel?",
+              body: `This will delete **${channel.name}** and disconnect everyone in it.`,
+              confirmId: tempVcPanelCustomId("delete-confirm", channelId),
+              cancelId: tempVcPanelCustomId("delete-cancel", channelId),
+              confirmLabel: "Delete",
+            }),
+          );
+          return;
+        }
+        if (choice === "kick" || choice === "transfer") {
+          await interaction.followUp({
+            content: choice === "kick" ? "Select a member to kick." : "Select the new owner.",
+            ephemeral: true,
+            components: [
+              new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
+                new UserSelectMenuBuilder()
+                  .setCustomId(tempVcPanelCustomId(choice, channelId))
+                  .setPlaceholder(choice === "kick" ? "Member to kick" : "New owner")
+                  .setMinValues(1)
+                  .setMaxValues(1),
+              ),
+            ],
+          });
+          return;
+        }
+        throw new UserError("Unknown management action.");
       }
 
       if (action === "kick") {
@@ -692,7 +751,10 @@ export class SielaBot {
         await interaction.deferUpdate();
         await this.services.tempVc.transfer(channelId, targetId);
         await this.auditTempVcPanel(interaction, "vc.panel.transfer", channelId, { targetId });
-        await interaction.editReply(await this.services.tempVc.panelPayload(channelId));
+        await interaction.editReply(
+          card({ title: "Ownership transferred", body: `<@${targetId}> now owns this VC.` }),
+        );
+        await this.services.tempVc.refreshPanel(channelId).catch(() => undefined);
         return;
       }
 

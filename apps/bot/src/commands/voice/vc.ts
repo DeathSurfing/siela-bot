@@ -1,8 +1,8 @@
-import { ChannelType, EmbedBuilder, SlashCommandBuilder, type VoiceChannel } from "discord.js";
-import { COLORS, formatDuration } from "@siela/shared";
+import { ChannelType, SlashCommandBuilder, type VoiceChannel } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { canManageTempVc, isAdmin } from "../../framework/permissions.js";
 import { UserError } from "../../lib/errors.js";
+import { card, error as uiError, success } from "../../features/ui.js";
 
 function currentChannel(ctx: CommandContext): VoiceChannel {
   const channel = ctx.member.voice.channel;
@@ -101,7 +101,7 @@ export const vcCommand: Command = {
         const { channel } = await requireOwned(ctx);
         await ctx.services.tempVc.ensurePanel(channel.id);
         await audit(ctx, "vc.panel", channel.id);
-        await ctx.reply({ content: "VC control panel refreshed.", ephemeral: true });
+        await ctx.reply(success("VC control panel refreshed."));
         return;
       }
 
@@ -109,19 +109,13 @@ export const vcCommand: Command = {
         const channel = currentChannel(ctx);
         const row = await ctx.services.tempVc.getRow(channel.id);
         if (!row) throw new UserError("This is not a temporary VC.");
-        await ctx.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(COLORS.voice)
-              .setTitle(channel.name)
-              .addFields(
-                { name: "Owner", value: `<@${row.ownerId}>`, inline: true },
-                { name: "Locked", value: row.locked ? "yes" : "no", inline: true },
-                { name: "User limit", value: row.userLimit === 0 ? "unlimited" : String(row.userLimit), inline: true },
-                { name: "Created", value: formatDuration(Date.now() - row.createdAt.getTime()) + " ago", inline: true },
-              ),
-          ],
-        });
+        await ctx.reply(
+          card({
+            title: channel.name,
+            subtitle: `Owner <@${row.ownerId}> · created <t:${Math.floor(row.createdAt.getTime() / 1000)}:R>`,
+            body: `**${row.locked ? "Locked" : "Open"}** · limit ${row.userLimit === 0 ? "unlimited" : row.userLimit}`,
+          }),
+        );
         return;
       }
 
@@ -129,7 +123,7 @@ export const vcCommand: Command = {
         const channel = currentChannel(ctx);
         await ctx.services.tempVc.claim(channel.id, ctx.author.id);
         await audit(ctx, "vc.claim", channel.id);
-        await ctx.reply({ content: `You now own **${channel.name}**.`, ephemeral: true });
+        await ctx.reply(success(`You now own **${channel.name}**.`));
         return;
       }
 
@@ -151,7 +145,7 @@ export const vcCommand: Command = {
           await ctx.services.tempVc.delete(channel.id, "Owner deleted temporary VC");
         }
         await audit(ctx, `vc.${action}`, channel.id, { args: ctx.args.slice(1) });
-        await ctx.reply({ content: `Temporary VC **${action}** complete.`, ephemeral: true });
+        await ctx.reply(success(`Temporary VC ${action} complete.`));
         return;
       }
 
@@ -168,14 +162,14 @@ export const vcCommand: Command = {
           await ctx.services.tempVc.transfer(channel.id, target.id);
         }
         await audit(ctx, `vc.${action}`, channel.id, { targetId: target.id });
-        await ctx.reply({ content: `Temporary VC **${action}** applied to ${target.displayName}.`, ephemeral: true });
+        await ctx.reply(success(`Temporary VC ${action} applied to ${target.displayName}.`));
         return;
       }
 
       await ctx.reply({ content: "Unknown `vc` subcommand.", ephemeral: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : "That action failed.";
-      await ctx.reply({ content: message, ephemeral: true });
+      await ctx.reply(uiError(message));
     }
   },
 };

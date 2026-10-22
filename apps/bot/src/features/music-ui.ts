@@ -1,80 +1,105 @@
 import {
-  ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  type MessageActionRowComponentBuilder,
+  ContainerBuilder,
+  MessageFlags,
+  SectionBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
+  StringSelectMenuBuilder,
+  TextDisplayBuilder,
+  ThumbnailBuilder,
 } from "discord.js";
-import type { MusicQueueState } from "@siela/shared";
+import { formatDuration, truncate, type MusicQueueState } from "@siela/shared";
+import type { ReplyPayload } from "../framework/types.js";
+import { UI_ACCENT, actionRow, progressBar, text } from "./ui.js";
 
 function buttonId(guildId: string, action: string): string {
   return `music:${action}:${guildId}`;
 }
 
-export function buildMusicControls(
+export function buildMusicPayload(
   guildId: string,
   state: MusicQueueState | null,
-): ActionRowBuilder<MessageActionRowComponentBuilder>[] {
-  const hasTrack = Boolean(state?.current);
-  const paused = state?.paused ?? false;
-  const loop = state?.loop ?? "off";
+  notice?: string,
+): ReplyPayload {
+  if (!state?.current) {
+    return {
+      components: [
+        new ContainerBuilder()
+          .setAccentColor(UI_ACCENT)
+          .addTextDisplayComponents(text("## Nothing playing"))
+          .addTextDisplayComponents(text("-# Use `/play` to start a track.")),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    };
+  }
 
-  const pause = new ButtonBuilder()
-    .setCustomId(buttonId(guildId, "pause"))
-    .setLabel(paused ? "Resume" : "Pause")
-    .setEmoji(paused ? "▶️" : "⏸️")
-    .setStyle(paused ? ButtonStyle.Success : ButtonStyle.Secondary)
-    .setDisabled(!hasTrack);
-  const rewind = new ButtonBuilder()
-    .setCustomId(buttonId(guildId, "rewind"))
-    .setLabel("-10s")
-    .setEmoji("⏪")
-    .setStyle(ButtonStyle.Secondary)
-    .setDisabled(!hasTrack);
-  const forward = new ButtonBuilder()
-    .setCustomId(buttonId(guildId, "forward"))
-    .setLabel("+10s")
-    .setEmoji("⏩")
-    .setStyle(ButtonStyle.Secondary)
-    .setDisabled(!hasTrack);
-  const skip = new ButtonBuilder()
-    .setCustomId(buttonId(guildId, "skip"))
-    .setLabel("Skip")
-    .setEmoji("⏭️")
-    .setStyle(ButtonStyle.Primary)
-    .setDisabled(!hasTrack);
-  const stop = new ButtonBuilder()
-    .setCustomId(buttonId(guildId, "stop"))
-    .setLabel("Stop")
-    .setEmoji("⏹️")
-    .setStyle(ButtonStyle.Danger)
-    .setDisabled(!hasTrack);
-  const shuffle = new ButtonBuilder()
-    .setCustomId(buttonId(guildId, "shuffle"))
-    .setLabel("Shuffle")
-    .setEmoji("🔀")
-    .setStyle(ButtonStyle.Secondary)
-    .setDisabled(!hasTrack);
-  const loopButton = new ButtonBuilder()
-    .setCustomId(buttonId(guildId, "loop"))
-    .setLabel(`Loop: ${loop}`)
-    .setEmoji("🔁")
-    .setStyle(loop === "off" ? ButtonStyle.Secondary : ButtonStyle.Success)
-    .setDisabled(!hasTrack);
-  const filterButton = new ButtonBuilder()
-    .setCustomId(buttonId(guildId, "filter"))
-    .setLabel("Filters")
-    .setEmoji("🎛️")
-    .setStyle(ButtonStyle.Secondary)
-    .setDisabled(!hasTrack);
+  const track = state.current;
+  const length = track.isStream ? 0 : track.length;
+  const progress = track.isStream
+    ? "🔴 LIVE"
+    : `${progressBar(state.position, length, 14)}  \`${formatDuration(state.position)} / ${formatDuration(length)}\``;
+  const next = state.upcoming[0];
 
-  return [
-    new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
-      pause,
-      rewind,
-      forward,
-      skip,
-      stop,
+  const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+  if (notice) {
+    container.addTextDisplayComponents(text(`-# ${notice}`));
+    container.addSeparatorComponents(
+      new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
+    );
+  }
+
+  const titleSection = new SectionBuilder()
+    .addTextDisplayComponents(
+      text(`### ${truncate(track.title, 80)}`),
+      text(`-# ${truncate(track.author, 48)}${track.isStream ? " · LIVE" : ""}`),
+    );
+  if (track.artworkUrl) {
+    titleSection.setThumbnailAccessory(new ThumbnailBuilder({ media: { url: track.artworkUrl } }));
+  }
+  container.addSectionComponents(titleSection);
+  container.addTextDisplayComponents(text(progress));
+  container.addTextDisplayComponents(
+    text(
+      `-# Volume ${state.volume}% · Loop ${state.loop} · ${state.upcoming.length} queued`,
     ),
-    new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(shuffle, loopButton, filterButton),
-  ];
+  );
+  if (next) {
+    container.addTextDisplayComponents(
+      text(`**Next** · ${truncate(next.title, 70)} — ${truncate(next.author, 32)}`),
+    );
+  }
+
+  container.addActionRowComponents(
+    actionRow(
+      new ButtonBuilder()
+        .setCustomId(buttonId(guildId, "pause"))
+        .setLabel(state.paused ? "Resume" : "Pause")
+        .setStyle(state.paused ? ButtonStyle.Success : ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(buttonId(guildId, "skip"))
+        .setLabel("Skip")
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  );
+
+  const more = new StringSelectMenuBuilder()
+    .setCustomId(`music:more:${guildId}`)
+    .setPlaceholder("More controls…")
+    .addOptions(
+      { label: "Rewind 10s", value: "rewind" },
+      { label: "Forward 10s", value: "forward" },
+      { label: "Shuffle queue", value: "shuffle" },
+      { label: "Cycle loop mode", value: "loop" },
+      { label: "Filter preset", value: "filter" },
+      { label: "Stop and disconnect", value: "stop" },
+    );
+
+  container.addActionRowComponents(actionRow(more));
+
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  };
 }

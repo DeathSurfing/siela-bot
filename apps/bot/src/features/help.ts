@@ -1,17 +1,9 @@
 import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  EmbedBuilder,
   StringSelectMenuBuilder,
   type GuildMember,
 } from "discord.js";
 import {
-  APP_NAME,
-  APP_VERSION,
-  CATEGORY_EMOJI,
   CATEGORY_LABELS,
-  COLORS,
   type CommandCategory,
   type CommandMetadata,
 } from "@siela/shared";
@@ -19,6 +11,7 @@ import type { BotConfig } from "@siela/config";
 import type { CommandRegistry } from "../framework/registry.js";
 import type { ReplyPayload } from "../framework/types.js";
 import { isAdmin } from "../framework/permissions.js";
+import { actionRow, card } from "./ui.js";
 
 export interface HelpOptions {
   registry: CommandRegistry;
@@ -35,12 +28,23 @@ function allowedCategories(member: GuildMember, config: BotConfig): CommandCateg
   return isAdmin(member, config, member.guild) ? CATEGORIES : CATEGORIES.filter((c) => c !== "admin");
 }
 
-function commandLine(command: CommandMetadata, prefix: string): string {
-  const invocation = command.slash ? `/${command.name}` : `${prefix}${command.name}`;
-  const usage = command.usage ? ` \`${command.usage}\`` : "";
-  const lock = command.adminOnly ? " 🔒" : "";
-  const nsfw = command.nsfw ? " 🔞" : "";
-  return `**${invocation}**${usage} — ${command.description}${lock}${nsfw}`;
+function commandLine(command: CommandMetadata): string {
+  const lock = command.adminOnly ? " · Admin" : "";
+  const nsfw = command.nsfw ? " · NSFW" : "";
+  return `**${command.name}** — ${command.description}${lock}${nsfw}`;
+}
+
+function commandDetail(command: CommandMetadata, prefix: string): string {
+  const lines = [
+    `**Usage** · \`${prefix}${command.name}${command.usage ? ` ${command.usage}` : ""}\``,
+    `**Access** · ${command.adminOnly ? "Admin" : "Everyone"}${command.nsfw ? " · NSFW" : ""}`,
+    `**Cooldown** · ${command.cooldownMs ? `${command.cooldownMs / 1000}s` : "none"}`,
+  ];
+  if (command.aliases.length) lines.push(`**Aliases** · ${command.aliases.join(", ")}`);
+  if (command.examples.length) {
+    lines.push(`**Examples** · ${command.examples.slice(0, 3).map((example) => `\`${prefix}${example}\``).join(" · ")}`);
+  }
+  return lines.join("\n");
 }
 
 export async function buildHelpPayload(options: HelpOptions): Promise<ReplyPayload> {
@@ -55,76 +59,47 @@ export async function buildHelpPayload(options: HelpOptions): Promise<ReplyPaylo
     ? (options.category as CommandCategory)
     : null;
 
-  const embed = new EmbedBuilder()
-    .setColor(COLORS.primary)
-    .setAuthor({ name: `${APP_NAME} • ${APP_VERSION}` })
-    .setFooter({ text: `Prefix ${prefix} • hybrid commands` })
-    .setTimestamp();
+  let title = "Help";
+  let subtitle = `${commands.length} command${commands.length === 1 ? "" : "s"} · prefix \`${prefix}\``;
+  let body: string;
 
   if (selected) {
-    embed
-      .setTitle(`${CATEGORY_EMOJI[selected.category]} ${selected.name}`)
-      .setDescription(selected.description)
-      .addFields(
-        { name: "Usage", value: `\`${prefix}${selected.name}${selected.usage ? ` ${selected.usage}` : ""}\``, inline: false },
-        { name: "Category", value: CATEGORY_LABELS[selected.category], inline: true },
-        { name: "Cooldown", value: selected.cooldownMs ? `${selected.cooldownMs / 1000}s` : "none", inline: true },
-        { name: "Access", value: selected.adminOnly ? "Admin" : "Everyone", inline: true },
-      );
-    if (selected.aliases.length) embed.addFields({ name: "Aliases", value: selected.aliases.join(", "), inline: false });
-    if (selected.examples.length) {
-      embed.addFields({
-        name: "Examples",
-        value: selected.examples.map((example) => `\`${prefix}${example}\``).join("\n"),
-        inline: false,
-      });
-    }
+    title = selected.name;
+    subtitle = CATEGORY_LABELS[selected.category];
+    body = [`${selected.description}`, "", commandDetail(selected, prefix)].join("\n");
   } else if (category) {
     const list = commands.filter((command) => command.category === category);
-    embed
-      .setTitle(`${CATEGORY_EMOJI[category]} ${CATEGORY_LABELS[category]} commands`)
-      .setDescription(list.map((command) => commandLine(command, prefix)).join("\n") || "No commands.");
+    title = CATEGORY_LABELS[category];
+    subtitle = `${list.length} command${list.length === 1 ? "" : "s"}`;
+    body = list.map(commandLine).join("\n") || "No commands.";
   } else {
     const summary = categories.map((cat) => {
       const count = commands.filter((command) => command.category === cat).length;
-      return `${CATEGORY_EMOJI[cat]} **${CATEGORY_LABELS[cat]}** — ${count} commands`;
+      return `**${CATEGORY_LABELS[cat]}** — ${count} command${count === 1 ? "" : "s"}`;
     });
-    embed
-      .setTitle(`${APP_NAME} help`)
-      .setDescription(
-        [
-          `Use the menu below or \`${prefix}help <command>\` for details.`,
-          "",
-          ...summary,
-          "",
-          "**Hybrid** — every command works with prefix and slash where available.",
-        ].join("\n"),
-      );
+    body = [
+      summary.join("\n"),
+      "",
+      `-# Use the menu below or \`${prefix}help <command>\` for details.`,
+    ].join("\n");
   }
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId("help:category")
-    .setPlaceholder("Choose a category…")
+    .setPlaceholder("Browse categories…")
     .addOptions(
       categories.map((cat) => ({
         label: CATEGORY_LABELS[cat],
         value: cat,
-        emoji: CATEGORY_EMOJI[cat],
         default: category === cat,
       })),
     );
 
-  const close = new ButtonBuilder()
-    .setCustomId("help:close")
-    .setLabel("Close")
-    .setStyle(ButtonStyle.Secondary);
-
-  return {
-    embeds: [embed],
-    components: [
-      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu),
-      new ActionRowBuilder<ButtonBuilder>().addComponents(close),
-    ],
+  return card({
+    title,
+    subtitle,
+    body,
+    rows: [actionRow(menu)],
     ephemeral: true,
-  };
+  });
 }

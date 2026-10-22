@@ -658,3 +658,32 @@ Source:
    settings.
 6. **First implementation batch:** help + now-playing + temp VC panel, or
    help + all music? Recommendation: help + now-playing + temp VC panel.
+
+---
+
+## 9. P0 implementation status (2026-10-22)
+
+Completed in the first pass:
+
+- Shared Components V2 UI kit (`features/ui.ts`) and V2-aware reply payloads.
+- Help landing, category list, and command detail converted to V2.
+- Music now-playing/play result converted to a V2 card with a reduced control
+  set (Pause/Resume, Skip, More select).
+- Music button/select handlers now update the same card instead of sending
+  extra status messages where practical.
+- Temp VC panel converted to a compact V2 card with Lock/Rename/Limit plus a
+  Manage select for Kick/Transfer/Delete.
+- Temp VC delete is behind a confirmation card.
+- Shared success/error/empty helpers added; music and `vc` confirmations use
+  the success/error helpers.
+- `vc info` converted to a compact card with a Discord relative timestamp.
+- UI primitive tests added for V2 payloads and progress bars.
+
+Still planned:
+
+- Queue card with pagination buttons (P1).
+- Admin config dashboards (P1).
+- Leaderboard formatting/pagination (P1).
+- Confirmation for `privacy delete`, `clearqueue`, `stop`, `confession delete`
+  (P1).
+- Social/family/confession/delulu polish (P2).
