@@ -4,7 +4,7 @@ A single-guild Discord bot with music, welcome/auto-role, social counters, tempo
 
 ## Features
 
-- **Music** — yt-dlp + mpv streaming: SoundCloud works out of the box; YouTube/YouTube Music playlists import into the queue; Spotify links are resolved through oEmbed metadata and searched on SoundCloud. Use `join` to reconnect to your VC, `queue [page]` to inspect, `clearqueue` to empty upcoming tracks, and `nowplaying` (aliases `current`, `currentlyplaying`, `cp`, `np`) to show the current track. Now-playing messages include buttons for pause/resume, seek back/forward 10s, skip, stop/disconnect, shuffle, loop, and a filter dropdown for off/bass boost/nightcore/vaporwave.
+- **Music** — yt-dlp + mpv streaming: SoundCloud works out of the box; YouTube/YouTube Music playlists import into the queue; Spotify links are resolved through oEmbed metadata and searched on SoundCloud. Use `join` to reconnect to your VC, `queue [page]` to inspect, `clearqueue` to empty upcoming tracks, and `nowplaying` (aliases `current`, `currentlyplaying`, `cp`, `np`) to show the current track. Now-playing messages include buttons for pause/resume, seek back/forward 10s, skip, stop/disconnect, shuffle, loop, and a filter dropdown for off/bass boost/nightcore/vaporwave. Filters apply live through mpv without restarting the track.
 - **Welcomer** — join messages, generated welcome image cards (`welcome card on/off`), optional DMs, optional goodbye messages.
 - **Auto-role** — admin-configurable roles with hierarchy and dangerous-permission checks.
 - **Ephemeral music queue** — tracks live in memory only; disconnecting or restarting the bot clears the queue. The current, next, and previous tracks are cached locally to reduce stutter and network hiccups.
