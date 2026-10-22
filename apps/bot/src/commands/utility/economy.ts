@@ -5,9 +5,11 @@ import { UserError } from "../../lib/errors.js";
 import { card, success } from "../../features/ui.js";
 
 const GLOBAL_SHOP = [
-  { key: "tambola_ticket", name: "Tambola ticket", price: 25, description: "Buy an extra ticket in the current Tambola lobby." },
-  { key: "tambola_automark", name: "Tambola auto-mark", price: 10, description: "Enable auto-marking for all of your tickets." },
-  { key: "premium_30d", name: "Premium (30 days)", price: 2000, description: "Grant 30 days of premium perks." },
+  { key: "delulu", name: "Delulu", price: 5, category: "AI", purchasable: false, description: "Per use. Generate a delulu scenario." },
+  { key: "delulu_nsfw", name: "Delulu NSFW", price: 15, category: "AI", purchasable: false, description: "Per use. NSFW-focused scenario." },
+  { key: "tambola_ticket", name: "Tambola ticket", price: 25, category: "Tambola", purchasable: true, description: "Buy an extra ticket in the current Tambola lobby." },
+  { key: "tambola_automark", name: "Tambola auto-mark", price: 10, category: "Tambola", purchasable: true, description: "Enable auto-marking for all of your tickets." },
+  { key: "premium_30d", name: "Premium (30 days)", price: 2000, category: "Premium", purchasable: true, description: "Grant 30 days of premium perks." },
 ];
 
 function formatCoins(value: number): string {
@@ -134,22 +136,35 @@ export const economyCommand: Command = {
 
 
     if (action === "shop") {
-      const lines = GLOBAL_SHOP.map((item) => `**${item.name}** (\`${item.key}\`) — ${formatCoins(item.price)}\n-# ${item.description}`);
+      const categories = [...new Set(GLOBAL_SHOP.map((item) => item.category))];
+      const lines: string[] = [];
+      for (const category of categories) {
+        lines.push(`**${category}**`);
+        for (const item of GLOBAL_SHOP.filter((entry) => entry.category === category)) {
+          lines.push(`- ${item.name} (\`${item.key}\`) — ${formatCoins(item.price)}${item.purchasable ? "" : " / use"}\n  -# ${item.description}`);
+        }
+        lines.push("");
+      }
       const dbItems = await economy.listShopItems(ctx.guild.id);
       if (dbItems.length) {
-        lines.push("", "**Server shop**");
+        lines.push("**Server shop**");
         for (const item of dbItems) {
           const stock = item.stock === null ? "unlimited" : `${item.stock} left`;
-          lines.push(`**${item.name}** (\`${item.key}\`) — ${formatCoins(item.price)} · ${stock}${item.description ? `\n-# ${item.description}` : ""}`);
+          lines.push(`- ${item.name} (\`${item.key}\`) — ${formatCoins(item.price)} · ${stock}${item.description ? `\n  -# ${item.description}` : ""}`);
         }
       }
-      await ctx.reply(card({ title: "Economy shop", body: lines.join("\n") }));
+      await ctx.reply(card({ title: "Economy shop", body: lines.join("\n").trim() }));
       return;
     }
 
     if (action === "buy") {
       const key = (ctx.args[1] ?? "").toLowerCase();
       if (!key) throw new UserError("Usage: `economy buy <item>`.");
+
+      const globalItem = GLOBAL_SHOP.find((item) => item.key === key);
+      if (globalItem && !globalItem.purchasable) {
+        throw new UserError(`${globalItem.name} costs ${formatCoins(globalItem.price)} per use. It is charged automatically when you use it.`);
+      }
 
       if (key === "tambola_ticket") {
         try {
