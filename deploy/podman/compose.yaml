@@ -56,7 +56,7 @@ services:
     mem_limit: 256m
 
   llm:
-    image: vllm/vllm-openai:latest
+    image: vllm/vllm-openai:v0.6.3
     container_name: siela-llm
     networks: [edge, control]
     volumes:
