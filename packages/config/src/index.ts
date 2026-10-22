@@ -52,6 +52,8 @@ const botSchema = z.object({
   HF_TOKEN: z.string().optional(),
   LLM_URL: z.string().url().optional(),
   VALKEY_URL: z.string().url().optional(),
+  EVENT_SCHEDULE_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  EVENT_PRAYER: z.enum(["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]).default("Dhuhr"),
 
   LOG_LEVEL: logLevel.default("info"),
   AUDIT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),

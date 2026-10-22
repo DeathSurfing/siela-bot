@@ -32,3 +32,7 @@ logs/
 .DS_Store
 .idea/
 .vscode/
+
+# Licensed scheduled-event audio (keep only the README)
+apps/bot/assets/events/*
+!apps/bot/assets/events/README.md
