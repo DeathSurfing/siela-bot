@@ -1,4 +1,5 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { createInterface } from "node:readline";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -41,6 +42,9 @@ export class TambolaVoice {
   private readonly kittenScript: string;
   private readonly kittenVoice: string;
   private synthesisChain: Promise<unknown> = Promise.resolve();
+  private kittenProcess: ChildProcess | null = null;
+  private kittenReadline: ReturnType<typeof createInterface> | null = null;
+  private kittenPending: { resolve: (value: any) => void; timer: NodeJS.Timeout } | null = null;
   private failures = 0;
   private synthesized = 0;
   disabled = false;
@@ -53,7 +57,7 @@ export class TambolaVoice {
     this.rate = options.rate ?? DEFAULT_RATE;
     this.cacheDir = options.cacheDir ?? CACHE_DIR;
     this.backend = process.env.TTS_BACKEND ?? "edge";
-    this.kittenScript = process.env.KITTEN_TTS_SCRIPT ?? "/app/assets/tts/kitten_tts.py";
+    this.kittenScript = process.env.KITTEN_TTS_SCRIPT ?? "/app/assets/tts/kitten_tts_daemon.py";
     this.kittenVoice = process.env.TTS_VOICE ?? "Bruno";
     mkdirSync(this.cacheDir, { recursive: true });
   }
@@ -144,8 +148,104 @@ export class TambolaVoice {
     } catch {
       // ignore voice teardown failures
     }
+    try { this.kittenProcess?.kill(); } catch { /* ignore */ }
+    this.kittenProcess = null;
+    this.kittenReadline?.close();
+    this.kittenReadline = null;
     this.connection = null;
     this.player = null;
+  }
+
+  private async ensureKittenProcess(): Promise<ChildProcess> {
+    if (this.kittenProcess && !this.kittenProcess.killed) return this.kittenProcess;
+    const proc = spawn(process.env.TTS_PYTHON ?? "python3", [this.kittenScript], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const rl = createInterface({ input: proc.stdout! });
+    this.kittenProcess = proc;
+    this.kittenReadline = rl;
+    rl.on("line", (line) => {
+      if (!this.kittenPending) return;
+      clearTimeout(this.kittenPending.timer);
+      const pending = this.kittenPending;
+      this.kittenPending = null;
+      try {
+        pending.resolve(JSON.parse(line));
+      } catch {
+        pending.resolve({ ok: false, error: line });
+      }
+    });
+    proc.on("exit", () => {
+      if (this.kittenPending) {
+        clearTimeout(this.kittenPending.timer);
+        this.kittenPending.resolve({ ok: false, error: "process exited" });
+        this.kittenPending = null;
+      }
+      this.kittenProcess = null;
+      this.kittenReadline?.close();
+      this.kittenReadline = null;
+    });
+    const ready = await new Promise<any>((resolve) => {
+      this.kittenPending = {
+        resolve,
+        timer: setTimeout(() => {
+          if (this.kittenPending) {
+            this.kittenPending = null;
+            resolve({ ok: false, error: "startup timeout" });
+          }
+        }, 300_000),
+      };
+    });
+    if (!ready?.ready) {
+      proc.kill();
+      this.kittenProcess = null;
+      this.kittenReadline?.close();
+      this.kittenReadline = null;
+      throw new Error(ready?.error ?? "KittenTTS failed to start");
+    }
+    return proc;
+  }
+
+  private async synthesizeKitten(text: string, file: string): Promise<string | null> {
+    if (this.disabled) return null;
+    let proc: ChildProcess;
+    try {
+      proc = await this.ensureKittenProcess();
+    } catch (error) {
+      this.failures += 1;
+      this.logger.warn({ err: error, text, failures: this.failures }, "tambola TTS synthesis failed");
+      if (this.failures >= 3) this.disabled = true;
+      return null;
+    }
+    try {
+      const result = await new Promise<any>((resolve, reject) => {
+        this.kittenPending = {
+          resolve,
+          timer: setTimeout(() => {
+            if (this.kittenPending) {
+              this.kittenPending = null;
+              reject(new Error("KittenTTS synthesis timeout"));
+            }
+          }, 120_000),
+        };
+        proc.stdin?.write(JSON.stringify({ text, output: file, voice: this.kittenVoice }) + "\n");
+      });
+      if (!result?.ok) throw new Error(result?.error ?? "KittenTTS synthesis failed");
+      if (!existsSync(file) || statSync(file).size === 0) throw new Error("kitten-tts produced an empty file");
+      this.synthesized += 1;
+      if (this.synthesized === 1) this.logger.info({ text }, "tambola TTS first clip ready");
+      if (this.synthesized % 20 === 0) this.pruneCache();
+      return file;
+    } catch (error) {
+      try { proc.kill(); } catch { /* ignore */ }
+      this.kittenProcess = null;
+      this.kittenReadline?.close();
+      this.kittenReadline = null;
+      this.failures += 1;
+      this.logger.warn({ err: error, text, failures: this.failures }, "tambola TTS synthesis failed");
+      if (this.failures >= 3) this.disabled = true;
+      return null;
+    }
   }
 
   private synthesize(text: string): Promise<string | null> {

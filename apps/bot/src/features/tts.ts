@@ -54,6 +54,7 @@ export class TtsService {
     const joined = await voice.join(channel as any);
     if (!joined) throw new UserError("Could not join that voice channel. Check Connect and Speak permissions.");
 
+    this.logger.info({ guildId, channelId: channel.id }, "TTS enabled");
     this.sessions.set(guildId, { channelId: channel.id, voice, enabled: true });
     if (this.music) {
       try { await this.music.disconnect(guildId); } catch { /* ignore */ }
@@ -75,6 +76,7 @@ export class TtsService {
     if (!session?.enabled) return;
     const clean = text.trim().slice(0, 200);
     if (!clean) return;
+    this.logger.info({ guildId, channelId: session.channelId, text: clean }, "TTS speaking");
     await session.voice.speak(clean);
   }
 
