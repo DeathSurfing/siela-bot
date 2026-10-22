@@ -12,11 +12,39 @@ const FALLBACK_SCENARIOS = [
 
 export class DeluluService {
   constructor(
+    private readonly llmUrl: string | null,
     private readonly hfToken: string | null,
     private readonly logger: Logger,
   ) {}
 
   async generate(bias: string): Promise<string> {
+    const prompt = `You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Do not include quotes around the whole response.`;
+
+    if (this.llmUrl) {
+      try {
+        const response = await fetch(`${this.llmUrl}/v1/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "default",
+            messages: [{ role: "user", content: prompt }],
+            max_tokens: 140,
+            temperature: 0.95,
+          }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (response.ok) {
+          const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+          const content = json.choices?.[0]?.message?.content?.trim();
+          if (content) return content;
+        } else {
+          this.logger.warn({ status: response.status }, "local LLM request failed");
+        }
+      } catch (error) {
+        this.logger.warn({ err: error }, "local LLM generation failed");
+      }
+    }
+
     if (this.hfToken) {
       try {
         const response = await fetch("https://router.huggingface.co/v1/chat/completions", {

@@ -126,7 +126,7 @@ export class SielaBot {
       autoRole: new AutoRoleService(settings, this.logger),
       bias: new BiasService(this.dbHandle.db),
       family: new FamilyService(this.dbHandle.db, this.logger),
-      delulu: new DeluluService(this.config.HF_TOKEN ?? null, this.logger),
+      delulu: new DeluluService(this.config.LLM_URL ?? null, this.config.HF_TOKEN ?? null, this.logger),
       birthday: new BirthdayService(this.dbHandle.db, settings, this.client, this.logger),
       confession,
       friendship,
