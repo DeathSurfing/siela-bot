@@ -538,6 +538,13 @@ export class TambolaService {
         void this.cancel(session, "The game channel was deleted.");
         return;
       }
+      if (session.voiceChannelId === channelId) {
+        session.voiceChannelId = null;
+        session.voice?.leave();
+        session.voice = null;
+        session.voiceNote = "Text only";
+        void this.updateCard(session);
+      }
     }
   }
 
