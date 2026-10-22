@@ -1,21 +1,22 @@
-import Redis from "ioredis";
+import { RedisClient } from "bun";
 import type { Logger } from "../lib/logger.js";
 
 export class ValkeyService {
-  private connection: Redis | null;
+  private connection: RedisClient | null;
 
   constructor(url: string | null, private readonly logger: Logger) {
     this.connection = url
-      ? new Redis(url, {
-          lazyConnect: true,
-          maxRetriesPerRequest: 2,
-          enableOfflineQueue: false,
-          retryStrategy: (times) => (times > 5 ? null : Math.min(times * 250, 2_000)),
+      ? new RedisClient(url, {
+          connectionTimeout: 5000,
+          autoReconnect: true,
+          maxRetries: 10,
+          enableOfflineQueue: true,
+          enableAutoPipelining: true,
         })
       : null;
   }
 
-  get client(): Redis | null {
+  get client(): RedisClient | null {
     return this.connection;
   }
 
@@ -27,14 +28,14 @@ export class ValkeyService {
       this.logger.info("valkey connected");
     } catch (error) {
       this.logger.warn({ err: error }, "valkey unavailable; friendship writes will use the database");
-      this.connection.disconnect();
+      this.connection.close();
       this.connection = null;
     }
   }
 
   async stop(): Promise<void> {
     if (!this.connection) return;
-    await this.connection.quit().catch(() => undefined);
+    this.connection.close();
     this.connection = null;
   }
 }

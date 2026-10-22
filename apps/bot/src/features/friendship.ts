@@ -106,14 +106,14 @@ export class FriendshipService {
     const client = this.valkey.client;
     if (client) {
       try {
-        const pipeline = client.pipeline();
+        const ops: Promise<unknown>[] = [];
         for (const delta of deltas) {
           const key = this.pairKey(delta.guildId, delta.userA, delta.userB);
-          if (delta.xp > 0) pipeline.hincrby(XP_KEY, key, delta.xp);
-          if (delta.seconds > 0) pipeline.hincrby(TIME_KEY, key, delta.seconds);
-          pipeline.sadd(PENDING_KEY, key);
+          if (delta.xp > 0) ops.push(client.hincrby(XP_KEY, key, delta.xp));
+          if (delta.seconds > 0) ops.push(client.hincrby(TIME_KEY, key, delta.seconds));
+          ops.push(client.sadd(PENDING_KEY, key));
         }
-        await pipeline.exec();
+        await Promise.all(ops);
         return;
       } catch (error) {
         this.logger.warn({ err: error }, "valkey friendship write failed; using memory fallback");
@@ -186,7 +186,7 @@ export class FriendshipService {
     const client = this.valkey.client;
     if (client) {
       try {
-        const raw = (await client.eval(DRAIN_SCRIPT, 3, PENDING_KEY, XP_KEY, TIME_KEY)) as unknown;
+        const raw = (await client.send("EVAL", [DRAIN_SCRIPT, "3", PENDING_KEY, XP_KEY, TIME_KEY])) as unknown;
         const values = Array.isArray(raw) ? raw.map(String) : [];
         for (let index = 0; index + 2 < values.length; index += 3) {
           const key = values[index]!;
@@ -199,13 +199,11 @@ export class FriendshipService {
             await this.writeDelta(delta);
           } catch (error) {
             this.logger.warn({ err: error, key }, "friendship DB flush failed; restoring to valkey");
-            await client
-              .pipeline()
-              .hincrby(XP_KEY, key, xp)
-              .hincrby(TIME_KEY, key, seconds)
-              .sadd(PENDING_KEY, key)
-              .exec()
-              .catch(() => undefined);
+            await Promise.all([
+              client.hincrby(XP_KEY, key, xp).catch(() => undefined),
+              client.hincrby(TIME_KEY, key, seconds).catch(() => undefined),
+              client.sadd(PENDING_KEY, key).catch(() => undefined),
+            ]);
           }
         }
       } catch (error) {

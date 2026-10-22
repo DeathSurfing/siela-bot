@@ -13,6 +13,7 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   splitting: false,
+  external: ["bun"],
   dts: false,
   outDir: "dist",
 });
