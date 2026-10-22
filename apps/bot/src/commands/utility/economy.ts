@@ -4,6 +4,12 @@ import { isAdmin } from "../../framework/permissions.js";
 import { UserError } from "../../lib/errors.js";
 import { card, success } from "../../features/ui.js";
 
+const GLOBAL_SHOP = [
+  { key: "tambola_ticket", name: "Tambola ticket", price: 25, description: "Buy an extra ticket in the current Tambola lobby." },
+  { key: "tambola_automark", name: "Tambola auto-mark", price: 10, description: "Enable auto-marking for all of your tickets." },
+  { key: "premium_30d", name: "Premium (30 days)", price: 2000, description: "Grant 30 days of premium perks." },
+];
+
 function formatCoins(value: number): string {
   return `${value.toLocaleString()} SC`;
 }
@@ -128,22 +134,59 @@ export const economyCommand: Command = {
 
 
     if (action === "shop") {
-      const items = await economy.listShopItems(ctx.guild.id);
-      if (!items.length) {
-        await ctx.reply({ content: "The shop is empty.", ephemeral: true });
-        return;
+      const lines = GLOBAL_SHOP.map((item) => `**${item.name}** (\`${item.key}\`) — ${formatCoins(item.price)}\n-# ${item.description}`);
+      const dbItems = await economy.listShopItems(ctx.guild.id);
+      if (dbItems.length) {
+        lines.push("", "**Server shop**");
+        for (const item of dbItems) {
+          const stock = item.stock === null ? "unlimited" : `${item.stock} left`;
+          lines.push(`**${item.name}** (\`${item.key}\`) — ${formatCoins(item.price)} · ${stock}${item.description ? `\n-# ${item.description}` : ""}`);
+        }
       }
-      const body = items.map((item) => {
-        const stock = item.stock === null ? "unlimited" : `${item.stock} left`;
-        return `**${item.name}** (\`${item.key}\`) — ${formatCoins(item.price)} · ${stock}${item.roleId ? " · role" : ""}${item.description ? `\n-# ${item.description}` : ""}`;
-      }).join("\n");
-      await ctx.reply(card({ title: "Economy shop", body }));
+      await ctx.reply(card({ title: "Economy shop", body: lines.join("\n") }));
       return;
     }
 
     if (action === "buy") {
-      const key = ctx.args[1];
+      const key = (ctx.args[1] ?? "").toLowerCase();
       if (!key) throw new UserError("Usage: `economy buy <item>`.");
+
+      if (key === "tambola_ticket") {
+        try {
+          const count = await ctx.services.tambola.buyTicket(ctx.guild.id, ctx.author.id);
+          await ctx.reply(success(`Bought a Tambola ticket. You now have ${count}.`));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Purchase failed.";
+          if (message === "INSUFFICIENT_FUNDS") throw new UserError("You need 25 SC to buy a ticket.");
+          throw new UserError(message);
+        }
+        return;
+      }
+      if (key === "tambola_automark") {
+        try {
+          await ctx.services.tambola.buyAutoMark(ctx.guild.id, ctx.author.id);
+          await ctx.reply(success("Bought auto-marking for all of your tickets."));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Purchase failed.";
+          if (message === "INSUFFICIENT_FUNDS") throw new UserError("You need 10 SC to buy auto-marking.");
+          throw new UserError(message);
+        }
+        return;
+      }
+      if (key === "premium_30d") {
+        try {
+          await economy.spend(ctx.guild.id, ctx.author.id, 2000, "premium_purchase", `${ctx.guild.id}:${ctx.author.id}:premium:${Date.now()}`);
+          const expiresAt = await economy.grantPremium(ctx.guild.id, ctx.author.id, 30, ctx.author.id);
+          await ctx.services.audit.log({ guildId: ctx.guild.id, actorId: ctx.author.id, source: "discord", action: "economy.premium.purchase", targetType: "user", targetId: ctx.author.id, after: { days: 30 } });
+          await ctx.reply(success(`Premium granted until ${expiresAt.toISOString().slice(0, 10)}.`));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Purchase failed.";
+          if (message === "INSUFFICIENT_FUNDS") throw new UserError("You need 2000 SC for premium.");
+          throw new UserError(message);
+        }
+        return;
+      }
+
       try {
         const result = await economy.buyItem(ctx.guild.id, ctx.author.id, key);
         if (result.item.roleId) {
