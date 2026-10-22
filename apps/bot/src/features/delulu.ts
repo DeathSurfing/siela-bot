@@ -77,7 +77,7 @@ Keys:
 Example for Jin:
 {"scene":"You are sorting socks at a laundromat.","notice":"Jin bursts out of the dryer wearing a chef's hat and declares you his muse.","escalation":"The washing machines begin to spin in perfect harmony as the customers form a conga line.","line":"I have been searching every laundromat in Seoul for someone with your sock energy."}
 
-Now write new JSON for ${bias}. Use a different place, reaction, and escalation. Make it exaggerated, absurd, and funny. Keep it NSFW-focused, consensual adult fanfiction; do not include minors, coercion, or explicit sexual acts. Use simple English.`
+Now write new JSON for ${bias}. Use a different place, reaction, and escalation. Make it exaggerated, absurd, and funny. Each value must be one short sentence. Keep it NSFW-focused, consensual adult fanfiction; do not include minors, coercion, or explicit sexual acts. Use simple English.`
       : `Return JSON for a ridiculous delulu story about BTS member ${bias} noticing the user.
 
 Keys:
@@ -89,7 +89,7 @@ Keys:
 Example for Jin:
 {"scene":"You are sorting socks at a laundromat.","notice":"Jin bursts out of the dryer wearing a chef's hat and declares you his muse.","escalation":"The washing machines begin to spin in perfect harmony as the customers form a conga line.","line":"I have been searching every laundromat in Seoul for someone with your sock energy."}
 
-Now write new JSON for ${bias}. Use a different place, reaction, and escalation. Make it exaggerated, absurd, and funny. Do not copy the example. Use simple English.`;
+Now write new JSON for ${bias}. Use a different place, reaction, and escalation. Make it exaggerated, absurd, and funny. Each value must be one short sentence. Do not copy the example. Use simple English.`;
 
     if (this.llmUrl) {
       try {
@@ -107,7 +107,7 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
               },
               { role: "user", content: prompt },
             ],
-            max_tokens: 700,
+            max_tokens: 256,
             temperature: 0.85,
             top_p: 0.9,
             response_format: {
@@ -129,7 +129,7 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
               },
             },
           }),
-          signal: AbortSignal.timeout(120_000),
+          signal: AbortSignal.timeout(20_000),
         });
         if (response.ok) {
           const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };

@@ -47,14 +47,22 @@ export const deluluCommand: Command = {
       }
       throw new UserError(message);
     }
+    const paymentId = `delulu:${ctx.guild.id}:${ctx.author.id}:${Date.now()}`;
     await ctx.defer();
-    const scenario = await ctx.services.delulu.generate(row.bias, nsfw);
-    await ctx.edit(
-      card({
-        title: `${row.bias} notices you`,
-        subtitle: nsfw ? "NSFW delulu scenario" : "Delulu scenario",
-        body: scenario,
-      }),
-    );
+    try {
+      const scenario = await ctx.services.delulu.generate(row.bias, nsfw);
+      await ctx.edit(
+        card({
+          title: `${row.bias} notices you`,
+          subtitle: nsfw ? "NSFW delulu scenario" : "Delulu scenario",
+          body: scenario,
+        }),
+      );
+    } catch (error) {
+      await ctx.services.economy
+        .award(ctx.guild.id, ctx.author.id, cost, "delulu_refund", `${paymentId}:refund`)
+        .catch(() => undefined);
+      throw new UserError("Delulu generation failed. Your coins have been refunded.");
+    }
   },
 };
