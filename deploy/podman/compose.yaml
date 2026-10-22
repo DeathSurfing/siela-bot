@@ -56,7 +56,7 @@ services:
     mem_limit: 256m
 
   llm:
-    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    image: vllm/vllm-openai:latest
     container_name: siela-llm
     networks: [edge, control]
     volumes:
@@ -64,23 +64,20 @@ services:
       - /opt/nvidia-libs:/opt/nvidia-libs:ro
     environment:
       LD_LIBRARY_PATH: /opt/nvidia-libs
-      CUDA_FORCE_PTX_JIT: "1"
     devices:
       - /dev/nvidia0:/dev/nvidia0
       - /dev/nvidiactl:/dev/nvidiactl
       - /dev/nvidia-uvm:/dev/nvidia-uvm
     command:
-      - "--hf-repo"
-      - "Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3-gguf"
-      - "--hf-file"
-      - "josiefied-qwen2.5-1.5b-instruct-abliterated-v3.Q4_K_M.gguf"
+      - "--model"
+      - "Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3"
       - "--host"
       - "0.0.0.0"
       - "--port"
-      - "8080"
-      - "--n-gpu-layers"
-      - "99"
-      - "-c"
+      - "8000"
+      - "--gpu-memory-utilization"
+      - "0.4"
+      - "--max-model-len"
       - "2048"
     restart: unless-stopped
     mem_limit: 2g
@@ -115,7 +112,7 @@ services:
       - llm
       - valkey
     environment:
-      LLM_URL: ${LLM_URL:-http://llm:8080}
+      LLM_URL: ${LLM_URL:-http://llm:8000}
       VALKEY_URL: ${VALKEY_URL:-redis://valkey:6379}
     restart: unless-stopped
     init: true
