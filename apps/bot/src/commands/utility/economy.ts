@@ -21,6 +21,7 @@ export const economyCommand: Command = {
     .setDescription("Siela economy")
     .addSubcommand((sub) => sub.setName("balance").setDescription("Show your balance").addUserOption((o) => o.setName("user").setDescription("Member").setRequired(false)))
     .addSubcommand((sub) => sub.setName("daily").setDescription("Claim your daily reward"))
+    .addSubcommand((sub) => sub.setName("work").setDescription("Work a shift for coins"))
     .addSubcommand((sub) => sub.setName("transfer").setDescription("Transfer coins").addUserOption((o) => o.setName("user").setDescription("Member").setRequired(true)).addIntegerOption((o) => o.setName("amount").setDescription("Amount").setRequired(true).setMinValue(1)))
     .addSubcommand((sub) => sub.setName("top").setDescription("Show the richest members"))
     .addSubcommand((sub) => sub.setName("premium").setDescription("Show premium status"))
