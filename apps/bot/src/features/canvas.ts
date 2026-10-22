@@ -2,27 +2,50 @@ import { existsSync } from "node:fs";
 import { GlobalFonts } from "@napi-rs/canvas";
 
 const FONT_CANDIDATES = [
-  "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
-  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-  "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
-  "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+  {
+    regular: "/usr/share/fonts/noto/NotoSansCJK-Regular.ttc",
+    bold: "/usr/share/fonts/noto/NotoSansCJK-Bold.ttc",
+  },
+  {
+    regular: "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    bold: "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+  },
+  {
+    regular: "/System/Library/Fonts/Supplemental/Arial.ttf",
+    bold: "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+  },
 ];
 
-let fontFamily = "sans-serif";
+let regularFamily = "sans-serif";
+let boldFamily = "sans-serif";
 let registered = false;
 
-export function canvasFont(): string {
-  if (registered) return fontFamily;
+function registerFonts(): void {
+  if (registered) return;
   registered = true;
-  for (const path of FONT_CANDIDATES) {
-    if (!existsSync(path)) continue;
+  for (const candidate of FONT_CANDIDATES) {
+    if (!existsSync(candidate.regular)) continue;
     try {
-      GlobalFonts.registerFromPath(path, "Siela");
-      fontFamily = "Siela";
-      return fontFamily;
+      GlobalFonts.registerFromPath(candidate.regular, "Siela");
+      regularFamily = "Siela";
+      if (existsSync(candidate.bold)) {
+        GlobalFonts.registerFromPath(candidate.bold, "SielaBold");
+        boldFamily = "SielaBold";
+      } else {
+        boldFamily = "Siela";
+      }
+      return;
     } catch {
-      // keep trying
+      // try the next family
     }
   }
-  return fontFamily;
+}
+
+export function canvasFonts(): { regular: string; bold: string } {
+  registerFonts();
+  return { regular: regularFamily, bold: boldFamily };
+}
+
+export function canvasFont(): string {
+  return canvasFonts().regular;
 }

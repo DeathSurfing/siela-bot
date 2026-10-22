@@ -1,36 +1,30 @@
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import type { FamilyTree } from "./family.js";
-import { canvasFont } from "./canvas.js";
+import { canvasFonts } from "./canvas.js";
 
-const NODE_WIDTH = 180;
-const NODE_HEIGHT = 64;
-const COUPLE_GAP = 28;
-const ROW_HEIGHT = 120;
-const CHILD_GAP = 52;
-const ROOT_GAP = 72;
-const MARGIN = 44;
-const HEADER_HEIGHT = 92;
-const FOOTER_HEIGHT = 36;
-const MAX_DIMENSION = 2600;
+const NODE_WIDTH = 200;
+const NODE_HEIGHT = 68;
+const COUPLE_GAP = 34;
+const ROW_HEIGHT = 150;
+const CHILD_GAP = 64;
+const ROOT_GAP = 88;
+const MARGIN = 56;
+const MIN_WIDTH = 360;
+const MIN_HEIGHT = 180;
+const MAX_DIMENSION = 4096;
 
-const PALETTE = ["#8b5cf6", "#06b6d4", "#f472b6", "#22c55e", "#f59e0b", "#38bdf8"];
-
-function truncate(value: string, max: number): string {
-  const text = value.trim();
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-}
+const INK = "#18181b";
+const MUTED = "#71717a";
+const BORDER = "#e4e4e7";
+const LINE = "rgba(161, 161, 170, 0.82)";
+const ACCENT = "#8b5cf6";
+const HEART = "#ec4899";
 
 function initials(value: string): string {
   const parts = value.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return "?";
   if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
   return `${parts[0]![0] ?? ""}${parts[parts.length - 1]![0] ?? ""}`.toUpperCase();
-}
-
-function colorFor(id: string): string {
-  let hash = 0;
-  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return PALETTE[hash % PALETTE.length]!;
 }
 
 function roundedRect(ctx: SKRSContext2D, x: number, y: number, width: number, height: number, radius: number): void {
@@ -46,6 +40,28 @@ function roundedRect(ctx: SKRSContext2D, x: number, y: number, width: number, he
   ctx.lineTo(x, y + r);
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
+}
+
+function fitText(
+  ctx: SKRSContext2D,
+  text: string,
+  maxWidth: number,
+  baseSize: number,
+  minSize: number,
+  family: string,
+): { text: string; size: number } {
+  let size = baseSize;
+  while (size > minSize) {
+    ctx.font = `${size}px ${family}`;
+    if (ctx.measureText(text).width <= maxWidth) return { text, size };
+    size -= 1;
+  }
+  ctx.font = `${size}px ${family}`;
+  let value = text;
+  while (value.length > 1 && ctx.measureText(`${value}…`).width > maxWidth) {
+    value = value.slice(0, -1);
+  }
+  return { text: `${value}…`, size };
 }
 
 interface Group {
@@ -66,7 +82,7 @@ export async function generateFamilyTreeCard(
   names: Map<string, string>,
   rootUserId: string,
 ): Promise<Buffer> {
-  const fontFamily = canvasFont();
+  const { regular: regularFamily, bold: boldFamily } = canvasFonts();
   const nodeIds = tree.nodes;
   const nodeSet = new Set(nodeIds);
   const parentOf = new Map<string, string>();
@@ -133,7 +149,9 @@ export async function generateFamilyTreeCard(
 
   const indegree = new Map<string, number>();
   for (const [id, group] of groups) indegree.set(id, group.parents.size);
-  const queue = [...groups.keys()].filter((id) => (indegree.get(id) ?? 0) === 0).sort((a, b) => groupLabel(a).localeCompare(groupLabel(b)));
+  const queue = [...groups.keys()]
+    .filter((id) => (indegree.get(id) ?? 0) === 0)
+    .sort((a, b) => groupLabel(a).localeCompare(groupLabel(b)));
   const processed = new Set<string>();
   while (queue.length) {
     const id = queue.shift()!;
@@ -166,7 +184,8 @@ export async function generateFamilyTreeCard(
       .sort((a, b) => groupLabel(a).localeCompare(groupLabel(b)));
     const childLayouts = children.map((id) => layoutGroup(id));
     const unitWidth = group.members.length > 1 ? NODE_WIDTH * 2 + COUPLE_GAP : NODE_WIDTH;
-    const childTotal = childLayouts.reduce((sum, child) => sum + child.width, 0) + Math.max(0, childLayouts.length - 1) * CHILD_GAP;
+    const childTotal =
+      childLayouts.reduce((sum, child) => sum + child.width, 0) + Math.max(0, childLayouts.length - 1) * CHILD_GAP;
     const width = Math.max(unitWidth, childTotal);
     const merged = new Map<string, { x: number; y: number }>();
     let offset = (width - childTotal) / 2;
@@ -191,7 +210,7 @@ export async function generateFamilyTreeCard(
   let rootOffset = 0;
   for (const layout of layouts) {
     for (const [id, position] of layout.positions) {
-      positions.set(id, { x: position.x + rootOffset, y: position.y });
+      positions.set(id, { x: position.x + rootOffset + MARGIN, y: position.y });
     }
     rootOffset += layout.width + ROOT_GAP;
   }
@@ -214,100 +233,37 @@ export async function generateFamilyTreeCard(
     maxX = Math.max(maxX, position.x + NODE_WIDTH);
     maxY = Math.max(maxY, position.y + NODE_HEIGHT);
   }
-  const logicalWidth = Math.max(760, maxX + MARGIN * 2);
-  const logicalHeight = Math.max(300, maxY + MARGIN * 2 + HEADER_HEIGHT + FOOTER_HEIGHT);
+  const logicalWidth = Math.max(MIN_WIDTH, maxX + MARGIN);
+  const logicalHeight = Math.max(MIN_HEIGHT, maxY + MARGIN * 2);
   const scale = Math.min(1, MAX_DIMENSION / logicalWidth, MAX_DIMENSION / logicalHeight);
   const canvas = createCanvas(Math.ceil(logicalWidth * scale), Math.ceil(logicalHeight * scale));
   const ctx = canvas.getContext("2d");
   ctx.scale(scale, scale);
 
-  const background = ctx.createLinearGradient(0, 0, logicalWidth, logicalHeight);
-  background.addColorStop(0, "#0f172a");
-  background.addColorStop(1, "#1e1b4b");
-  ctx.fillStyle = background;
-  ctx.fillRect(0, 0, logicalWidth, logicalHeight);
-
-  ctx.globalAlpha = 0.08;
-  ctx.fillStyle = "#c4b5fd";
-  ctx.beginPath();
-  ctx.arc(logicalWidth - 80, 40, 190, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-
-  ctx.fillStyle = "#f8fafc";
-  ctx.font = `bold 32px ${fontFamily}`;
-  ctx.fillText("Family tree", MARGIN, 52);
-  ctx.fillStyle = "#a5b4fc";
-  ctx.font = `16px ${fontFamily}`;
-  ctx.fillText(`${tree.nodes.length} members${tree.truncated ? " · truncated" : ""}`, MARGIN, 78);
-
+  const drawY = (value: number): number => value + MARGIN;
   const groupCenter = (groupId: string): { x: number; y: number } => {
     const group = groups.get(groupId);
     const position = group ? positions.get(group.id) : undefined;
     if (!group || !position) return { x: 0, y: 0 };
     const unitWidth = group.members.length > 1 ? NODE_WIDTH * 2 + COUPLE_GAP : NODE_WIDTH;
-    return { x: position.x + unitWidth / 2, y: position.y + HEADER_HEIGHT + MARGIN };
+    return { x: position.x + unitWidth / 2, y: drawY(position.y) + NODE_HEIGHT };
   };
 
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = "rgba(196, 181, 253, 0.32)";
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.25;
   for (const group of groups.values()) {
     const parent = groupCenter(group.id);
     for (const childId of group.children) {
       const child = groupCenter(childId);
       if (!parent.x || !child.x) continue;
-      const startY = parent.y + NODE_HEIGHT;
-      const endY = child.y;
+      const startY = parent.y;
+      const endY = child.y - NODE_HEIGHT;
       const midY = startY + (endY - startY) / 2;
       ctx.beginPath();
       ctx.moveTo(parent.x, startY);
-      ctx.lineTo(parent.x, midY);
-      ctx.lineTo(child.x, midY);
-      ctx.lineTo(child.x, endY);
+      ctx.bezierCurveTo(parent.x, midY, child.x, midY, child.x, endY);
       ctx.stroke();
     }
-  }
-
-  for (const [id, position] of nodePositions) {
-    const displayName = names.get(id) ?? id;
-    const accent = colorFor(id);
-    const isRoot = id === rootUserId;
-    const x = position.x;
-    const y = position.y + HEADER_HEIGHT + MARGIN;
-
-    ctx.save();
-    ctx.shadowColor = "rgba(0, 0, 0, 0.35)";
-    ctx.shadowBlur = 14;
-    ctx.shadowOffsetY = 5;
-    roundedRect(ctx, x, y, NODE_WIDTH, NODE_HEIGHT, 14);
-    ctx.fillStyle = "#111827";
-    ctx.fill();
-    ctx.restore();
-
-    roundedRect(ctx, x, y, NODE_WIDTH, NODE_HEIGHT, 14);
-    ctx.lineWidth = isRoot ? 3 : 1.5;
-    ctx.strokeStyle = isRoot ? "#c4b5fd" : "rgba(139, 92, 246, 0.65)";
-    ctx.stroke();
-
-    ctx.fillStyle = accent;
-    ctx.beginPath();
-    ctx.arc(x + 30, y + NODE_HEIGHT / 2, 18, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = "#ffffff";
-    ctx.font = `bold 13px ${fontFamily}`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(initials(displayName), x + 30, y + NODE_HEIGHT / 2 + 1);
-    ctx.textAlign = "left";
-    ctx.textBaseline = "alphabetic";
-
-    ctx.fillStyle = "#f8fafc";
-    ctx.font = `bold 17px ${fontFamily}`;
-    ctx.fillText(truncate(displayName, 18), x + 58, y + 30);
-    ctx.fillStyle = "#94a3b8";
-    ctx.font = `12px ${fontFamily}`;
-    ctx.fillText(isRoot ? "you" : "member", x + 58, y + 48);
   }
 
   for (const group of groups.values()) {
@@ -315,15 +271,15 @@ export async function generateFamilyTreeCard(
     const first = nodePositions.get(group.members[0]!);
     const second = nodePositions.get(group.members[1]!);
     if (!first || !second) continue;
-    const y = first.y + HEADER_HEIGHT + MARGIN + NODE_HEIGHT / 2;
-    ctx.strokeStyle = "#f472b6";
-    ctx.lineWidth = 3;
+    const y = drawY(first.y) + NODE_HEIGHT / 2;
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 1.25;
     ctx.beginPath();
     ctx.moveTo(first.x + NODE_WIDTH, y);
     ctx.lineTo(second.x, y);
     ctx.stroke();
-    ctx.fillStyle = "#f472b6";
-    ctx.font = `bold 20px ${fontFamily}`;
+    ctx.fillStyle = HEART;
+    ctx.font = `14px ${boldFamily}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText("♥", (first.x + NODE_WIDTH + second.x) / 2, y);
@@ -331,10 +287,42 @@ export async function generateFamilyTreeCard(
     ctx.textBaseline = "alphabetic";
   }
 
-  if (tree.truncated) {
-    ctx.fillStyle = "#94a3b8";
-    ctx.font = `14px ${fontFamily}`;
-    ctx.fillText("Family continues…", MARGIN, logicalHeight - 26);
+  for (const [id, position] of nodePositions) {
+    const displayName = names.get(id) ?? id;
+    const isRoot = id === rootUserId;
+    const x = position.x;
+    const y = drawY(position.y);
+
+    roundedRect(ctx, x, y, NODE_WIDTH, NODE_HEIGHT, 12);
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+    ctx.lineWidth = isRoot ? 2 : 1;
+    ctx.strokeStyle = isRoot ? ACCENT : BORDER;
+    ctx.stroke();
+
+    ctx.fillStyle = isRoot ? ACCENT : INK;
+    ctx.beginPath();
+    ctx.arc(x + 28, y + NODE_HEIGHT / 2, 17, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `600 11px ${boldFamily}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(initials(displayName), x + 28, y + NODE_HEIGHT / 2 + 1);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+
+    const label = fitText(ctx, displayName, NODE_WIDTH - 62, 17, 11, boldFamily);
+    ctx.fillStyle = INK;
+    ctx.font = `${label.size}px ${boldFamily}`;
+    if (isRoot) {
+      ctx.fillText(label.text, x + 54, y + 30);
+      ctx.fillStyle = MUTED;
+      ctx.font = `9px ${regularFamily}`;
+      ctx.fillText("YOU", x + 54, y + 49);
+    } else {
+      ctx.fillText(label.text, x + 54, y + 40);
+    }
   }
 
   return Buffer.from(canvas.toBuffer("image/png"));
