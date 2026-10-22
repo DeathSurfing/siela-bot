@@ -1,7 +1,8 @@
 import { EventEmitter } from "node:events";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { createReadStream, rmSync, type ReadStream } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { createReadStream, mkdirSync, readdirSync, rmSync, statSync, utimesSync, type ReadStream } from "node:fs";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import {
   AudioPlayerStatus,
@@ -77,6 +78,7 @@ export function isPlaylistUrl(query: string): boolean {
 
 class GuildPlayer {
   readonly queue: QueueTrack[] = [];
+  readonly history: QueueTrack[] = [];
   current: QueueTrack | null = null;
   loop: MusicLoopMode = "off";
   autoplay = false;
@@ -228,7 +230,9 @@ class GuildPlayer {
 
   private async startMpv(track: QueueTrack, startAtMs = 0): Promise<AudioResource> {
     const filter = this.audioFilter();
-    const directUrl = await this.directAudioUrl(track);
+    const cached = this.service.cachedFile(track);
+    const source = cached ?? (await this.directAudioUrl(track));
+    if (!cached) void this.service.ensureCached(track);
     const fifoPath = `/tmp/siela-${this.guildId}-${randomUUID()}.pcm`;
     await execFileAsync("mkfifo", [fifoPath], { timeout: 5_000 });
     this.fifoPath = fifoPath;
@@ -251,7 +255,7 @@ class GuildPlayer {
         ...(startAtMs > 0 ? [`--start=${(startAtMs / 1000).toFixed(3)}`] : []),
         ...(filter ? [`--af=${filter}`] : []),
         "--",
-        directUrl,
+        source,
       ],
       { cwd: "/tmp", env: { ...process.env, XDG_CACHE_HOME: "/tmp" }, stdio: ["ignore", "ignore", "pipe"] },
     );
@@ -293,24 +297,32 @@ class GuildPlayer {
 
   private startFfmpeg(track: QueueTrack, startAtMs = 0): AudioResource {
     const filter = this.audioFilter();
-    const ytdlp = spawn(
-      this.service.ytdlpPath,
-      [
-        "--js-runtimes",
-        "node",
-        "--no-part",
-        "--no-cache-dir",
-        "-f",
-        "bestaudio/best",
-        "-o",
-        "-",
-        "--no-playlist",
-        "--no-warnings",
-        "--quiet",
-        track.url,
-      ],
-      { cwd: "/tmp", stdio: ["ignore", "pipe", "pipe"] },
-    );
+    const cached = this.service.cachedFile(track);
+    if (!cached) void this.service.ensureCached(track);
+
+    let ytdlp: ChildProcess | null = null;
+    if (!cached) {
+      ytdlp = spawn(
+        this.service.ytdlpPath,
+        [
+          "--js-runtimes",
+          "node",
+          "--no-part",
+          "--no-cache-dir",
+          "-f",
+          "bestaudio/best",
+          "-o",
+          "-",
+          "--no-playlist",
+          "--no-warnings",
+          "--quiet",
+          track.url,
+        ],
+        { cwd: "/tmp", stdio: ["ignore", "pipe", "pipe"] },
+      );
+      this.ytdlpProcess = ytdlp;
+    }
+
     const ffmpeg = spawn(
       this.service.ffmpegPath,
       [
@@ -318,7 +330,7 @@ class GuildPlayer {
         "-loglevel",
         "error",
         "-i",
-        "pipe:0",
+        cached ?? "pipe:0",
         ...(startAtMs > 0 ? ["-ss", (startAtMs / 1000).toFixed(3)] : []),
         ...(filter ? ["-af", filter] : []),
         "-f",
@@ -329,18 +341,23 @@ class GuildPlayer {
         "2",
         "pipe:1",
       ],
-      { cwd: "/tmp", stdio: ["pipe", "pipe", "pipe"] },
+      { cwd: "/tmp", stdio: [cached ? "ignore" : "pipe", "pipe", "pipe"] },
     );
-    this.ytdlpProcess = ytdlp;
     this.ffmpegProcess = ffmpeg;
 
-    ytdlp.stdout?.on("error", (error) => {
-      this.service.logger.debug({ err: error, guildId: this.guildId }, "yt-dlp stdout closed");
-    });
-    ytdlp.stderr?.on("data", (chunk: Buffer) => {
-      const text = chunk.toString().trim();
-      if (text) this.service.logger.debug({ guildId: this.guildId, ytdlp: text.slice(0, 200) }, "yt-dlp");
-    });
+    if (ytdlp) {
+      ytdlp.stdout?.on("error", (error) => {
+        this.service.logger.debug({ err: error, guildId: this.guildId }, "yt-dlp stdout closed");
+      });
+      ytdlp.stderr?.on("data", (chunk: Buffer) => {
+        const text = chunk.toString().trim();
+        if (text) this.service.logger.debug({ guildId: this.guildId, ytdlp: text.slice(0, 200) }, "yt-dlp");
+      });
+      ytdlp.on("error", (error) => {
+        this.service.logger.warn({ err: error, guildId: this.guildId }, "yt-dlp spawn failed");
+      });
+      ytdlp.stdout?.pipe(ffmpeg.stdin!);
+    }
     ffmpeg.stdin?.on("error", (error) => {
       this.service.logger.debug({ err: error, guildId: this.guildId }, "ffmpeg stdin closed");
     });
@@ -351,13 +368,9 @@ class GuildPlayer {
       const text = chunk.toString().trim();
       if (text) this.service.logger.debug({ guildId: this.guildId, ffmpeg: text.slice(0, 200) }, "ffmpeg");
     });
-    ytdlp.on("error", (error) => {
-      this.service.logger.warn({ err: error, guildId: this.guildId }, "yt-dlp spawn failed");
-    });
     ffmpeg.on("error", (error) => {
       this.service.logger.warn({ err: error, guildId: this.guildId }, "ffmpeg spawn failed");
     });
-    ytdlp.stdout?.pipe(ffmpeg.stdin!);
     return createAudioResource(ffmpeg.stdout!, {
       inputType: StreamType.Raw,
       inlineVolume: true,
@@ -368,6 +381,10 @@ class GuildPlayer {
     this.beginRestart();
     try {
       this.killProcesses();
+      if (this.current && this.current.url !== track.url) {
+        this.history.push(this.current);
+        if (this.history.length > 10) this.history.shift();
+      }
       this.current = track;
       this.pausedAt = null;
       this.paused = false;
@@ -381,6 +398,7 @@ class GuildPlayer {
       this.startedAt = Date.now() - Math.max(0, startAtMs);
       this.player.play(resource);
       this.service.emit("trackStart", { guildId: this.guildId, track: toInfo(track) });
+      this.service.prefetchAround(this);
     } catch (error) {
       this.endRestart();
       throw error;
@@ -456,6 +474,9 @@ class GuildPlayer {
 export class MusicService extends EventEmitter {
   readonly logger: Logger;
   private readonly players = new Map<string, GuildPlayer>();
+  private readonly cacheDir = "/tmp/siela-music-cache";
+  private readonly cacheMaxBytes = 250 * 1024 * 1024;
+  private readonly cacheInFlight = new Map<string, Promise<string | null>>();
   private binariesCheckedAt = 0;
   private binariesOk = false;
 
@@ -467,6 +488,113 @@ export class MusicService extends EventEmitter {
     super();
     this.logger = logger;
     this.on("error", () => undefined);
+    mkdirSync(this.cacheDir, { recursive: true });
+  }
+
+  private cacheKey(track: QueueTrack): string {
+    return createHash("sha1").update(track.url).digest("hex");
+  }
+
+  cachedFile(track: QueueTrack): string | null {
+    if (track.isStream) return null;
+    const key = this.cacheKey(track);
+    try {
+      for (const filename of readdirSync(this.cacheDir)) {
+        if (!filename.startsWith(`${key}.`) || filename.endsWith(".part")) continue;
+        const path = join(this.cacheDir, filename);
+        utimesSync(path, new Date(), new Date());
+        return path;
+      }
+    } catch (error) {
+      this.logger.debug({ err: error }, "music cache lookup failed");
+    }
+    return null;
+  }
+
+  async ensureCached(track: QueueTrack): Promise<string | null> {
+    if (track.isStream) return null;
+    const existing = this.cachedFile(track);
+    if (existing) return existing;
+    const key = this.cacheKey(track);
+    const inFlight = this.cacheInFlight.get(key);
+    if (inFlight) return inFlight;
+
+    const promise = (async () => {
+      try {
+        const output = join(this.cacheDir, `${key}.%(ext)s`);
+        const { stdout } = await execFileAsync(
+          this.options.ytdlpPath,
+          [
+            "--js-runtimes",
+            "node",
+            "--no-part",
+            "--no-cache-dir",
+            "-f",
+            "bestaudio/best",
+            "-o",
+            output,
+            "--no-playlist",
+            "--no-warnings",
+            "--quiet",
+            "--max-filesize",
+            "80M",
+            "--print",
+            "after_move:filepath",
+            track.url,
+          ],
+          { cwd: this.cacheDir, timeout: 180_000, maxBuffer: 2 * 1024 * 1024 },
+        );
+        const printed = stdout
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .find(Boolean);
+        const cached = printed && statSync(printed).size > 0 ? printed : this.cachedFile(track);
+        if (cached) {
+          this.logger.debug({ guildId: "global", title: track.title, path: cached }, "cached track audio");
+          this.pruneCache();
+          return cached;
+        }
+      } catch (error) {
+        this.logger.warn({ err: error, title: track.title }, "failed to cache track audio");
+      }
+      return null;
+    })().finally(() => this.cacheInFlight.delete(key));
+
+    this.cacheInFlight.set(key, promise);
+    return promise;
+  }
+
+  prefetchAround(player: GuildPlayer): void {
+    const tracks = [player.current, player.queue[0], player.history[player.history.length - 1]];
+    for (const track of tracks) {
+      if (!track || track.isStream) continue;
+      void this.ensureCached(track).catch(() => undefined);
+    }
+  }
+
+  private pruneCache(maxFiles = 8): void {
+    try {
+      const files = readdirSync(this.cacheDir)
+        .filter((filename) => !filename.endsWith(".part"))
+        .map((filename) => {
+          const path = join(this.cacheDir, filename);
+          const stat = statSync(path);
+          return { path, mtime: stat.mtimeMs, size: stat.size };
+        })
+        .sort((a, b) => b.mtime - a.mtime);
+      let kept = 0;
+      let total = 0;
+      for (const file of files) {
+        if (kept >= maxFiles || total + file.size > this.cacheMaxBytes) {
+          rmSync(file.path, { force: true });
+          continue;
+        }
+        kept += 1;
+        total += file.size;
+      }
+    } catch (error) {
+      this.logger.debug({ err: error }, "music cache prune failed");
+    }
   }
 
   get backend(): "mpv" | "ffmpeg" {
@@ -772,6 +900,7 @@ export class MusicService extends EventEmitter {
       }
       throw new UserError("None of those tracks could be played.");
     }
+    this.prefetchAround(guildPlayer);
     return { added: queueTracks.length, first: toInfo(queueTracks[0]!) };
   }
 
@@ -863,12 +992,14 @@ export class MusicService extends EventEmitter {
       const j = Math.floor(Math.random() * (i + 1));
       [gp.queue[i], gp.queue[j]] = [gp.queue[j]!, gp.queue[i]!];
     }
+    this.prefetchAround(gp);
   }
 
   async remove(guildId: string, index: number): Promise<QueueTrack> {
     const gp = this.requirePlayer(guildId);
     const [removed] = gp.queue.splice(index - 1, 1);
     if (!removed) throw new UserError("Invalid queue index.");
+    this.prefetchAround(gp);
     return removed;
   }
 
@@ -883,6 +1014,7 @@ export class MusicService extends EventEmitter {
     if (!track) throw new UserError("Invalid source index.");
     const target = Math.max(0, Math.min(gp.queue.length, to - 1));
     gp.queue.splice(target, 0, track);
+    this.prefetchAround(gp);
   }
 
   async jump(guildId: string, index: number): Promise<void> {
