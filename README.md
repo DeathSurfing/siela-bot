@@ -39,6 +39,7 @@ Only `DISCORD_TOKEN` is required.  The init script derives the client ID, prints
 - `packages/config` — environment validation.
 - `deploy/podman` — compose, Containerfiles, optional host/proxy overrides.
 - `docs/PLAN.md` — full architecture, security, and delivery plan.
+- `.opencode/skills/siela-bot/SKILL.md` — agent-facing repo guide covering architecture, features, development, and deployment.
 - `docs/RUNBOOK.md`, `docs/MCP.md`, `docs/THREAT-MODEL.md`.
 
 ## Development
