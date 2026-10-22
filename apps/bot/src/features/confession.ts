@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { confessions, guildSettings, type Database, type ConfessionRow } from "@siela/db";
 import { EmbedBuilder, type Client, type Guild, type TextChannel } from "discord.js";
 import { ChannelType } from "discord.js";
@@ -53,7 +53,7 @@ export class ConfessionService {
     const recent = await this.db
       .select({ id: confessions.id, createdAt: confessions.createdAt })
       .from(confessions)
-      .where(and(eq(confessions.guildId, guildId), eq(confessions.authorId, authorId), sql`${confessions.createdAt} >= ${recentCutoff}`));
+      .where(and(eq(confessions.guildId, guildId), eq(confessions.authorId, authorId), gte(confessions.createdAt, recentCutoff)));
     if (recent.length > 0) {
       const next = new Date(recent[0]!.createdAt.getTime() + 15 * 60 * 1000);
       const wait = Math.max(1, Math.ceil((next.getTime() - Date.now()) / 1000));
@@ -62,7 +62,7 @@ export class ConfessionService {
     const todayCount = await this.db
       .select({ id: confessions.id })
       .from(confessions)
-      .where(and(eq(confessions.guildId, guildId), eq(confessions.authorId, authorId), sql`${confessions.createdAt} >= ${dayCutoff}`));
+      .where(and(eq(confessions.guildId, guildId), eq(confessions.authorId, authorId), gte(confessions.createdAt, dayCutoff)));
     if (todayCount.length >= 10) {
       throw new UserError("You have reached the daily confession limit.");
     }
@@ -133,7 +133,7 @@ export class ConfessionService {
     const rows = await this.db
       .select({ id: confessions.id })
       .from(confessions)
-      .where(and(eq(confessions.guildId, guildId), eq(confessions.authorId, authorId), sql`${confessions.createdAt} >= ${cutoff}`));
+      .where(and(eq(confessions.guildId, guildId), eq(confessions.authorId, authorId), gte(confessions.createdAt, cutoff)));
     return rows.length;
   }
 }
