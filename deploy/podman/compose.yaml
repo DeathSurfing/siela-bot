@@ -76,7 +76,7 @@ services:
       - "--port"
       - "8000"
       - "--gpu-memory-utilization"
-      - "0.4"
+      - "0.8"
       - "--max-model-len"
       - "2048"
     restart: unless-stopped
