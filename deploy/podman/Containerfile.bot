@@ -17,12 +17,14 @@ RUN mkdir -p /out && cp -Lr /app/apps/bot/dist /out/dist && cp -Lr /app/node_mod
 
 FROM oven/bun:1 AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg mpv python3 python3-pip ca-certificates fontconfig fonts-dejavu fonts-noto-cjk \
-  && pip3 install --no-cache-dir --break-system-packages yt-dlp edge-tts==7.3.1 \
-  && rm -rf /var/lib/apt/lists/*
+  && pip3 install --no-cache-dir --break-system-packages yt-dlp edge-tts==7.3.1 soundfile \
+  && pip3 install --no-cache-dir --break-system-packages https://github.com/KittenML/KittenTTS/releases/download/0.8/kittentts-0.8.0-py3-none-any.whl \
+  && python3 -c "from kittentts import KittenTTS; KittenTTS('KittenML/kitten-tts-mini-0.8')" \
+  && rm -rf /var/lib/apt/lists/* /root/.cache
 ENV NODE_ENV=production
 ENV XDG_CACHE_HOME=/tmp
 ENV TTS_PYTHON=python3
-ENV TTS_BACKEND=edge
+ENV TTS_BACKEND=kitten-mini
 WORKDIR /app
 COPY --from=build /out/ ./
 USER bun

@@ -57,8 +57,11 @@ export class TambolaVoice {
     this.rate = options.rate ?? DEFAULT_RATE;
     this.cacheDir = options.cacheDir ?? CACHE_DIR;
     this.backend = process.env.TTS_BACKEND ?? "edge";
-    this.kittenScript = process.env.KITTEN_TTS_SCRIPT ?? "/app/assets/tts/kitten_tts_daemon.py";
-    this.kittenVoice = process.env.TTS_VOICE ?? "Bruno";
+    const defaultScript = this.backend === "kitten-mini"
+      ? "/app/assets/tts/kitten_tts_mini_daemon.py"
+      : "/app/assets/tts/kitten_tts_daemon.py";
+    this.kittenScript = process.env.KITTEN_TTS_SCRIPT ?? defaultScript;
+    this.kittenVoice = process.env.TTS_VOICE ?? (this.backend === "kitten-mini" ? "Jasper" : "Bruno");
     mkdirSync(this.cacheDir, { recursive: true });
   }
 
@@ -259,7 +262,7 @@ export class TambolaVoice {
     const key = createHash("sha1")
       .update(`${this.voice}\u0000${this.rate}\u0000${text}`)
       .digest("hex");
-    const extension = this.backend === "kitten" ? "wav" : "mp3";
+    const extension = this.backend === "kitten" || this.backend === "kitten-mini" ? "wav" : "mp3";
     const file = join(this.cacheDir, `${key}.${extension}`);
     if (existsSync(file)) {
       const size = statSync(file).size;
@@ -267,7 +270,7 @@ export class TambolaVoice {
       rmSync(file, { force: true });
     }
 
-    const temp = this.backend === "kitten"
+    const temp = this.backend === "kitten" || this.backend === "kitten-mini"
       ? join(this.cacheDir, `${key}.${randomUUID()}.tmp.wav`)
       : join(this.cacheDir, `${key}.${randomUUID()}.tmp.mp3`);
     try {
