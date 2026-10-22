@@ -103,7 +103,7 @@ export class FamilyService {
     return result;
   }
 
-  async adopt(guildId: string, parentId: string, childId: string): Promise<void> {
+  async assertCanAdopt(guildId: string, parentId: string, childId: string): Promise<void> {
     if (parentId === childId) throw new UserError("You cannot adopt yourself.");
     if (await this.hasActiveParentChild(guildId, parentId, childId)) {
       throw new UserError("That adoption already exists.");
@@ -112,6 +112,10 @@ export class FamilyService {
     if (descendants.has(parentId)) {
       throw new UserError("That would create a family cycle.");
     }
+  }
+
+  async adopt(guildId: string, parentId: string, childId: string): Promise<void> {
+    await this.assertCanAdopt(guildId, parentId, childId);
     await this.db.insert(familyChildren).values({ guildId, parentId, childId });
   }
 

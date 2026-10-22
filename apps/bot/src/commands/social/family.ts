@@ -1,4 +1,13 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { randomUUID } from "node:crypto";
+import {
+  ActionRowBuilder,
+  AttachmentBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ComponentType,
+  EmbedBuilder,
+  SlashCommandBuilder,
+} from "discord.js";
 import { COLORS } from "@siela/shared";
 import type { Command, CommandContext } from "../../framework/types.js";
 import type { FamilyTree } from "../../features/family.js";
@@ -11,6 +20,60 @@ async function resolveMember(ctx: CommandContext, value: string | undefined) {
   const id = normalizeId(value);
   if (!id) return null;
   return ctx.guild.members.fetch(id).catch(() => null);
+}
+
+async function requestConsent(
+  ctx: CommandContext,
+  target: { id: string; displayName: string },
+  action: string,
+): Promise<boolean> {
+  const requestId = randomUUID();
+  const approveId = `family:consent:${action}:approve:${ctx.author.id}:${target.id}:${requestId}`;
+  const rejectId = `family:consent:${action}:reject:${ctx.author.id}:${target.id}:${requestId}`;
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(approveId).setLabel("Approve").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(rejectId).setLabel("Reject").setStyle(ButtonStyle.Danger),
+  );
+
+  const message = await ctx.reply({
+    content: `${target.displayName}, ${ctx.member.displayName} wants to ${action} you. You have 15 seconds to respond.`,
+    components: [row],
+    allowedMentions: { users: [target.id] },
+  });
+  if (!message) return false;
+
+  return new Promise<boolean>((resolve) => {
+    const collector = message.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      time: 15_000,
+    });
+
+    collector.on("collect", async (interaction) => {
+      if (interaction.user.id !== target.id) {
+        await interaction.reply({ content: "This request is not for you.", ephemeral: true }).catch(() => undefined);
+        return;
+      }
+      const approved = interaction.customId.includes(":approve:");
+      await interaction.deferUpdate().catch(() => undefined);
+      collector.stop(approved ? "approved" : "rejected");
+    });
+
+    collector.on("end", async (_collected, reason) => {
+      const approved = reason === "approved";
+      try {
+        if (approved) {
+          await message.edit({ content: `✅ ${target.displayName} approved.`, components: [] });
+        } else if (reason === "rejected") {
+          await message.edit({ content: `❌ ${target.displayName} rejected.`, components: [] });
+        } else {
+          await message.edit({ content: `⌛ ${target.displayName} did not respond in time.`, components: [] });
+        }
+      } catch {
+        // ignore edit failures
+      }
+      resolve(approved);
+    });
+  });
 }
 
 function mermaidDiagram(tree: FamilyTree, names: Map<string, string>): string {
@@ -48,8 +111,29 @@ export const marryCommand: Command = {
       await ctx.reply({ content: "Choose a different human member.", ephemeral: true });
       return;
     }
-    await ctx.services.family.marry(ctx.guild.id, ctx.author.id, target.id);
-    await ctx.reply({
+
+    const existingA = await ctx.services.family.getActiveMarriage(ctx.guild.id, ctx.author.id);
+    const existingB = await ctx.services.family.getActiveMarriage(ctx.guild.id, target.id);
+    if (existingA) {
+      await ctx.reply({ content: "You are already married.", ephemeral: true });
+      return;
+    }
+    if (existingB) {
+      await ctx.reply({ content: "That member is already married.", ephemeral: true });
+      return;
+    }
+
+    const approved = await requestConsent(ctx, target, "marry");
+    if (!approved) return;
+
+    try {
+      await ctx.services.family.marry(ctx.guild.id, ctx.author.id, target.id);
+    } catch (error) {
+      await ctx.followUp({ content: error instanceof Error ? error.message : "Marriage failed.", ephemeral: true });
+      return;
+    }
+
+    await ctx.followUp({
       embeds: [
         new EmbedBuilder()
           .setColor(COLORS.social)
@@ -97,8 +181,25 @@ export const adoptCommand: Command = {
       await ctx.reply({ content: "Choose a different human member.", ephemeral: true });
       return;
     }
-    await ctx.services.family.adopt(ctx.guild.id, ctx.author.id, target.id);
-    await ctx.reply({
+
+    try {
+      await ctx.services.family.assertCanAdopt(ctx.guild.id, ctx.author.id, target.id);
+    } catch (error) {
+      await ctx.reply({ content: error instanceof Error ? error.message : "Adoption failed.", ephemeral: true });
+      return;
+    }
+
+    const approved = await requestConsent(ctx, target, "be adopted by you");
+    if (!approved) return;
+
+    try {
+      await ctx.services.family.adopt(ctx.guild.id, ctx.author.id, target.id);
+    } catch (error) {
+      await ctx.followUp({ content: error instanceof Error ? error.message : "Adoption failed.", ephemeral: true });
+      return;
+    }
+
+    await ctx.followUp({
       embeds: [
         new EmbedBuilder()
           .setColor(COLORS.social)
@@ -153,7 +254,28 @@ export const familyTreeCommand: Command = {
       }),
     );
     const diagram = mermaidDiagram(tree, names);
-    const content = `\`\`\`mermaid\n${diagram}\n\`\`\`${tree.truncated ? "\nFamily tree truncated for size." : ""}`;
-    await ctx.reply({ content });
+    const encoded = Buffer.from(diagram).toString("base64");
+    const imageUrl = `https://mermaid.ink/img/${encoded}`;
+    let sentImage = false;
+    if (encoded.length <= 1800) {
+      try {
+        const response = await fetch(imageUrl, { signal: AbortSignal.timeout(20_000) });
+        if (response.ok) {
+          const buffer = Buffer.from(await response.arrayBuffer());
+          const attachment = new AttachmentBuilder(buffer, { name: "family-tree.jpg" });
+          await ctx.reply({
+            content: tree.truncated ? "Family tree truncated for size." : undefined,
+            files: [attachment],
+          });
+          sentImage = true;
+        }
+      } catch {
+        sentImage = false;
+      }
+    }
+    if (!sentImage) {
+      const content = `\`\`\`mermaid\n${diagram}\n\`\`\`${tree.truncated ? "\nFamily tree truncated for size." : ""}`;
+      await ctx.reply({ content });
+    }
   },
 };
