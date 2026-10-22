@@ -57,6 +57,7 @@ import { DeluluService } from "./features/delulu.js";
 import { ConfessionService } from "./features/confession.js";
 import { FriendshipService } from "./features/friendship.js";
 import { ValkeyService } from "./features/valkey.js";
+import { RandomVcService } from "./features/randomVc.js";
 import { BirthdayService } from "./features/birthday.js";
 import { parseTempVcPanelCustomId, tempVcPanelCustomId, TempVcService } from "./features/tempvc.js";
 
@@ -79,6 +80,7 @@ export class SielaBot {
   private readonly controlServer: ControlServer;
   private readonly healthServer: HealthServer;
   private readonly valkey: ValkeyService;
+  private readonly randomVc: RandomVcService;
   private guildId: string | null = null;
   private initializedGuildId: string | null = null;
   private music: MusicService | null = null;
@@ -119,6 +121,7 @@ export class SielaBot {
       this.logger,
     );
     this.music = music;
+    this.randomVc = new RandomVcService(music, this.logger);
     const activity = new ActivityService(this.dbHandle.db, friendship, tempVc, music, this.logger);
     this.services = {
       config: this.config,
@@ -241,6 +244,7 @@ export class SielaBot {
     await this.services.activity.purgeOld().catch((error) => this.logger.warn({ err: error }, "activity purge failed"));
     await this.services.activity.reconcile(guild).catch((error) => this.logger.warn({ err: error }, "activity reconcile failed"));
     this.services.activity.start();
+    this.randomVc.start(guild);
     this.services.birthday.start();
     await this.client.user?.setPresence({
       activities: [{ name: `${guild.name} • ${DEFAULTS.prefix}help`, type: ActivityType.Watching }],
@@ -894,6 +898,7 @@ export class SielaBot {
     this.stopping = true;
     await Promise.allSettled([this.controlServer.stop(), this.healthServer.stop()]);
     if (this.music) await this.music.shutdown().catch(() => undefined);
+    this.randomVc.stop();
     await this.services.activity.stop();
     await this.services.friendship.stop();
     await this.valkey.stop();
