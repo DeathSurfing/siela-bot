@@ -80,6 +80,8 @@ services:
       - "--max-model-len"
       - "2048"
       - "--enforce-eager"
+      - "--served-model-name"
+      - "default"
     restart: unless-stopped
     shm_size: 2gb
     mem_limit: 12g
