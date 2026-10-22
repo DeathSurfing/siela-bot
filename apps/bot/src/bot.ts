@@ -149,6 +149,7 @@ export class SielaBot {
       tempVc,
       privacy: new PrivacyService(counters),
       music,
+      scheduledEvents: this.scheduledEvents,
     };
     this.controlServer = new ControlServer({
       services: this.services,

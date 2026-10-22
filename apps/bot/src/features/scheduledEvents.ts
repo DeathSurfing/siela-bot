@@ -213,6 +213,23 @@ export class ScheduledEventService {
     });
   }
 
+  async test(kind: string, guild: Guild): Promise<{ phase: string; channel: string; audio: string }> {
+    const normalized = kind.toLowerCase().replace(/[^a-z]/g, "");
+    const phase = PHASES.find((candidate) => {
+      if (candidate.key === "chalisa") return normalized === "hanumanchalisa" || normalized === "chalisa";
+      return candidate.key === normalized;
+    });
+    if (!phase) throw new Error("Use `azan`, `anthem`, or `hanumanchalisa`.");
+    const audio = findAudio(phase.audioName);
+    if (!audio) {
+      throw new Error(`Missing audio file: assets/events/${phase.audioName}.ogg|mp3|wav|m4a|flac`);
+    }
+    void this.runPhase(guild, phase).catch((error) =>
+      this.logger.warn({ err: error, phase: phase.key }, "test scheduled phase failed"),
+    );
+    return { phase: phase.key, channel: phase.channelName, audio };
+  }
+
   private async runPhase(guild: Guild, phase: Phase): Promise<void> {
     const path = findAudio(phase.audioName);
     if (!path) {
