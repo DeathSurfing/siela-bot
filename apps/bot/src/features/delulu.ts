@@ -101,7 +101,7 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  model: "default",
+                  model: process.env.LLM_MODEL ?? "default",
                   messages: [
                     {
                       role: "system",

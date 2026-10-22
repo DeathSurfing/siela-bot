@@ -80,8 +80,6 @@ services:
       - "--max-model-len"
       - "2048"
       - "--enforce-eager"
-      - "--served-model-name"
-      - "default"
     restart: unless-stopped
     shm_size: 2gb
     mem_limit: 12g
@@ -117,6 +115,7 @@ services:
       - valkey
     environment:
       LLM_URL: ${LLM_URL:-http://llm:8000}
+      LLM_MODEL: ${LLM_MODEL:-Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3}
       VALKEY_URL: ${VALKEY_URL:-redis://valkey:6379}
     restart: unless-stopped
     init: true
