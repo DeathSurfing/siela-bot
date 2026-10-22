@@ -31,6 +31,19 @@ export const ICONS = {
   play: "▶",
   pause: "⏸",
   skip: "⏭",
+  rewind: "↶",
+  forward: "↷",
+  shuffle: "⇄",
+  loop: "↻",
+  stop: "■",
+  filter: "⚙",
+  off: "∅",
+  bass: "⌁",
+  nightcore: "⇈",
+  vaporwave: "⇊",
+  kick: "−",
+  transfer: "⇄",
+  delete: "✕",
 } as const;
 
 export function text(content: string): TextDisplayBuilder {

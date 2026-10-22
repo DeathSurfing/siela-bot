@@ -2,7 +2,7 @@ import { ChannelType, SlashCommandBuilder, type VoiceChannel } from "discord.js"
 import type { Command, CommandContext } from "../../framework/types.js";
 import { canManageTempVc, isAdmin } from "../../framework/permissions.js";
 import { UserError } from "../../lib/errors.js";
-import { card, error as uiError, success } from "../../features/ui.js";
+import { ICONS, card, error as uiError, success } from "../../features/ui.js";
 
 function currentChannel(ctx: CommandContext): VoiceChannel {
   const channel = ctx.member.voice.channel;
@@ -111,7 +111,7 @@ export const vcCommand: Command = {
         if (!row) throw new UserError("This is not a temporary VC.");
         await ctx.reply(
           card({
-            title: channel.name,
+            title: `${ICONS.voice} ${channel.name}`,
             subtitle: `Owner <@${row.ownerId}> · created <t:${Math.floor(row.createdAt.getTime() / 1000)}:R>`,
             body: `**${row.locked ? "Locked" : "Open"}** · limit ${row.userLimit === 0 ? "unlimited" : row.userLimit}`,
           }),

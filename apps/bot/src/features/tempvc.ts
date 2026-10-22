@@ -20,7 +20,7 @@ import type { SettingsService } from "./settings.js";
 import type { Logger } from "../lib/logger.js";
 import { UserError } from "../lib/errors.js";
 import type { ReplyPayload } from "../framework/types.js";
-import { UI_ACCENT, actionRow, separator, text } from "./ui.js";
+import { ICONS, UI_ACCENT, actionRow, separator, text } from "./ui.js";
 
 const OWNER_ALLOW = {
   ViewChannel: true,
@@ -150,14 +150,17 @@ export class TempVcService {
           new ButtonBuilder()
             .setCustomId(tempVcPanelCustomId("lock", row.channelId))
             .setLabel(row.locked ? "Unlock" : "Lock")
+            .setEmoji(row.locked ? ICONS.unlock : ICONS.lock)
             .setStyle(ButtonStyle.Secondary),
           new ButtonBuilder()
             .setCustomId(tempVcPanelCustomId("rename", row.channelId))
             .setLabel("Rename")
+            .setEmoji(ICONS.rename)
             .setStyle(ButtonStyle.Secondary),
           new ButtonBuilder()
             .setCustomId(tempVcPanelCustomId("limit", row.channelId))
             .setLabel("Limit")
+            .setEmoji(ICONS.limit)
             .setStyle(ButtonStyle.Secondary),
         ),
       )
@@ -165,11 +168,11 @@ export class TempVcService {
         actionRow(
           new StringSelectMenuBuilder()
             .setCustomId(tempVcPanelCustomId("manage", row.channelId))
-            .setPlaceholder("Manage members…")
+            .setPlaceholder(`${ICONS.more} Manage members…`)
             .addOptions(
-              { label: "Kick member", value: "kick", description: "Remove someone from this VC" },
-              { label: "Transfer ownership", value: "transfer", description: "Give this VC to another member" },
-              { label: "Delete channel", value: "delete", description: "Delete this temporary VC" },
+              { label: "Kick member", value: "kick", description: "Remove someone from this VC", emoji: ICONS.kick },
+              { label: "Transfer ownership", value: "transfer", description: "Give this VC to another member", emoji: ICONS.transfer },
+              { label: "Delete channel", value: "delete", description: "Delete this temporary VC", emoji: ICONS.delete },
             ),
         ),
       );

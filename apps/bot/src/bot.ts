@@ -61,7 +61,7 @@ import { parseTempVcPanelCustomId, tempVcPanelCustomId, TempVcService } from "./
 
 import { MusicService, type MusicFilterPreset } from "./features/music.js";
 import { buildMusicPayload } from "./features/music-ui.js";
-import { card, confirmCard } from "./features/ui.js";
+import { ICONS, card, confirmCard } from "./features/ui.js";
 import { PrivacyService } from "./features/privacy.js";
 import { buildHelpPayload } from "./features/help.js";
 import { ControlServer } from "./control/server.js";
@@ -476,10 +476,10 @@ export class SielaBot {
                 .setCustomId(`music:filter:${guild.id}`)
                 .setPlaceholder("Choose a filter")
                 .addOptions(
-                  { label: "Off", value: "off", description: "No audio filter" },
-                  { label: "Bass boost", value: "bassboost", description: "Extra low end" },
-                  { label: "Nightcore", value: "nightcore", description: "Faster and higher" },
-                  { label: "Vaporwave", value: "vaporwave", description: "Slower and deeper" },
+                  { label: "Off", value: "off", description: "No audio filter", emoji: ICONS.off },
+                  { label: "Bass boost", value: "bassboost", description: "Extra low end", emoji: ICONS.bass },
+                  { label: "Nightcore", value: "nightcore", description: "Faster and higher", emoji: ICONS.nightcore },
+                  { label: "Vaporwave", value: "vaporwave", description: "Slower and deeper", emoji: ICONS.vaporwave },
                 ),
             ),
           ],

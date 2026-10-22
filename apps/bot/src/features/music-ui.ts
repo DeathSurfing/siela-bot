@@ -50,15 +50,17 @@ export function buildMusicPayload(
     );
   }
 
-  const titleSection = new SectionBuilder()
-    .addTextDisplayComponents(
-      text(`### ${ICONS.music} ${truncate(track.title, 80)}`),
-      text(`-# ${truncate(track.author, 48)}${track.isStream ? ` · ${ICONS.live} LIVE` : ""}`),
-    );
+  const titleText = text(`### ${ICONS.music} ${truncate(track.title, 80)}`);
+  const artistText = text(`-# ${truncate(track.author, 48)}${track.isStream ? ` · ${ICONS.live} LIVE` : ""}`);
   if (track.artworkUrl) {
-    titleSection.setThumbnailAccessory(new ThumbnailBuilder({ media: { url: track.artworkUrl } }));
+    container.addSectionComponents(
+      new SectionBuilder()
+        .addTextDisplayComponents(titleText, artistText)
+        .setThumbnailAccessory(new ThumbnailBuilder({ media: { url: track.artworkUrl } })),
+    );
+  } else {
+    container.addTextDisplayComponents(titleText, artistText);
   }
-  container.addSectionComponents(titleSection);
   container.addTextDisplayComponents(text(progress));
   container.addTextDisplayComponents(
     text(
@@ -90,12 +92,12 @@ export function buildMusicPayload(
     .setCustomId(`music:more:${guildId}`)
     .setPlaceholder(`${ICONS.more} More controls…`)
     .addOptions(
-      { label: "Rewind 10s", value: "rewind" },
-      { label: "Forward 10s", value: "forward" },
-      { label: "Shuffle queue", value: "shuffle" },
-      { label: "Cycle loop mode", value: "loop" },
-      { label: "Filter preset", value: "filter" },
-      { label: "Stop and disconnect", value: "stop" },
+      { label: "Rewind 10s", value: "rewind", emoji: ICONS.rewind },
+      { label: "Forward 10s", value: "forward", emoji: ICONS.forward },
+      { label: "Shuffle queue", value: "shuffle", emoji: ICONS.shuffle },
+      { label: "Cycle loop mode", value: "loop", emoji: ICONS.loop },
+      { label: "Filter preset", value: "filter", emoji: ICONS.filter },
+      { label: "Stop and disconnect", value: "stop", emoji: ICONS.stop },
     );
 
   container.addActionRowComponents(actionRow(more));
