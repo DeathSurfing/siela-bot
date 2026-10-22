@@ -350,3 +350,36 @@ export const premiumPasses = pgTable(
   },
   (t) => [primaryKey({ columns: [t.guildId, t.userId] })],
 );
+
+
+export const economyShopItems = pgTable(
+  "economy_shop_items",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    key: varchar("key", { length: 32 }).notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    price: integer("price").notNull(),
+    roleId: text("role_id"),
+    stock: integer("stock"),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("economy_shop_item_key_uq").on(t.guildId, t.key)],
+);
+
+export const economyInventory = pgTable(
+  "economy_inventory",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    guildId: text("guild_id").notNull(),
+    userId: text("user_id").notNull(),
+    itemKey: varchar("item_key", { length: 32 }).notNull(),
+    quantity: integer("quantity").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("economy_inventory_user_item_uq").on(t.guildId, t.userId, t.itemKey)],
+);

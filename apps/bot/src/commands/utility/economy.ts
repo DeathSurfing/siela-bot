@@ -24,6 +24,10 @@ export const economyCommand: Command = {
     .addSubcommand((sub) => sub.setName("work").setDescription("Work a shift for coins"))
     .addSubcommand((sub) => sub.setName("transfer").setDescription("Transfer coins").addUserOption((o) => o.setName("user").setDescription("Member").setRequired(true)).addIntegerOption((o) => o.setName("amount").setDescription("Amount").setRequired(true).setMinValue(1)))
     .addSubcommand((sub) => sub.setName("top").setDescription("Show the richest members"))
+    .addSubcommand((sub) => sub.setName("shop").setDescription("Show the economy shop"))
+    .addSubcommand((sub) => sub.setName("buy").setDescription("Buy a shop item").addStringOption((o) => o.setName("item").setDescription("Item key").setRequired(true)))
+    .addSubcommand((sub) => sub.setName("shopadd").setDescription("Add a shop item (admin)").addStringOption((o) => o.setName("key").setDescription("Item key").setRequired(true)).addIntegerOption((o) => o.setName("price").setDescription("Price").setRequired(true).setMinValue(1)).addStringOption((o) => o.setName("name").setDescription("Item name").setRequired(true)).addRoleOption((o) => o.setName("role").setDescription("Role to grant").setRequired(false)).addIntegerOption((o) => o.setName("stock").setDescription("Stock").setRequired(false).setMinValue(1)).addStringOption((o) => o.setName("description").setDescription("Description").setRequired(false)))
+    .addSubcommand((sub) => sub.setName("shopremove").setDescription("Remove a shop item (admin)").addStringOption((o) => o.setName("key").setDescription("Item key").setRequired(true)))
     .addSubcommand((sub) => sub.setName("premium").setDescription("Show premium status"))
     .addSubcommand((sub) => sub.setName("grant").setDescription("Grant premium (admin)").addUserOption((o) => o.setName("user").setDescription("Member").setRequired(true)).addIntegerOption((o) => o.setName("days").setDescription("Days").setRequired(true).setMinValue(1)))
     .addSubcommand((sub) => sub.setName("adjust").setDescription("Adjust a balance (admin)").addUserOption((o) => o.setName("user").setDescription("Member").setRequired(true)).addIntegerOption((o) => o.setName("amount").setDescription("Amount, can be negative").setRequired(true)).addStringOption((o) => o.setName("reason").setDescription("Reason").setRequired(true))),
@@ -119,6 +123,91 @@ export const economyCommand: Command = {
       return;
     }
 
+
+    if (action === "shop") {
+      const items = await economy.listShopItems(ctx.guild.id);
+      if (!items.length) {
+        await ctx.reply({ content: "The shop is empty.", ephemeral: true });
+        return;
+      }
+      const body = items.map((item) => {
+        const stock = item.stock === null ? "unlimited" : `${item.stock} left`;
+        return `**${item.name}** (\`${item.key}\`) — ${formatCoins(item.price)} · ${stock}${item.roleId ? " · role" : ""}${item.description ? `\n-# ${item.description}` : ""}`;
+      }).join("\n");
+      await ctx.reply(card({ title: "Economy shop", body }));
+      return;
+    }
+
+    if (action === "buy") {
+      const key = ctx.args[1];
+      if (!key) throw new UserError("Usage: `economy buy <item>`.");
+      try {
+        const result = await economy.buyItem(ctx.guild.id, ctx.author.id, key);
+        if (result.item.roleId) {
+          try {
+            await ctx.member.roles.add(result.item.roleId);
+          } catch {
+            // role grant is best-effort
+          }
+        }
+        await ctx.reply(success(`Bought **${result.item.name}** for ${formatCoins(result.item.price)}.`));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Purchase failed.";
+        if (message === "ITEM_NOT_FOUND") throw new UserError("That item does not exist.");
+        if (message === "OUT_OF_STOCK") throw new UserError("That item is out of stock.");
+        if (message === "INSUFFICIENT_FUNDS") throw new UserError("You do not have enough coins.");
+        throw new UserError(message);
+      }
+      return;
+    }
+
+    if (action === "shopadd") {
+      if (!isAdmin(ctx.member, ctx.services.config, ctx.guild)) {
+        throw new UserError("You need admin permissions for that.");
+      }
+      const key = ctx.args[1];
+      const price = Number(ctx.args[2]);
+      const slash = ctx.source === "slash";
+      const name = slash ? String(ctx.args[3] ?? "").trim() : ctx.args.slice(3).join(" ").trim();
+      const roleId = slash && ctx.args[4] && /^\d{17,20}$/.test(ctx.args[4]) ? ctx.args[4] : null;
+      const stock = slash && ctx.args[5] && /^\d+$/.test(ctx.args[5]) ? Number(ctx.args[5]) : null;
+      const description = slash && ctx.args[6] ? ctx.args.slice(6).join(" ").trim() : null;
+      if (!key || !Number.isInteger(price) || price <= 0 || !name) {
+        throw new UserError("Usage: `economy shopadd <key> <price> <name>`.");
+      }
+      try {
+        await economy.addShopItem({
+          guildId: ctx.guild.id,
+          key,
+          name,
+          description,
+          price,
+          roleId,
+          stock,
+          createdBy: ctx.author.id,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not add item.";
+        throw new UserError(message);
+      }
+      await ctx.services.audit.log({ guildId: ctx.guild.id, actorId: ctx.author.id, source: "discord", action: "economy.shop.add", targetType: "shop_item", targetId: key, after: { price, name } });
+      await ctx.reply(success(`Added shop item \`${key.toLowerCase()}\`.`));
+      return;
+    }
+
+    if (action === "shopremove") {
+      if (!isAdmin(ctx.member, ctx.services.config, ctx.guild)) {
+        throw new UserError("You need admin permissions for that.");
+      }
+      const key = ctx.args[1];
+      if (!key) throw new UserError("Usage: `economy shopremove <key>`.");
+      const removed = await economy.removeShopItem(ctx.guild.id, key);
+      if (!removed) throw new UserError("That item does not exist.");
+      await ctx.services.audit.log({ guildId: ctx.guild.id, actorId: ctx.author.id, source: "discord", action: "economy.shop.remove", targetType: "shop_item", targetId: key });
+      await ctx.reply(success(`Removed shop item \`${key}\`.`));
+      return;
+    }
+
     if (action === "premium") {
       const has = await economy.hasPremium(ctx.guild.id, ctx.author.id);
       await ctx.reply(card({ title: "Premium", body: has ? "You have an active premium pass." : "You do not have an active premium pass." }));
@@ -166,6 +255,6 @@ export const economyCommand: Command = {
       return;
     }
 
-    throw new UserError("Use `economy balance`, `daily`, `work`, `transfer`, `top`, `premium`, `grant`, or `adjust`.");
+    throw new UserError("Use `economy balance`, `daily`, `work`, `transfer`, `top`, `shop`, `buy`, `premium`, `grant`, `adjust`, `shopadd`, or `shopremove`.");
   },
 };

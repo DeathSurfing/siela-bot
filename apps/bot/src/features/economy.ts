@@ -3,6 +3,8 @@ import {
   economyAccounts,
   economyTransactions,
   premiumPasses,
+  economyShopItems,
+  economyInventory,
   type Database,
 } from "@siela/db";
 import type { Logger } from "../lib/logger.js";
@@ -453,6 +455,86 @@ export class EconomyService {
           or(eq(economyTransactions.fromUserId, userId), eq(economyTransactions.toUserId, userId)),
         ),
       );
+  }
+
+  async listShopItems(guildId: string) {
+    return this.db
+      .select()
+      .from(economyShopItems)
+      .where(eq(economyShopItems.guildId, guildId))
+      .orderBy(economyShopItems.price);
+  }
+
+  async getShopItem(guildId: string, key: string) {
+    const [row] = await this.db
+      .select()
+      .from(economyShopItems)
+      .where(and(eq(economyShopItems.guildId, guildId), eq(economyShopItems.key, key)));
+    return row ?? null;
+  }
+
+  async addShopItem(input: {
+    guildId: string;
+    key: string;
+    name: string;
+    description?: string | null;
+    price: number;
+    roleId?: string | null;
+    stock?: number | null;
+    createdBy: string;
+  }) {
+    if (!/^[a-z0-9_-]{1,32}$/i.test(input.key)) throw new Error("INVALID_KEY");
+    if (!Number.isInteger(input.price) || input.price <= 0) throw new Error("INVALID_PRICE");
+    await this.db.insert(economyShopItems).values({
+      guildId: input.guildId,
+      key: input.key.toLowerCase(),
+      name: input.name,
+      description: input.description ?? null,
+      price: input.price,
+      roleId: input.roleId ?? null,
+      stock: input.stock ?? null,
+      createdBy: input.createdBy,
+    });
+  }
+
+  async removeShopItem(guildId: string, key: string): Promise<boolean> {
+    const result = await this.db
+      .delete(economyShopItems)
+      .where(and(eq(economyShopItems.guildId, guildId), eq(economyShopItems.key, key.toLowerCase())))
+      .returning({ id: economyShopItems.id });
+    return result.length > 0;
+  }
+
+  async buyItem(guildId: string, userId: string, key: string): Promise<{ item: typeof economyShopItems.$inferSelect; roleGranted: boolean }> {
+    const item = await this.getShopItem(guildId, key.toLowerCase());
+    if (!item) throw new Error("ITEM_NOT_FOUND");
+    if (item.stock !== null && item.stock <= 0) throw new Error("OUT_OF_STOCK");
+
+    await this.spend(guildId, userId, item.price, "shop_purchase", `shop:${guildId}:${userId}:${item.key}:${Date.now()}`);
+
+    if (item.stock !== null) {
+      await this.db
+        .update(economyShopItems)
+        .set({ stock: item.stock - 1 })
+        .where(and(eq(economyShopItems.guildId, guildId), eq(economyShopItems.key, item.key)));
+    }
+
+    await this.db
+      .insert(economyInventory)
+      .values({ guildId, userId, itemKey: item.key, quantity: 1 })
+      .onConflictDoUpdate({
+        target: [economyInventory.guildId, economyInventory.userId, economyInventory.itemKey],
+        set: { quantity: sql`${economyInventory.quantity} + 1`, updatedAt: new Date() },
+      });
+
+    return { item, roleGranted: Boolean(item.roleId) };
+  }
+
+  async inventory(guildId: string, userId: string) {
+    return this.db
+      .select()
+      .from(economyInventory)
+      .where(and(eq(economyInventory.guildId, guildId), eq(economyInventory.userId, userId)));
   }
 
   async rateLimit(key: string, limit: number, windowMs: number): Promise<boolean> {
