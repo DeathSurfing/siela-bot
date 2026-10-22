@@ -1,0 +1,694 @@
+import { randomBytes } from "node:crypto";
+import {
+  ChannelType,
+  MessageFlags,
+  type ButtonInteraction,
+  type Client,
+  type Guild,
+  type GuildBasedChannel,
+  type GuildMember,
+  type Message,
+  type StringSelectMenuInteraction,
+  type VoiceChannel,
+  ContainerBuilder,
+} from "discord.js";
+import type { BotConfig } from "@siela/config";
+import { isAdmin } from "../../framework/permissions.js";
+import type { ReplyPayload } from "../../framework/types.js";
+import { UserError } from "../../lib/errors.js";
+import type { Logger } from "../../lib/logger.js";
+import type { MusicService } from "../music.js";
+import { UI_ACCENT, text } from "../ui.js";
+import {
+  buildTambolaClaimPayload,
+  buildTambolaEndConfirmPayload,
+  buildTambolaFinalPayload,
+  buildTambolaGamePayload,
+  buildTambolaLobbyPayload,
+  buildTambolaRulesPayload,
+  buildTambolaTicketPayload,
+} from "../tambola-ui.js";
+import { buildCallPhrase } from "./calls.js";
+import { CLAIM_LABELS, CLAIM_PATTERNS, TambolaGame, type ClaimPattern, type TambolaPlayer } from "./game.js";
+import { TambolaVoice } from "./voice.js";
+
+const LOBBY_TIMEOUT_MS = 5 * 60 * 1000;
+const CALL_INTERVAL_MS = 8_000;
+const FINAL_CLAIM_WINDOW_MS = 30_000;
+const GAME_TIMEOUT_MS = 45 * 60 * 1000;
+const MANUAL_CALL_THROTTLE_MS = 2_000;
+
+type ComponentInteraction = ButtonInteraction | StringSelectMenuInteraction;
+
+interface TambolaSession {
+  game: TambolaGame;
+  cardMessage: Message | null;
+  lobbyTimer: NodeJS.Timeout | null;
+  callTimer: NodeJS.Timeout | null;
+  finalizeTimer: NodeJS.Timeout | null;
+  gameTimer: NodeJS.Timeout | null;
+  voice: TambolaVoice | null;
+  voiceChannelId: string | null;
+  voiceNote: string | null;
+  lastGenericIndex: number | null;
+  lastManualCallAt: number;
+  calling: boolean;
+}
+
+type OutgoingMessage = Pick<
+  ReplyPayload,
+  "content" | "embeds" | "components" | "files" | "allowedMentions"
+> & { flags: number };
+
+function messageOptions(payload: ReplyPayload, ephemeral: boolean): OutgoingMessage {
+  return {
+    content: payload.content,
+    embeds: payload.embeds,
+    components: payload.components,
+    files: payload.files,
+    flags: (payload.flags ?? 0) | (ephemeral ? MessageFlags.Ephemeral : 0),
+    allowedMentions: payload.allowedMentions,
+  };
+}
+
+export class TambolaService {
+  private readonly byGuild = new Map<string, TambolaSession>();
+  private readonly byId = new Map<string, TambolaSession>();
+
+  constructor(
+    private readonly client: Client,
+    private readonly music: MusicService,
+    private readonly config: BotConfig,
+    private readonly logger: Logger,
+  ) {}
+
+  get(guildId: string): TambolaSession | null {
+    return this.byGuild.get(guildId) ?? null;
+  }
+
+  require(guildId: string): TambolaSession {
+    const session = this.get(guildId);
+    if (!session) throw new UserError("No Tambola game is running in this server.");
+    return session;
+  }
+
+  async host(options: {
+    guild: Guild;
+    channel: GuildBasedChannel;
+    host: GuildMember;
+    maxPlayers: number;
+    voiceChannelId: string | null;
+  }): Promise<TambolaSession> {
+    const existing = this.byGuild.get(options.guild.id);
+    if (existing) {
+      throw new UserError(`A Tambola game is already running in <#${existing.game.channelId}>.`);
+    }
+    if (!options.channel.isTextBased()) {
+      throw new UserError("Tambola needs a text channel.");
+    }
+    if (options.voiceChannelId) {
+      const channel = options.guild.channels.cache.get(options.voiceChannelId)
+        ?? await options.guild.channels.fetch(options.voiceChannelId).catch(() => null);
+      if (!channel || channel.type !== ChannelType.GuildVoice) {
+        throw new UserError("Choose a voice channel for Tambola.");
+      }
+    }
+
+    const id = this.newId();
+    const game = new TambolaGame({
+      id,
+      guildId: options.guild.id,
+      channelId: options.channel.id,
+      hostId: options.host.id,
+      maxPlayers: options.maxPlayers,
+      intervalSeconds: 8,
+    });
+    const session: TambolaSession = {
+      game,
+      cardMessage: null,
+      lobbyTimer: null,
+      callTimer: null,
+      finalizeTimer: null,
+      gameTimer: null,
+      voice: null,
+      voiceChannelId: options.voiceChannelId,
+      voiceNote: null,
+      lastGenericIndex: null,
+      lastManualCallAt: 0,
+      calling: false,
+    };
+    this.byGuild.set(game.guildId, session);
+    this.byId.set(game.id, session);
+    try {
+      session.cardMessage = await options.channel.send(
+        messageOptions(buildTambolaLobbyPayload(game, session.voiceChannelId), false),
+      );
+    } catch (error) {
+      this.byGuild.delete(game.guildId);
+      this.byId.delete(game.id);
+      throw error;
+    }
+    session.lobbyTimer = setTimeout(
+      () => void this.cancel(session, "The lobby timed out."),
+      LOBBY_TIMEOUT_MS,
+    );
+    return session;
+  }
+
+  async join(
+    guildId: string,
+    member: GuildMember,
+  ): Promise<{ session: TambolaSession; dmSent: boolean; payload: ReplyPayload }> {
+    const session = this.require(guildId);
+    const result = session.game.addPlayer(member.id, member.displayName);
+    if (!result.ok) throw new UserError(result.reason);
+    const payload = buildTambolaTicketPayload(session.game, result.player);
+    const dmSent = await this.sendTicketDm(member.user, payload);
+    await this.updateCard(session);
+    return { session, dmSent, payload };
+  }
+
+  leave(guildId: string, userId: string): void {
+    const session = this.require(guildId);
+    if (session.game.status !== "lobby") throw new UserError("You cannot leave after the game has started.");
+    if (!session.game.removePlayer(userId)) throw new UserError("You are not in this lobby.");
+    void this.updateCard(session);
+  }
+
+  async start(guildId: string, member: GuildMember): Promise<void> {
+    const session = this.require(guildId);
+    if (member.id !== session.game.hostId) throw new UserError("Only the host can start the game.");
+    const result = session.game.start();
+    if (!result.ok) throw new UserError(result.reason);
+    this.clearTimers(session, "lobby");
+    await this.startVoice(session);
+    await this.updateCard(session);
+    if (session.voice) void session.voice.speak("Eyes down, let's play Tambola!");
+    session.gameTimer = setTimeout(() => {
+      if (session.game.status === "active" || session.game.status === "paused") {
+        void this.finishGame(session, "The game timed out.");
+      }
+    }, GAME_TIMEOUT_MS);
+    session.callTimer = setTimeout(() => void this.callNext(session), 5_000);
+  }
+
+  async ticket(
+    guildId: string,
+    userId: string,
+  ): Promise<{ dmSent: boolean; payload: ReplyPayload; player: TambolaPlayer }> {
+    const session = this.require(guildId);
+    const player = session.game.player(userId);
+    if (!player) throw new UserError("You are not in this game.");
+    const payload = buildTambolaTicketPayload(session.game, player);
+    const dmSent = await this.sendTicketDm(
+      await this.client.users.fetch(userId),
+      payload,
+    );
+    return { dmSent, payload, player };
+  }
+
+  async call(guildId: string, member: GuildMember): Promise<number | null> {
+    const session = this.require(guildId);
+    if (member.id !== session.game.hostId) throw new UserError("Only the host can call numbers.");
+    if (session.calling) throw new UserError("A number is already being called.");
+    if (Date.now() - session.lastManualCallAt < MANUAL_CALL_THROTTLE_MS) {
+      throw new UserError("Wait a moment before calling the next number.");
+    }
+    return this.callNext(session, true);
+  }
+
+  async pause(guildId: string, member: GuildMember): Promise<void> {
+    const session = this.require(guildId);
+    if (member.id !== session.game.hostId) throw new UserError("Only the host can pause the game.");
+    if (session.game.status !== "active") throw new UserError("The game is not running.");
+    session.game.pause();
+    this.clearTimers(session, "call");
+    await this.updateCard(session);
+    if (session.voice) void session.voice.speak("Game paused.");
+  }
+
+  async resume(guildId: string, member: GuildMember): Promise<void> {
+    const session = this.require(guildId);
+    if (member.id !== session.game.hostId) throw new UserError("Only the host can resume the game.");
+    if (session.game.status !== "paused") throw new UserError("The game is not paused.");
+    session.game.resume();
+    await this.updateCard(session);
+    this.scheduleCall(session);
+    if (session.voice) void session.voice.speak("Game resumed.");
+  }
+
+  promptEnd(guildId: string, member: GuildMember): ReplyPayload {
+    const session = this.require(guildId);
+    this.assertControl(session, member);
+    return buildTambolaEndConfirmPayload(session.game);
+  }
+
+  async end(guildId: string, member: GuildMember): Promise<void> {
+    const session = this.require(guildId);
+    this.assertControl(session, member);
+    await this.finishGame(session, "The host ended the game.");
+  }
+
+  status(guildId: string): ReplyPayload | null {
+    const session = this.get(guildId);
+    if (!session) return null;
+    return this.cardPayload(session);
+  }
+
+  rules(): ReplyPayload {
+    return buildTambolaRulesPayload();
+  }
+
+  async handleInteraction(interaction: ComponentInteraction): Promise<void> {
+    const parts = interaction.customId.split(":");
+    if (parts[0] !== "tambola") return;
+    const action = parts[1];
+    const gameId = parts[2];
+    if (!action || !gameId) return;
+    const session = this.byId.get(gameId);
+    if (!session) {
+      await this.privateReply(interaction, {
+        content: "That Tambola game is no longer active.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const guild = interaction.guild;
+    const member = guild
+      ? await guild.members.fetch(interaction.user.id).catch(() => null)
+      : null;
+
+    try {
+      if (action === "rules") {
+        await this.privateReply(interaction, buildTambolaRulesPayload());
+        return;
+      }
+      if (action === "join") {
+        if (!member) throw new UserError("Join from the server lobby.");
+        await this.handleJoin(interaction, session, member);
+        return;
+      }
+      if (action === "leave") {
+        if (!member) throw new UserError("Leave from the server lobby.");
+        this.leave(session.game.guildId, member.id);
+        await this.privateReply(interaction, { content: "You left the lobby.", ephemeral: true });
+        return;
+      }
+      if (action === "start") {
+        if (!member) throw new UserError("Start from the server lobby.");
+        await this.deferPrivate(interaction);
+        await this.start(session.game.guildId, member);
+        await this.editPrivate(interaction, { content: "Tambola started.", ephemeral: true });
+        return;
+      }
+      if (action === "call") {
+        if (!member) throw new UserError("Call numbers from the server game card.");
+        const number = await this.call(session.game.guildId, member);
+        await this.privateReply(interaction, {
+          content: number === null ? "No numbers remain." : `Called ${number}.`,
+          ephemeral: true,
+        });
+        return;
+      }
+      if (action === "pause") {
+        if (!member) throw new UserError("Pause from the server game card.");
+        await this.pause(session.game.guildId, member);
+        await this.privateReply(interaction, { content: "Game paused.", ephemeral: true });
+        return;
+      }
+      if (action === "resume") {
+        if (!member) throw new UserError("Resume from the server game card.");
+        await this.resume(session.game.guildId, member);
+        await this.privateReply(interaction, { content: "Game resumed.", ephemeral: true });
+        return;
+      }
+      if (action === "end") {
+        if (!member) throw new UserError("End the game from the server game card.");
+        await this.privateReply(interaction, this.promptEnd(session.game.guildId, member));
+        return;
+      }
+      if (action === "endconfirm") {
+        if (!member) throw new UserError("End the game from the server game card.");
+        this.assertControl(session, member);
+        await this.deferPrivate(interaction);
+        await this.finishGame(session, "The host ended the game.");
+        await this.editPrivate(interaction, { content: "Tambola ended.", ephemeral: true });
+        return;
+      }
+      if (action === "endcancel") {
+        await interaction
+          .update(
+            messageOptions(
+              {
+                components: [
+                  new ContainerBuilder()
+                    .setAccentColor(UI_ACCENT)
+                    .addTextDisplayComponents(text("## Tambola"))
+                    .addTextDisplayComponents(text("The game continues.")),
+                ],
+                flags: MessageFlags.IsComponentsV2,
+              },
+              false,
+            ),
+          )
+          .catch(() => undefined);
+        return;
+      }
+      if (action === "ticket") {
+        const player = session.game.player(interaction.user.id);
+        if (!player) throw new UserError("You are not in this game.");
+        await this.deferPrivate(interaction);
+        const payload = buildTambolaTicketPayload(session.game, player);
+        const dmSent = await this.sendTicketDm(interaction.user, payload);
+        await this.editPrivate(interaction, dmSent ? { content: "Ticket sent by DM." } : payload);
+        return;
+      }
+      if (action === "claim") {
+        const player = session.game.player(interaction.user.id);
+        if (!player) throw new UserError("You are not in this game.");
+        await this.privateReply(interaction, buildTambolaClaimPayload(session.game, player));
+        return;
+      }
+      if (action === "claimselect") {
+        const player = session.game.player(interaction.user.id);
+        if (!player) throw new UserError("You are not in this game.");
+        if (!interaction.isStringSelectMenu()) throw new UserError("Choose a pattern from the menu.");
+        const pattern = interaction.values[0] as ClaimPattern | undefined;
+        if (!pattern || !CLAIM_PATTERNS.includes(pattern)) throw new UserError("Choose a valid pattern.");
+        const result = session.game.claim(interaction.user.id, pattern);
+        if (!result.ok) {
+          await this.privateReply(interaction, { content: result.reason, ephemeral: true });
+          return;
+        }
+        await this.updateCard(session);
+        if (pattern === "full_house") {
+          const winner = interaction.user.id;
+          await this.finishGame(session, `<@${winner}> claimed Full House.`);
+          await this.privateReply(interaction, {
+            content: "Full House! Congratulations!",
+            ephemeral: true,
+          });
+          return;
+        }
+        if (session.voice) void session.voice.speak(`${CLAIM_LABELS[pattern]} claimed!`);
+        await this.privateReply(interaction, {
+          content: `${CLAIM_LABELS[pattern]} claimed!`,
+          ephemeral: true,
+        });
+        return;
+      }
+      if (action === "mark") {
+        const player = session.game.player(interaction.user.id);
+        if (!player) throw new UserError("You are not in this game.");
+        const number = Number(parts[3]);
+        if (!Number.isInteger(number)) throw new UserError("Invalid number.");
+        const result = session.game.mark(interaction.user.id, number);
+        if (!result.ok) {
+          await this.privateReply(interaction, { content: result.reason, ephemeral: true });
+          return;
+        }
+        await interaction.update(messageOptions(buildTambolaTicketPayload(session.game, player), false));
+        return;
+      }
+      if (action === "refresh") {
+        const player = session.game.player(interaction.user.id);
+        if (!player) throw new UserError("You are not in this game.");
+        await interaction.update(messageOptions(buildTambolaTicketPayload(session.game, player), false));
+        return;
+      }
+    } catch (error) {
+      await this.replyError(interaction, error);
+    }
+  }
+
+  onChannelDelete(channelId: string): void {
+    for (const session of this.byGuild.values()) {
+      if (session.game.channelId === channelId) {
+        void this.cancel(session, "The game channel was deleted.");
+        return;
+      }
+    }
+  }
+
+  onMemberRemove(guildId: string, userId: string): void {
+    const session = this.byGuild.get(guildId);
+    if (!session) return;
+    if (session.game.status === "lobby") {
+      if (userId === session.game.hostId) {
+        void this.cancel(session, "The host left the server.");
+        return;
+      }
+      if (session.game.removePlayer(userId)) void this.updateCard(session);
+      return;
+    }
+    if (userId === session.game.hostId) {
+      const next = [...session.game.players.keys()].find((id) => id !== userId);
+      if (next) {
+        session.game.transferHost(next);
+        void this.updateCard(session);
+      } else {
+        void this.cancel(session, "The host left the server.");
+      }
+    }
+  }
+
+  stop(): void {
+    for (const session of this.byGuild.values()) {
+      this.clearTimers(session);
+      session.game.cancel();
+      session.voice?.leave();
+      session.voice = null;
+    }
+    this.byGuild.clear();
+    this.byId.clear();
+  }
+
+  private async handleJoin(
+    interaction: ComponentInteraction,
+    session: TambolaSession,
+    member: GuildMember,
+  ): Promise<void> {
+    await this.deferPrivate(interaction);
+    const result = session.game.addPlayer(member.id, member.displayName);
+    if (!result.ok) throw new UserError(result.reason);
+    const payload = buildTambolaTicketPayload(session.game, result.player);
+    const dmSent = await this.sendTicketDm(member.user, payload);
+    await this.updateCard(session);
+    await this.editPrivate(
+      interaction,
+      dmSent ? { content: "You joined. Your ticket was sent by DM." } : payload,
+    );
+  }
+
+  private async startVoice(session: TambolaSession): Promise<void> {
+    if (!session.voiceChannelId) {
+      session.voiceNote = "Text only";
+      return;
+    }
+    if (this.music.isConnected(session.game.guildId)) {
+      session.voiceNote = "Text only · music active";
+      return;
+    }
+    const guild = this.client.guilds.cache.get(session.game.guildId);
+    const channel = guild
+      ? await guild.channels.fetch(session.voiceChannelId).catch(() => null)
+      : null;
+    if (!channel || channel.type !== ChannelType.GuildVoice) {
+      session.voiceNote = "Text only · voice channel unavailable";
+      return;
+    }
+    const voice = new TambolaVoice(this.logger);
+    const joined = await voice.join(channel as VoiceChannel);
+    if (!joined) {
+      session.voiceNote = "Text only · TTS unavailable";
+      return;
+    }
+    session.voice = voice;
+    session.voiceNote = null;
+  }
+
+  private async callNext(session: TambolaSession, manual = false): Promise<number | null> {
+    const game = session.game;
+    if (game.status !== "active" && !(manual && game.status === "paused")) return null;
+    if (session.calling) return null;
+    session.calling = true;
+    this.clearTimers(session, "call");
+    try {
+      const number = game.nextCall();
+      if (number === null) {
+        this.scheduleFinalize(session);
+        return null;
+      }
+      const phrase = buildCallPhrase(number, session.lastGenericIndex);
+      session.lastGenericIndex = phrase.genericIndex;
+      if (manual) session.lastManualCallAt = Date.now();
+      await this.updateCard(session);
+      if (session.voice) void session.voice.speak(phrase.text);
+      if (game.status === "active" && game.remainingCalls > 0) {
+        this.scheduleCall(session);
+      } else if (game.remainingCalls === 0) {
+        this.scheduleFinalize(session);
+      }
+      return number;
+    } finally {
+      session.calling = false;
+    }
+  }
+
+  private scheduleCall(session: TambolaSession): void {
+    this.clearTimers(session, "call");
+    if (session.game.status !== "active") return;
+    session.callTimer = setTimeout(() => void this.callNext(session), CALL_INTERVAL_MS);
+  }
+
+  private scheduleFinalize(session: TambolaSession): void {
+    if (session.finalizeTimer) return;
+    session.finalizeTimer = setTimeout(() => {
+      if (session.game.status === "active" || session.game.status === "paused") {
+        void this.finishGame(session, "All 90 numbers were called.");
+      }
+    }, FINAL_CLAIM_WINDOW_MS);
+  }
+
+  private async finishGame(session: TambolaSession, note?: string): Promise<void> {
+    if (session.game.status === "lobby") {
+      await this.cancel(session, "The lobby was closed.");
+      return;
+    }
+    this.clearTimers(session);
+    const winner = session.game.winnerId;
+    if (session.game.status !== "finished" && session.game.status !== "cancelled") {
+      session.game.finish();
+    }
+    await this.updateCard(session, note);
+    const voice = session.voice;
+    session.voice = null;
+    if (voice) {
+      if (winner) void voice.speak("Full house! Congratulations!");
+      setTimeout(() => voice.leave(), 6_000);
+    }
+    this.detach(session);
+  }
+
+  private async cancel(session: TambolaSession, note: string): Promise<void> {
+    this.clearTimers(session);
+    session.game.cancel();
+    await this.updateCard(session, note);
+    session.voice?.leave();
+    session.voice = null;
+    this.detach(session);
+  }
+
+  private detach(session: TambolaSession): void {
+    if (this.byGuild.get(session.game.guildId) === session) {
+      this.byGuild.delete(session.game.guildId);
+    }
+    if (this.byId.get(session.game.id) === session) this.byId.delete(session.game.id);
+  }
+
+  private clearTimers(session: TambolaSession, kind?: "lobby" | "call"): void {
+    if (kind !== "call" && session.lobbyTimer) {
+      clearTimeout(session.lobbyTimer);
+      session.lobbyTimer = null;
+    }
+    if (kind !== "lobby" && session.callTimer) {
+      clearTimeout(session.callTimer);
+      session.callTimer = null;
+    }
+    if (!kind && session.finalizeTimer) {
+      clearTimeout(session.finalizeTimer);
+      session.finalizeTimer = null;
+    }
+    if (!kind && session.gameTimer) {
+      clearTimeout(session.gameTimer);
+      session.gameTimer = null;
+    }
+  }
+
+  private cardPayload(session: TambolaSession): ReplyPayload {
+    const game = session.game;
+    if (game.status === "lobby") {
+      return buildTambolaLobbyPayload(game, session.voiceChannelId);
+    }
+    if (game.status === "finished" || game.status === "cancelled") {
+      return buildTambolaFinalPayload(game);
+    }
+    const voiceConnected = Boolean(session.voice?.connected && !session.voice.disabled);
+    return buildTambolaGamePayload(
+      game,
+      voiceConnected ? session.voiceChannelId : null,
+      session.voice?.disabled
+        ? "Text only · TTS unavailable"
+        : session.voiceNote ?? undefined,
+    );
+  }
+
+  private async updateCard(session: TambolaSession, note?: string): Promise<void> {
+    if (!session.cardMessage) return;
+    const payload = note && (session.game.status === "finished" || session.game.status === "cancelled")
+      ? buildTambolaFinalPayload(session.game, note)
+      : this.cardPayload(session);
+    try {
+      await session.cardMessage.edit(messageOptions(payload, false));
+    } catch (error) {
+      this.logger.debug({ err: error, gameId: session.game.id }, "tambola card update failed");
+    }
+  }
+
+  private async sendTicketDm(user: { send(options: OutgoingMessage): Promise<unknown> }, payload: ReplyPayload): Promise<boolean> {
+    try {
+      await user.send(messageOptions(payload, false));
+      return true;
+    } catch (error) {
+      this.logger.debug({ err: error }, "tambola ticket DM failed");
+      return false;
+    }
+  }
+
+  private assertControl(session: TambolaSession, member: GuildMember): void {
+    if (member.id === session.game.hostId) return;
+    if (isAdmin(member, this.config, member.guild)) return;
+    throw new UserError("Only the host or an admin can do that.");
+  }
+
+  private newId(): string {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const id = randomBytes(3).toString("hex").toUpperCase();
+      if (!this.byId.has(id)) return id;
+    }
+    throw new Error("Could not allocate a Tambola game ID.");
+  }
+
+  private async deferPrivate(interaction: ComponentInteraction): Promise<void> {
+    if (interaction.replied || interaction.deferred) return;
+    if (interaction.inGuild()) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    } else {
+      await interaction.deferReply();
+    }
+  }
+
+  private async editPrivate(interaction: ComponentInteraction, payload: ReplyPayload): Promise<void> {
+    await interaction.editReply(messageOptions(payload, false));
+  }
+
+  private async privateReply(interaction: ComponentInteraction, payload: ReplyPayload): Promise<void> {
+    const data = messageOptions(payload, interaction.inGuild());
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp(data).catch(() => undefined);
+    } else {
+      await interaction.reply(data).catch(() => undefined);
+    }
+  }
+
+  private async replyError(interaction: ComponentInteraction, error: unknown): Promise<void> {
+    const message = error instanceof UserError ? error.message : "That Tambola action failed.";
+    this.logger.warn({ err: error, customId: interaction.customId }, "tambola interaction failed");
+    if (interaction.deferred) {
+      await interaction.editReply(messageOptions({ content: message }, false)).catch(() => undefined);
+      return;
+    }
+    await this.privateReply(interaction, { content: message, ephemeral: true });
+  }
+}

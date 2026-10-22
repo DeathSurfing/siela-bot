@@ -66,6 +66,7 @@ import { MusicService, type MusicFilterPreset } from "./features/music.js";
 import { buildMusicPayload } from "./features/music-ui.js";
 import { LyricsService } from "./features/lyrics.js";
 import { buildLyricsPayload } from "./features/lyrics-ui.js";
+import { TambolaService } from "./features/tambola/service.js";
 import { EMOJI, card, confirmCard } from "./features/ui.js";
 import { PrivacyService } from "./features/privacy.js";
 import { buildHelpPayload } from "./features/help.js";
@@ -127,6 +128,7 @@ export class SielaBot {
       this.valkey,
     );
     this.music = music;
+    const tambola = new TambolaService(this.client, music, this.config, this.logger);
     this.randomVc = new RandomVcService(music, this.logger);
     this.scheduledEvents = new ScheduledEventService(
       music,
@@ -154,6 +156,7 @@ export class SielaBot {
       privacy: new PrivacyService(counters),
       music,
       lyrics,
+      tambola,
       scheduledEvents: this.scheduledEvents,
     };
     this.controlServer = new ControlServer({
@@ -202,6 +205,7 @@ export class SielaBot {
     this.client.on(Events.VoiceStateUpdate, (oldState, newState) => void this.onVoiceState(oldState, newState));
     this.client.on(Events.ChannelDelete, (channel) => {
       if (channel.type === ChannelType.GuildVoice) void this.services.tempVc.onChannelDelete(channel.id);
+      this.services.tambola.onChannelDelete(channel.id);
     });
     this.client.on(Events.ChannelUpdate, (oldChannel, newChannel) => {
       if (newChannel.type === ChannelType.GuildVoice) {
@@ -333,6 +337,13 @@ export class SielaBot {
     try {
       if (interaction.isChatInputCommand()) {
         await this.onChatInput(interaction);
+        return;
+      }
+      if (
+        (interaction.isButton() || interaction.isStringSelectMenu()) &&
+        interaction.customId.startsWith("tambola:")
+      ) {
+        await this.services.tambola.handleInteraction(interaction);
         return;
       }
       if (interaction.isButton() && interaction.customId.startsWith("music:")) {
@@ -889,6 +900,7 @@ export class SielaBot {
 
   private async onMemberRemove(member: GuildMember | PartialGuildMember): Promise<void> {
     if (member.guild.id !== this.guildId) return;
+    this.services.tambola.onMemberRemove(member.guild.id, member.user.id);
     await Promise.allSettled([
       this.services.welcome.onMemberRemove(member),
       this.services.tempVc.onMemberRemove(member.guild, member.user.id),
@@ -927,6 +939,7 @@ export class SielaBot {
     this.stopping = true;
     await Promise.allSettled([this.controlServer.stop(), this.healthServer.stop()]);
     if (this.music) await this.music.shutdown().catch(() => undefined);
+    this.services.tambola.stop();
     this.randomVc.stop();
     this.scheduledEvents.stop();
     await this.services.activity.stop();

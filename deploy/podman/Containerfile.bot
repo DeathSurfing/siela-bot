@@ -17,8 +17,8 @@ RUN pnpm --filter @siela/bot build
 RUN pnpm --filter @siela/bot deploy --prod /out
 
 FROM node:24-alpine AS runtime
-RUN apk add --no-cache ffmpeg mpv python3 py3-pip fontconfig ttf-dejavu font-noto-cjk \
-  && pip install --no-cache-dir --break-system-packages yt-dlp
+RUN apk add --no-cache ffmpeg mpv python3 py3-pip ca-certificates fontconfig ttf-dejavu font-noto-cjk \
+  && pip install --no-cache-dir --break-system-packages yt-dlp edge-tts
 ENV NODE_ENV=production
 ENV XDG_CACHE_HOME=/tmp
 WORKDIR /app

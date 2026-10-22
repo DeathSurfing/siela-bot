@@ -26,6 +26,7 @@ import { musicConfigCommand } from "./admin/musicconfig.js";
 import { configCommand } from "./admin/config.js";
 import { vcCommand } from "./voice/vc.js";
 import { loveCalcCommand } from "./social/love.js";
+import { tambolaCommand } from "./social/tambola.js";
 import {
   choduCommand,
   hugCommand,
@@ -57,6 +58,7 @@ export const commands: Command[] = [
   configCommand,
   vcCommand,
   loveCalcCommand,
+  tambolaCommand,
   biasCommand,
   adoptCommand,
   divorceCommand,
