@@ -59,6 +59,22 @@ export class DeluluService {
       }
     }
 
+    // Public no-token fallback so /delulu works without HF_TOKEN.
+    try {
+      const prompt = `You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Do not include quotes around the whole response.`;
+      const response = await fetch(`https://text.pollinations.ai/${encodeURIComponent(prompt)}`, {
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (response.ok) {
+        const text = (await response.text()).trim();
+        if (text && !text.toLowerCase().includes("free limit reached") && !text.toLowerCase().includes("please wait")) {
+          return text;
+        }
+      }
+    } catch (error) {
+      this.logger.warn({ err: error }, "delulu public fallback failed");
+    }
+
     const scenario = FALLBACK_SCENARIOS[Math.floor(Math.random() * FALLBACK_SCENARIOS.length)]!;
     return `${bias} ${scenario}`;
   }
