@@ -28,6 +28,8 @@ import type { ValkeyService } from "./valkey.js";
 
 const execFileAsync = promisify(execFile);
 const AUDIO_FORMAT = "bestaudio[abr<=312]/bestaudio/best[abr<=312]/best";
+const SPOTIFY_COLLECTION_RE =
+  /open\.spotify\.com\/(?:intl-[a-z-]+\/)?(?:user\/[^/]+\/)?(playlist|album)\/([A-Za-z0-9]+)/i;
 
 export interface MusicServiceOptions {
   backend: "mpv" | "ffmpeg";
@@ -55,6 +57,60 @@ interface ResolvedTrack {
   length: number;
   isStream: boolean;
   artworkUrl: string | null;
+}
+
+interface SpotifyEmbedTrack {
+  title?: string;
+  subtitle?: string;
+  duration?: number;
+  isPlayable?: boolean;
+  entityType?: string;
+}
+
+interface SpotifyEmbedEntity {
+  name?: string;
+  title?: string;
+  coverArt?: { sources?: Array<{ url?: string }> };
+  visualIdentity?: { image?: Array<{ url?: string }> };
+  trackList?: SpotifyEmbedTrack[];
+}
+
+interface SpotifyPlaylist {
+  name: string;
+  artworkUrl: string | null;
+  tracks: Array<{ title: string; artist: string; length: number }>;
+}
+
+function cleanSpotifyText(value: string | undefined): string {
+  return (value ?? "").replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function pickThumbnail(entry: Record<string, unknown>): string | null {
+  if (typeof entry.thumbnail === "string") return entry.thumbnail;
+  if (!Array.isArray(entry.thumbnails)) return null;
+  const best = entry.thumbnails
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+    .sort(
+      (left, right) =>
+        Number(right.width ?? 0) * Number(right.height ?? 0) -
+        Number(left.width ?? 0) * Number(left.height ?? 0),
+    )[0];
+  return typeof best?.url === "string" ? best.url : null;
+}
+
+function parseJsonLines(stdout: string): Array<Record<string, unknown>> {
+  const objects: Array<Record<string, unknown>> = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (parsed && typeof parsed === "object") objects.push(parsed as Record<string, unknown>);
+    } catch {
+      // yt-dlp can emit a partial line before failing; ignore it and use the rest.
+    }
+  }
+  return objects;
 }
 
 function toInfo(track: QueueTrack): MusicTrackInfo {
@@ -814,6 +870,158 @@ export class MusicService extends EventEmitter {
     }
   }
 
+  private async spotifyPlaylist(url: string): Promise<SpotifyPlaylist | null> {
+    const match = url.match(SPOTIFY_COLLECTION_RE);
+    const kind = match?.[1];
+    const id = match?.[2];
+    if (!kind || !id) return null;
+    try {
+      const response = await fetch(`https://open.spotify.com/embed/${kind}/${id}`, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; SielaBot/1.0)",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) return null;
+      const html = await response.text();
+      const dataMatch = html.match(
+        /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/,
+      );
+      if (!dataMatch?.[1]) return null;
+      const parsed = JSON.parse(dataMatch[1]) as {
+        props?: { pageProps?: { state?: { data?: { entity?: SpotifyEmbedEntity } } } };
+      };
+      const entity = parsed.props?.pageProps?.state?.data?.entity;
+      if (!entity) return null;
+      const artworkUrl =
+        entity.coverArt?.sources?.find((source) => typeof source.url === "string")?.url ??
+        entity.visualIdentity?.image?.find((image) => typeof image.url === "string")?.url ??
+        null;
+      const tracks = (entity.trackList ?? [])
+        .filter((track) => track.isPlayable !== false && track.entityType !== "episode")
+        .map((track) => ({
+          title: cleanSpotifyText(track.title),
+          artist: cleanSpotifyText(track.subtitle),
+          length: Math.max(0, Number(track.duration ?? 0)),
+        }))
+        .filter((track) => track.title.length > 0);
+      if (!tracks.length) return null;
+      return {
+        name: cleanSpotifyText(entity.name ?? entity.title),
+        artworkUrl,
+        tracks,
+      };
+    } catch (error) {
+      this.logger.warn({ err: error, url }, "failed to read Spotify playlist");
+      return null;
+    }
+  }
+
+  private async ytdlpJsonLines(
+    args: string[],
+    query: string,
+    timeoutMs = 120_000,
+  ): Promise<Array<Record<string, unknown>>> {
+    try {
+      const result = await execFileAsync(this.options.ytdlpPath, args, {
+        cwd: "/tmp",
+        timeout: timeoutMs,
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      return parseJsonLines(result.stdout);
+    } catch (error) {
+      const stdout = (error as { stdout?: string }).stdout;
+      const partial = stdout ? parseJsonLines(stdout) : [];
+      if (partial.length) return partial;
+      this.logger.warn({ err: error, query }, "yt-dlp batch resolve failed");
+      throw new ServiceUnavailableError("Music search failed. Try again in a moment.");
+    }
+  }
+
+  private firstYtdlpEntry(object: Record<string, unknown>): Record<string, unknown> | null {
+    if (Array.isArray(object.entries)) {
+      const entry = object.entries.find((item) => item && typeof item === "object");
+      return entry ? (entry as Record<string, unknown>) : null;
+    }
+    return object;
+  }
+
+  private async resolveSpotifyPlaylist(
+    playlist: SpotifyPlaylist,
+    limit: number,
+  ): Promise<ResolvedTrack[]> {
+    const wanted = playlist.tracks.slice(0, Math.max(1, limit));
+    const queries = wanted.map((track) =>
+      cleanSpotifyText(`${track.title} ${track.artist}`).slice(0, 200),
+    );
+    const objects = await this.ytdlpJsonLines(
+      [
+        "--dump-single-json",
+        "--flat-playlist",
+        "--playlist-end",
+        "1",
+        "--ignore-errors",
+        "--no-warnings",
+        "--quiet",
+        "--js-runtimes",
+        "node",
+        "--no-part",
+        "--no-cache-dir",
+        ...queries.map((query) => `ytsearch1:${query}`),
+      ],
+      `spotify:${playlist.name}`,
+      Math.min(300_000, 30_000 + queries.length * 5_000),
+    );
+    const byQuery = new Map<string, Record<string, unknown>>();
+    for (const object of objects) {
+      if (typeof object.id !== "string") continue;
+      byQuery.set(object.id.replace(/^ytsearch\d+:/i, ""), object);
+    }
+
+    const resolved: ResolvedTrack[] = [];
+    let fallbackBudget = 10;
+    for (let index = 0; index < wanted.length; index += 1) {
+      const spotifyTrack = wanted[index]!;
+      const query = queries[index]!;
+      const object = byQuery.get(query);
+      const entry = object ? this.firstYtdlpEntry(object) : null;
+      const url = entry ? (entry.webpage_url ?? entry.url) : null;
+      if (entry && typeof url === "string") {
+        const duration = Number(entry.duration ?? 0) * 1000;
+        resolved.push({
+          url,
+          title: spotifyTrack.title || String(entry.title ?? "Unknown title"),
+          author:
+            spotifyTrack.artist ||
+            String(entry.uploader ?? entry.channel ?? entry.artist ?? "Unknown artist"),
+          length: duration > 0 ? duration : spotifyTrack.length,
+          isStream: Boolean(entry.is_live),
+          artworkUrl: pickThumbnail(entry) ?? playlist.artworkUrl,
+        });
+        continue;
+      }
+
+      if (fallbackBudget <= 0) continue;
+      fallbackBudget -= 1;
+      try {
+        const found = await this.searchTracks(query, "ytsearch", 1);
+        const fallback = found[0];
+        if (!fallback) continue;
+        resolved.push({
+          ...fallback,
+          title: spotifyTrack.title || fallback.title,
+          author: spotifyTrack.artist || fallback.author,
+          length: fallback.length || spotifyTrack.length,
+          artworkUrl: fallback.artworkUrl ?? playlist.artworkUrl,
+        });
+      } catch (error) {
+        this.logger.debug({ err: error, query }, "Spotify track fallback failed");
+      }
+    }
+    return resolved;
+  }
+
   private async ytdlpJson(args: string[], query: string): Promise<ResolvedTrack[]> {
     let stdout: string;
     try {
@@ -879,6 +1087,19 @@ export class MusicService extends EventEmitter {
 
   private async resolve(query: string, limit = 5): Promise<ResolvedTrack[]> {
     let target = query.trim().replace(/^["']|["']$/g, "").trim();
+    if (SPOTIFY_COLLECTION_RE.test(target)) {
+      const playlist = await this.spotifyPlaylist(target);
+      if (!playlist) {
+        throw new UserError(
+          "Could not read that Spotify playlist. It may be private, region-locked, or empty.",
+        );
+      }
+      const tracks = await this.resolveSpotifyPlaylist(playlist, limit);
+      if (!tracks.length) {
+        throw new UserError("No playable tracks were found in that Spotify playlist.", "no_tracks");
+      }
+      return tracks;
+    }
     if (/open\.spotify\.com\//i.test(target)) {
       const search = await this.spotifyToSearch(target);
       if (!search) {
@@ -1041,10 +1262,14 @@ export class MusicService extends EventEmitter {
   ): Promise<{ added: number; first: MusicTrackInfo }> {
     const guildPlayer = await this.ensurePlayer(member, voiceChannelId);
     const settings = await this.options.settings.getMusic(member.guild.id);
-    const resolved = await this.resolve(query, settings.maxQueueSize);
-    const available = Math.max(0, settings.maxQueueSize - guildPlayer.queue.length - (guildPlayer.current ? 1 : 0));
+    const available = Math.max(
+      0,
+      settings.maxQueueSize - guildPlayer.queue.length - (guildPlayer.current ? 1 : 0),
+    );
+    if (!available) throw new UserError("The queue is full. Use `clearqueue` to empty upcoming tracks.");
+    const resolved = await this.resolve(query, available);
     const accepted = resolved.slice(0, available);
-    if (!accepted.length) throw new UserError("The queue is full. Use `clearqueue` to empty upcoming tracks.");
+    if (!accepted.length) throw new UserError("No tracks could be queued.");
     const queueTracks: QueueTrack[] = accepted.map((track) => ({ ...track }));
     if (next) guildPlayer.queue.unshift(...queueTracks);
     else guildPlayer.queue.push(...queueTracks);

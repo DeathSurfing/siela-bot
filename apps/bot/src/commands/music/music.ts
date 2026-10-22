@@ -32,18 +32,19 @@ const playCommand: Command = {
   name: "play",
   aliases: ["p"],
   category: "music",
-  description: "Play a search, a track URL, or a playlist URL (YouTube/YouTube Music/SoundCloud).",
+  description: "Play a search, track URL, or playlist (YouTube, SoundCloud, Spotify).",
   usage: "<query or url>",
   examples: [
     "play lofi",
     "play https://soundcloud.com/...",
     "play https://music.youtube.com/playlist?list=...",
     "play https://open.spotify.com/track/...",
+    "play https://open.spotify.com/playlist/...",
   ],
   cooldownMs: 2_000,
   slash: new SlashCommandBuilder()
     .setName("play")
-    .setDescription("Play a SoundCloud search or URL")
+    .setDescription("Play a search, track, or playlist")
     .addStringOption((option) => option.setName("query").setDescription("Search or URL").setRequired(true).setMaxLength(500))
     .addChannelOption((option) => option.setName("voice").setDescription("Voice channel (optional)").setRequired(false)),
   async execute(ctx: CommandContext) {
