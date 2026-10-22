@@ -1,11 +1,12 @@
 import type { Command, CommandContext } from "../../framework/types.js";
+import { success } from "../../features/ui.js";
 
 const TEST_USER_ID = "197768227936403458";
 
 export const testCommand: Command = {
   name: "test",
   category: "admin",
-  description: "Run a scheduled voice event phase for testing.",
+  description: "Run the full scheduled voice event workflow for testing.",
   usage: "<azan|anthem|hanumanchalisa>",
   examples: ["test azan", "test anthem", "test hanumanchalisa"],
   cooldownMs: 2_000,
@@ -19,16 +20,14 @@ export const testCommand: Command = {
       await ctx.reply({ content: "Usage: `test <azan|anthem|hanumanchalisa>`", ephemeral: true });
       return;
     }
+    const message = await ctx.reply({ content: `Running scheduled event test: **${kind}**…` });
     try {
       const result = await ctx.services.scheduledEvents.test(kind, ctx.guild);
       const file = result.audio.split("/").pop() ?? result.audio;
-      await ctx.reply({
-        content: `Started **${result.phase}** in **${result.channel}** using \`${file}\`.`,
-      });
+      await message?.edit(success(`Test complete: **${result.phase}** in **${result.channel}** using \`${file}\`.`));
     } catch (error) {
-      await ctx.reply({
-        content: error instanceof Error ? error.message : "That test phase could not start.",
-        ephemeral: true,
+      await message?.edit({
+        content: error instanceof Error ? error.message : "That test phase failed.",
       });
     }
   },

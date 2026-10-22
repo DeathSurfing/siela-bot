@@ -171,14 +171,23 @@ export class ScheduledEventService {
   }
 
   private async moveEveryone(guild: Guild, channel: VoiceChannel): Promise<void> {
-    const moves = [...guild.voiceStates.cache.values()]
-      .filter((state) => {
-        if (!state.channelId || state.channelId === channel.id) return false;
-        if (guild.afkChannelId && state.channelId === guild.afkChannelId) return false;
-        return Boolean(state.member && !state.member.user.bot);
-      })
-      .map((state) => state.member!.voice.setChannel(channel, "Scheduled voice event"));
-    await Promise.allSettled(moves);
+    const states = [...guild.voiceStates.cache.values()].filter((state) => {
+      if (!state.channelId || state.channelId === channel.id) return false;
+      if (guild.afkChannelId && state.channelId === guild.afkChannelId) return false;
+      return Boolean(state.member && !state.member.user.bot);
+    });
+    if (!states.length) {
+      this.logger.info({ guildId: guild.id, channelId: channel.id }, "scheduled event has no members to move");
+      return;
+    }
+    const results = await Promise.allSettled(
+      states.map((state) => state.member!.voice.setChannel(channel, "Scheduled voice event")),
+    );
+    const failed = results.filter((result) => result.status === "rejected").length;
+    this.logger.info(
+      { guildId: guild.id, channelId: channel.id, moved: states.length - failed, failed },
+      "scheduled event moved members",
+    );
   }
 
   private async playAudio(guild: Guild, channel: VoiceChannel, path: string): Promise<void> {
@@ -224,20 +233,15 @@ export class ScheduledEventService {
     if (!audio) {
       throw new Error(`Missing audio file: assets/events/${phase.audioName}.ogg|mp3|wav|m4a|flac`);
     }
-    void this.runPhase(guild, phase).catch((error) =>
-      this.logger.warn({ err: error, phase: phase.key }, "test scheduled phase failed"),
-    );
+    this.logger.info({ guildId: guild.id, phase: phase.key }, "scheduled event test starting");
+    await this.runPhase(guild, phase);
     return { phase: phase.key, channel: phase.channelName, audio };
   }
 
   private async runPhase(guild: Guild, phase: Phase): Promise<void> {
     const path = findAudio(phase.audioName);
     if (!path) {
-      this.logger.warn(
-        { phase: phase.key, expected: `${phase.audioName}.ogg|mp3|wav|m4a|flac` },
-        "scheduled event audio missing; skipping phase",
-      );
-      return;
+      throw new Error(`Missing audio file: assets/events/${phase.audioName}.ogg|mp3|wav|m4a|flac`);
     }
 
     try {
@@ -248,8 +252,6 @@ export class ScheduledEventService {
       await this.moveEveryone(guild, channel);
       await this.playAudio(guild, channel, path);
       this.logger.info({ phase: phase.key, channelId: channel.id }, "scheduled voice event completed");
-    } catch (error) {
-      this.logger.warn({ err: error, phase: phase.key }, "scheduled voice event failed");
     } finally {
       this.stopPlayback();
     }
