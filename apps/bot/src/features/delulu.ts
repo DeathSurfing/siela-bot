@@ -34,7 +34,8 @@ function composeStory(content: string, bias: string): string | null {
   const escalation = cleanField(record.escalation);
   const line = cleanField(record.line);
   if (!scene || !notice || !escalation || !line) return null;
-  const lineText = /[.!?]$/.test(line) ? line : `${line}.`;
+  const shortLine = line.length > 140 ? `${line.slice(0, 140).replace(/\s+\S*$/, "")}...` : line;
+  const lineText = /[.!?]$/.test(shortLine) ? shortLine : `${shortLine}.`;
   return `${sentence(scene)} ${sentence(notice)} ${sentence(escalation)} ${bias} says, "${lineText}"`;
 }
 
@@ -56,18 +57,18 @@ export class DeluluService {
   ) {}
 
   async generate(bias: string): Promise<string> {
-    const prompt = `Return JSON for a funny, absurd, coherent story about BTS member ${bias} noticing the user.
+    const prompt = `Return JSON for a ridiculous delulu story about BTS member ${bias} noticing the user.
 
 Keys:
 - scene: one sentence starting with "You are" in a specific ordinary place
-- notice: one sentence where ${bias} notices you and reacts dramatically
-- escalation: one sentence where the situation becomes absurd
+- notice: one sentence where ${bias} notices you and reacts in an over-the-top, dramatic way
+- escalation: one sentence where something impossible or surreal happens
 - line: one short line ${bias} says to you, without quotation marks
 
 Example for Jin:
 {"scene":"You are sorting socks at a laundromat.","notice":"Jin bursts out of the dryer wearing a chef's hat and declares you his muse.","escalation":"The washing machines begin to spin in perfect harmony as the customers form a conga line.","line":"I have been searching every laundromat in Seoul for someone with your sock energy."}
 
-Now write new JSON for ${bias}. Use a different place, reaction, and escalation. Do not copy the example. Use simple English.`;
+Now write new JSON for ${bias}. Use a different place, reaction, and escalation. Make it exaggerated, absurd, and funny. Do not copy the example. Use simple English.`;
 
     if (this.llmUrl) {
       try {
@@ -81,7 +82,7 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
               { role: "user", content: prompt },
             ],
             max_tokens: 700,
-            temperature: 0.8,
+            temperature: 0.85,
             top_p: 0.9,
             response_format: {
               type: "json_schema",
