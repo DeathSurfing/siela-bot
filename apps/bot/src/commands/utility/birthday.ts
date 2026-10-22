@@ -1,8 +1,8 @@
-import { ChannelType, EmbedBuilder, SlashCommandBuilder } from "discord.js";
-import { COLORS } from "@siela/shared";
+import { ChannelType, SlashCommandBuilder } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { isAdmin } from "../../framework/permissions.js";
 import { UserError } from "../../lib/errors.js";
+import { card } from "../../features/ui.js";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -34,17 +34,15 @@ function normalizeId(value: string | undefined): string | undefined {
   return value?.replace(/^<@!?|>$/g, "");
 }
 
-function birthdayEmbed(displayName: string, month: number, day: number, birthYear?: number | null) {
-  const embed = new EmbedBuilder()
-    .setColor(COLORS.social)
-    .setTitle(`🎂 ${displayName}'s birthday`)
-    .addFields(
-      { name: "Date", value: `${MONTHS[month - 1]} ${day}`, inline: true },
-    );
-  if (birthYear) {
-    embed.addFields({ name: "Age", value: String(ageFor(birthYear, month, day)), inline: true });
-  }
-  return embed;
+function birthdayCard(displayName: string, month: number, day: number, birthYear?: number | null) {
+  return card({
+    title: "Birthday",
+    subtitle: displayName,
+    body: [
+      `**Date** · ${MONTHS[month - 1]} ${day}`,
+      ...(birthYear ? [`**Age** · ${ageFor(birthYear, month, day)}`] : []),
+    ].join("\n"),
+  });
 }
 
 export const birthdayCommand: Command = {
@@ -116,7 +114,7 @@ export const birthdayCommand: Command = {
         throw new UserError("Use a valid date: `birthday set <month> <day> [year]`.");
       }
       await ctx.services.birthday.set(ctx.guild.id, ctx.author.id, month, day, year);
-      await ctx.reply({ embeds: [birthdayEmbed(ctx.member.displayName, month, day, year)] });
+      await ctx.reply(birthdayCard(ctx.member.displayName, month, day, year));
       return;
     }
 
@@ -132,7 +130,7 @@ export const birthdayCommand: Command = {
         });
         return;
       }
-      await ctx.reply({ embeds: [birthdayEmbed(member.displayName, row.month, row.day, row.birthYear)] });
+      await ctx.reply(birthdayCard(member.displayName, row.month, row.day, row.birthYear));
       return;
     }
 
@@ -144,7 +142,7 @@ export const birthdayCommand: Command = {
         await ctx.reply({ content: `${targetMember.displayName} has not set a birthday yet.`, ephemeral: true });
         return;
       }
-      await ctx.reply({ embeds: [birthdayEmbed(targetMember.displayName, row.month, row.day, row.birthYear)] });
+      await ctx.reply(birthdayCard(targetMember.displayName, row.month, row.day, row.birthYear));
       return;
     }
 
@@ -156,6 +154,6 @@ export const birthdayCommand: Command = {
       });
       return;
     }
-    await ctx.reply({ embeds: [birthdayEmbed(ctx.member.displayName, row.month, row.day, row.birthYear)] });
+    await ctx.reply(birthdayCard(ctx.member.displayName, row.month, row.day, row.birthYear));
   },
 };

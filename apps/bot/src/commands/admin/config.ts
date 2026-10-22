@@ -1,6 +1,6 @@
-import { EmbedBuilder, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
-import { COLORS } from "@siela/shared";
+import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
+import { card } from "../../features/ui.js";
 
 export const configCommand: Command = {
   name: "config",
@@ -22,21 +22,20 @@ export const configCommand: Command = {
       ctx.services.settings.getTempVc(ctx.guild.id),
       ctx.services.settings.getMusic(ctx.guild.id),
     ]);
-    await ctx.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(COLORS.admin)
-          .setTitle("Server configuration")
-          .addFields(
-            { name: "Prefix", value: `\`${prefix}\``, inline: true },
-            { name: "Welcome", value: welcome.enabled ? `<#${welcome.channelId}>` : "disabled", inline: true },
-            { name: "Auto-role", value: autorole.enabled ? autorole.roleIds.map((id) => `<@&${id}>`).join(", ") || "enabled, no roles" : "disabled", inline: false },
-            { name: "Temp VC", value: tempvc.enabled ? `hub <#${tempvc.hubChannelId}>` : "disabled", inline: true },
-            { name: "Music", value: `volume ${music.defaultVolume} • queue ${music.maxQueueSize}`, inline: true },
-          )
-          .setFooter({ text: "Use the feature commands or MCP tools to change these values" }),
-      ],
-      ephemeral: true,
-    });
+    await ctx.reply(
+      card({
+        title: "Server configuration",
+        body: [
+          `**Prefix** · \`${prefix}\``,
+          `**Welcome** · ${welcome.enabled ? `<#${welcome.channelId}>` : "disabled"}`,
+          `**Auto-role** · ${autorole.enabled ? autorole.roleIds.map((id) => `<@&${id}>`).join(", ") || "enabled, no roles" : "disabled"}`,
+          `**Temp VC** · ${tempvc.enabled ? `hub <#${tempvc.hubChannelId}>` : "disabled"}`,
+          `**Music** · volume ${music.defaultVolume} · queue ${music.maxQueueSize}`,
+          "",
+          "-# Use the feature commands to change these values.",
+        ].join("\n"),
+        ephemeral: true,
+      }),
+    );
   },
 };

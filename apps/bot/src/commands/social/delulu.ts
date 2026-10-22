@@ -1,6 +1,6 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
-import { COLORS } from "@siela/shared";
+import { SlashCommandBuilder } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
+import { card } from "../../features/ui.js";
 
 export const deluluCommand: Command = {
   name: "delulu",
@@ -23,13 +23,12 @@ export const deluluCommand: Command = {
     }
     await ctx.defer();
     const scenario = await ctx.services.delulu.generate(row.bias);
-    await ctx.edit({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(COLORS.social)
-          .setTitle(`✨ Delulu: ${row.bias} notices you`)
-          .setDescription(scenario),
-      ],
-    });
+    await ctx.edit(
+      card({
+        title: `${row.bias} notices you`,
+        subtitle: "Delulu scenario",
+        body: scenario,
+      }),
+    );
   },
 };

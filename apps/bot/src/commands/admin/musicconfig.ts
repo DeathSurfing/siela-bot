@@ -1,22 +1,22 @@
-import { EmbedBuilder, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
-import { COLORS } from "@siela/shared";
+import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
+import { card } from "../../features/ui.js";
 
 function normalizeRoleId(value: string | undefined): string | undefined {
   return value?.replace(/^<@&|>$/g, "");
 }
 
-function configEmbed(settings: Awaited<ReturnType<CommandContext["services"]["settings"]["getMusic"]>>) {
-  return new EmbedBuilder()
-    .setColor(COLORS.music)
-    .setTitle("Music configuration")
-    .addFields(
-      { name: "DJ roles", value: settings.djRoleIds.length ? settings.djRoleIds.map((id) => `<@&${id}>`).join(", ") : "everyone", inline: false },
-      { name: "Default volume", value: String(settings.defaultVolume), inline: true },
-      { name: "Max queue", value: String(settings.maxQueueSize), inline: true },
-      { name: "Alone timeout", value: `${settings.aloneTimeoutSeconds}s`, inline: true },
-      { name: "Music channel", value: settings.musicChannelId ? `<#${settings.musicChannelId}>` : "any", inline: true },
-    );
+function configCard(settings: Awaited<ReturnType<CommandContext["services"]["settings"]["getMusic"]>>) {
+  return card({
+    title: "Music",
+    body: [
+      `**DJ roles** · ${settings.djRoleIds.length ? settings.djRoleIds.map((id) => `<@&${id}>`).join(", ") : "everyone"}`,
+      `**Default volume** · ${settings.defaultVolume}`,
+      `**Max queue** · ${settings.maxQueueSize}`,
+      `**Alone timeout** · ${settings.aloneTimeoutSeconds}s`,
+      `**Music channel** · ${settings.musicChannelId ? `<#${settings.musicChannelId}>` : "any"}`,
+    ].join("\n"),
+  });
 }
 
 export const musicConfigCommand: Command = {
@@ -67,7 +67,7 @@ export const musicConfigCommand: Command = {
     const before = await ctx.services.settings.getMusic(ctx.guild.id);
     try {
       if (action === "show") {
-        await ctx.reply({ embeds: [configEmbed(before)] });
+        await ctx.reply(configCard(before));
         return;
       }
       if (action === "djrole") {

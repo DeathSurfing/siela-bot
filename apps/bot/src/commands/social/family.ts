@@ -5,12 +5,11 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ComponentType,
-  EmbedBuilder,
   SlashCommandBuilder,
 } from "discord.js";
-import { COLORS } from "@siela/shared";
 import type { Command, CommandContext } from "../../framework/types.js";
 import type { FamilyTree } from "../../features/family.js";
+import { card } from "../../features/ui.js";
 
 function normalizeId(value: string | undefined): string | undefined {
   return value?.replace(/^<@!?|>$/g, "");
@@ -35,9 +34,13 @@ async function requestConsent(
     new ButtonBuilder().setCustomId(rejectId).setLabel("Reject").setStyle(ButtonStyle.Danger),
   );
 
+  const expiresAt = Math.floor((Date.now() + 15_000) / 1000);
   const message = await ctx.reply({
-    content: `${target.displayName}, ${ctx.member.displayName} wants to ${action} you. You have 15 seconds to respond.`,
-    components: [row],
+    ...card({
+      title: "Consent needed",
+      body: `<@${target.id}>, **${ctx.member.displayName}** wants to ${action} you.\n\n-# Expires <t:${expiresAt}:R>`,
+      rows: [row],
+    }),
     allowedMentions: { users: [target.id] },
   });
   if (!message) return false;
@@ -62,11 +65,11 @@ async function requestConsent(
       const approved = reason === "approved";
       try {
         if (approved) {
-          await message.edit({ content: `✅ ${target.displayName} approved.`, components: [] });
+          await message.edit(card({ title: "Approved", body: `${target.displayName} approved the request.` }));
         } else if (reason === "rejected") {
-          await message.edit({ content: `❌ ${target.displayName} rejected.`, components: [] });
+          await message.edit(card({ title: "Rejected", body: `${target.displayName} rejected the request.` }));
         } else {
-          await message.edit({ content: `⌛ ${target.displayName} did not respond in time.`, components: [] });
+          await message.edit(card({ title: "Timed out", body: `${target.displayName} did not respond in time.` }));
         }
       } catch {
         // ignore edit failures
@@ -133,13 +136,7 @@ export const marryCommand: Command = {
       return;
     }
 
-    await ctx.followUp({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(COLORS.social)
-          .setDescription(`💍 **${ctx.member.displayName}** married **${target.displayName}**!`),
-      ],
-    });
+    await ctx.followUp(card({ title: "Married", body: `**${ctx.member.displayName}** married **${target.displayName}**.` }));
   },
 };
 
@@ -154,13 +151,7 @@ export const divorceCommand: Command = {
   async execute(ctx: CommandContext) {
     const spouseId = await ctx.services.family.divorce(ctx.guild.id, ctx.author.id);
     const spouse = await ctx.guild.members.fetch(spouseId).catch(() => null);
-    await ctx.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(COLORS.social)
-          .setDescription(`💔 **${ctx.member.displayName}** divorced **${spouse?.displayName ?? spouseId}**.`),
-      ],
-    });
+    await ctx.reply(card({ title: "Divorced", body: `**${ctx.member.displayName}** divorced **${spouse?.displayName ?? spouseId}**.` }));
   },
 };
 
@@ -199,13 +190,7 @@ export const adoptCommand: Command = {
       return;
     }
 
-    await ctx.followUp({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(COLORS.social)
-          .setDescription(`👶 **${ctx.member.displayName}** adopted **${target.displayName}**.`),
-      ],
-    });
+    await ctx.followUp(card({ title: "Adopted", body: `**${ctx.member.displayName}** adopted **${target.displayName}**.` }));
   },
 };
 
@@ -264,7 +249,9 @@ export const familyTreeCommand: Command = {
           const buffer = Buffer.from(await response.arrayBuffer());
           const attachment = new AttachmentBuilder(buffer, { name: "family-tree.jpg" });
           await ctx.reply({
-            content: tree.truncated ? "Family tree truncated for size." : undefined,
+            content: [`-# Marriage — · Parent →`, tree.truncated ? "Family tree truncated for size." : null]
+              .filter(Boolean)
+              .join("\n"),
             files: [attachment],
           });
           sentImage = true;

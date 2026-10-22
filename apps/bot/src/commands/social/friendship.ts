@@ -1,7 +1,7 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
-import { COLORS } from "@siela/shared";
+import { SlashCommandBuilder } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { friendshipProgress, friendshipTier } from "../../features/friendship.js";
+import { attachPagination, card, pagedCard, progressBar, rankLabel } from "../../features/ui.js";
 
 function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -38,17 +38,18 @@ export const friendshipCommand: Command = {
     const tier = friendshipTier(xp);
     const progress = friendshipProgress(xp);
     const next = progress.next === null ? "maxed" : `${progress.next - xp} XP to ${friendshipTier(progress.next).label}`;
-    const embed = new EmbedBuilder()
-      .setColor(COLORS.social)
-      .setTitle(`${tier.emoji} ${ctx.member.displayName} & ${target.displayName}`)
-      .setDescription(`**${tier.label}** — ${xp} XP`)
-      .addFields(
-        { name: "Tier", value: `${tier.emoji} ${tier.label}`, inline: true },
-        { name: "XP", value: String(xp), inline: true },
-        { name: "Time together", value: formatDuration(time), inline: true },
-        { name: "Progress", value: `${progress.percent}% (${next})`, inline: false },
-      );
-    await ctx.reply({ embeds: [embed] });
+    await ctx.reply(
+      card({
+        title: `${tier.emoji} ${ctx.member.displayName} & ${target.displayName}`,
+        subtitle: `${tier.label} · ${xp} XP`,
+        body: [
+          `${progressBar(progress.percent, 100, 14)} ${progress.percent}%`,
+          `**XP** · ${xp}`,
+          `**Time together** · ${formatDuration(time)}`,
+          `**Next** · ${next}`,
+        ].join("\n"),
+      }),
+    );
   },
 };
 
@@ -62,21 +63,32 @@ export const friendshipTopCommand: Command = {
   cooldownMs: 3_000,
   slash: new SlashCommandBuilder().setName("friendshiptop").setDescription("Friendship leaderboard"),
   async execute(ctx: CommandContext) {
-    const rows = await ctx.services.friendship.leaderboard(ctx.guild.id, 10);
+    const rows = await ctx.services.friendship.leaderboard(ctx.guild.id, 100);
     if (!rows.length) {
       await ctx.reply({ content: "No friendship levels yet.", ephemeral: true });
       return;
     }
-    const lines = await Promise.all(
-      rows.map(async (row, index) => {
-        const a = await ctx.guild.members.fetch(row.userA).catch(() => null);
-        const b = await ctx.guild.members.fetch(row.userB).catch(() => null);
+    const ids = [...new Set(rows.flatMap((row) => [row.userA, row.userB]))];
+    const members = await ctx.guild.members.fetch({ user: ids }).catch(() => null);
+    const names = new Map((members ? [...members.values()] : []).map((member) => [member.id, member.displayName]));
+    const perPage = 10;
+    const totalPages = Math.max(1, Math.ceil(rows.length / perPage));
+    const buildPage = (page: number, disabled = false) => {
+      const start = (page - 1) * perPage;
+      const lines = rows.slice(start, start + perPage).map((row, index) => {
         const tier = friendshipTier(row.xp);
-        return `${index + 1}. ${tier.emoji} ${a?.displayName ?? row.userA} & ${b?.displayName ?? row.userB} — ${row.xp} XP`;
-      }),
-    );
-    await ctx.reply({
-      embeds: [new EmbedBuilder().setColor(COLORS.social).setTitle("Friendship leaderboard").setDescription(lines.join("\n"))],
-    });
+        return `${rankLabel(start + index + 1)} ${tier.emoji} ${names.get(row.userA) ?? row.userA} & ${names.get(row.userB) ?? row.userB} — ${row.xp} XP`;
+      });
+      return pagedCard({
+        title: "Friendship leaderboard",
+        subtitle: "pair XP",
+        body: lines.join("\n"),
+        page,
+        totalPages,
+        disabled,
+      });
+    };
+    const message = await ctx.reply(buildPage(1));
+    if (message) attachPagination(message, ctx.author.id, 1, buildPage);
   },
 };

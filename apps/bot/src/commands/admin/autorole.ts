@@ -1,6 +1,6 @@
-import { EmbedBuilder, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
-import { COLORS } from "@siela/shared";
+import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
+import { card } from "../../features/ui.js";
 
 function normalizeRoleId(value: string | undefined): string | undefined {
   return value?.replace(/^<@&|>$/g, "");
@@ -12,17 +12,17 @@ function bool(value: string | undefined): boolean {
   throw new Error("Use `on` or `off`.");
 }
 
-function configEmbed(settings: Awaited<ReturnType<CommandContext["services"]["settings"]["getAutoRole"]>>) {
-  return new EmbedBuilder()
-    .setColor(COLORS.admin)
-    .setTitle("Auto-role configuration")
-    .addFields(
-      { name: "Enabled", value: settings.enabled ? "yes" : "no", inline: true },
-      { name: "Include bots", value: settings.includeBots ? "yes" : "no", inline: true },
-      { name: "Minimum account age", value: `${settings.minAccountAgeDays} days`, inline: true },
-      { name: "Delay", value: `${settings.delayMs}ms`, inline: true },
-      { name: "Roles", value: settings.roleIds.length ? settings.roleIds.map((id) => `<@&${id}>`).join(", ") : "none" },
-    );
+function configCard(settings: Awaited<ReturnType<CommandContext["services"]["settings"]["getAutoRole"]>>) {
+  return card({
+    title: "Auto-role",
+    body: [
+      `**Enabled** · ${settings.enabled ? "yes" : "no"}`,
+      `**Include bots** · ${settings.includeBots ? "yes" : "no"}`,
+      `**Minimum account age** · ${settings.minAccountAgeDays} days`,
+      `**Delay** · ${settings.delayMs}ms`,
+      `**Roles** · ${settings.roleIds.length ? settings.roleIds.map((id) => `<@&${id}>`).join(", ") : "none"}`,
+    ].join("\n"),
+  });
 }
 
 export const autoRoleCommand: Command = {
@@ -72,28 +72,24 @@ export const autoRoleCommand: Command = {
     const before = await ctx.services.settings.getAutoRole(ctx.guild.id);
     try {
       if (action === "show" || action === "list") {
-        await ctx.reply({ embeds: [configEmbed(before)] });
+        await ctx.reply(configCard(before));
         return;
       }
       if (action === "validate") {
         const result = await ctx.services.autoRole.validateRoles(ctx.guild, before.roleIds, ctx.member);
-        await ctx.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(result.errors.length ? COLORS.danger : COLORS.success)
-              .setTitle("Auto-role validation")
-              .setDescription(
-                [
-                  result.validRoleIds.length ? `Valid: ${result.validRoleIds.map((id) => `<@&${id}>`).join(", ")}` : "No valid roles.",
-                  result.errors.length ? `Errors:\n${result.errors.map((e) => `• ${e}`).join("\n")}` : null,
-                  result.warnings.length ? `Warnings:\n${result.warnings.map((w) => `• ${w}`).join("\n")}` : null,
-                ]
-                  .filter(Boolean)
-                  .join("\n\n"),
-              ),
-          ],
-          ephemeral: true,
-        });
+        await ctx.reply(
+          card({
+            title: "Auto-role validation",
+            body: [
+              result.validRoleIds.length ? `**Valid** · ${result.validRoleIds.map((id) => `<@&${id}>`).join(", ")}` : "**Valid** · none",
+              result.errors.length ? `**Errors**\n${result.errors.map((e) => `• ${e}`).join("\n")}` : null,
+              result.warnings.length ? `**Warnings**\n${result.warnings.map((w) => `• ${w}`).join("\n")}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n\n"),
+            ephemeral: true,
+          }),
+        );
         return;
       }
       if (action === "sync") {
@@ -112,17 +108,13 @@ export const autoRoleCommand: Command = {
           action: dryRun ? "autorole.sync.preview" : "autorole.sync",
           after: result,
         });
-        await ctx.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(dryRun ? COLORS.warning : COLORS.success)
-              .setTitle(dryRun ? "Auto-role sync preview" : "Auto-role sync complete")
-              .setDescription(
-                `Total: **${result.total}**\n${dryRun ? "Would assign" : "Assigned"}: **${result.assigned}**\nSkipped: **${result.skipped}**\nFailed: **${result.failed}**${dryRun ? "\n\nRun `autorole sync apply` to apply." : ""}`,
-              ),
-          ],
-          ephemeral: true,
-        });
+        await ctx.reply(
+          card({
+            title: dryRun ? "Auto-role sync preview" : "Auto-role sync complete",
+            body: `**Total** · ${result.total}\n**${dryRun ? "Would assign" : "Assigned"}** · ${result.assigned}\n**Skipped** · ${result.skipped}\n**Failed** · ${result.failed}${dryRun ? "\n\n-# Run `autorole sync apply` to apply." : ""}`,
+            ephemeral: true,
+          }),
+        );
         return;
       }
       if (action === "enable" || action === "disable") {

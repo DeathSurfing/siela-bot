@@ -1,12 +1,12 @@
 import {
   ChannelType,
-  EmbedBuilder,
   PermissionFlagsBits,
   SlashCommandBuilder,
   type CategoryChannel,
 } from "discord.js";
-import { COLORS, DEFAULTS, isSnowflake } from "@siela/shared";
+import { DEFAULTS, isSnowflake } from "@siela/shared";
 import type { Command, CommandContext } from "../../framework/types.js";
+import { card } from "../../features/ui.js";
 
 const TEMP_CATEGORY_NAME = "Temporary VCs";
 
@@ -14,18 +14,18 @@ function normalizeId(value: string | undefined): string | undefined {
   return value?.replace(/^<#|>$/g, "");
 }
 
-function configEmbed(settings: Awaited<ReturnType<CommandContext["services"]["settings"]["getTempVc"]>>) {
-  return new EmbedBuilder()
-    .setColor(COLORS.voice)
-    .setTitle("Join to create")
-    .addFields(
-      { name: "Enabled", value: settings.enabled ? "yes" : "no", inline: true },
-      { name: "Hub channel", value: settings.hubChannelId ? `<#${settings.hubChannelId}>` : "not set", inline: true },
-      { name: "Category", value: settings.categoryId ? `<#${settings.categoryId}>` : "auto-created on setup", inline: true },
-      { name: "Name template", value: `\`${settings.nameTemplate}\``, inline: false },
-      { name: "Default locked", value: settings.defaultLocked ? "yes" : "no", inline: true },
-      { name: "Grace", value: `${settings.graceSeconds}s`, inline: true },
-    );
+function configCard(settings: Awaited<ReturnType<CommandContext["services"]["settings"]["getTempVc"]>>) {
+  return card({
+    title: "Join to create",
+    body: [
+      `**Enabled** · ${settings.enabled ? "yes" : "no"}`,
+      `**Hub** · ${settings.hubChannelId ? `<#${settings.hubChannelId}>` : "not set"}`,
+      `**Category** · ${settings.categoryId ? `<#${settings.categoryId}>` : "auto-created on setup"}`,
+      `**Name template** · \`${settings.nameTemplate}\``,
+      `**Default locked** · ${settings.defaultLocked ? "yes" : "no"}`,
+      `**Grace** · ${settings.graceSeconds}s`,
+    ].join("\n"),
+  });
 }
 
 async function connectivityWarning(ctx: CommandContext): Promise<string | null> {
@@ -202,7 +202,7 @@ export const joinToCreateCommand: Command = {
 
     try {
       if (!action || action === "status" || action === "show") {
-        await ctx.reply({ embeds: [configEmbed(before)], ephemeral: true });
+        await ctx.reply({ ...configCard(before), ephemeral: true });
         return;
       }
 

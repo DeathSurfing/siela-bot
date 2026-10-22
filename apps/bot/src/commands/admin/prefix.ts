@@ -1,7 +1,8 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
-import { COLORS, DEFAULTS, prefixSchema } from "@siela/shared";
+import { SlashCommandBuilder } from "discord.js";
+import { DEFAULTS, prefixSchema } from "@siela/shared";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { isAdmin } from "../../framework/permissions.js";
+import { card } from "../../features/ui.js";
 
 export const prefixCommand: Command = {
   name: "prefix",
@@ -28,14 +29,12 @@ export const prefixCommand: Command = {
     const action = ctx.args[0]?.toLowerCase() ?? "show";
     if (action === "show") {
       const prefix = await ctx.services.settings.getPrefix(ctx.guild.id);
-      await ctx.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(COLORS.primary)
-            .setTitle("Server prefix")
-            .setDescription(`Current prefix: **${prefix}**\nTry \`${prefix}help\`.`),
-        ],
-      });
+      await ctx.reply(
+        card({
+          title: "Server prefix",
+          body: `Current prefix · **${prefix}**\n-# Try \`${prefix}help\`.`,
+        }),
+      );
       return;
     }
 
@@ -77,12 +76,6 @@ export const prefixCommand: Command = {
       before: { prefix: before },
       after: { prefix: next },
     });
-    await ctx.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(COLORS.success)
-          .setDescription(`Prefix changed from **${before}** to **${next}**.`),
-      ],
-    });
+    await ctx.reply(card({ title: "Prefix updated", body: `**${before}** → **${next}**` }));
   },
 };

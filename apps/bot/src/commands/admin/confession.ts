@@ -1,5 +1,6 @@
 import { ChannelType, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { isSnowflake } from "@siela/shared";
+import { attachConfirmation, card, confirmCard } from "../../features/ui.js";
 import type { Command, CommandContext } from "../../framework/types.js";
 
 function normalizeId(value: string | undefined): string | undefined {
@@ -66,16 +67,40 @@ export const confessionCommand: Command = {
         await ctx.reply({ content: "Usage: `confession delete <number>`", ephemeral: true });
         return;
       }
-      await ctx.services.confession.delete(ctx.guild.id, number, ctx.author.id);
-      await ctx.reply({ content: `Confession #${number} deleted.`, ephemeral: true });
+      const confirmId = "confession:delete:confirm";
+      const cancelId = "confession:delete:cancel";
+      const message = await ctx.reply(
+        confirmCard({
+          title: `Delete confession #${number}?`,
+          body: "This removes the confession from the wall.",
+          confirmId,
+          cancelId,
+          confirmLabel: "Delete",
+        }),
+      );
+      if (!message) return;
+      attachConfirmation({
+        message,
+        userId: ctx.author.id,
+        confirmId,
+        cancelId,
+        onConfirm: async () => {
+          await ctx.services.confession.delete(ctx.guild.id, number, ctx.author.id);
+          return card({ title: "Deleted", body: `Confession #${number} was deleted.` });
+        },
+        onCancel: () => card({ title: "Cancelled", body: "The confession was not deleted." }),
+      });
       return;
     }
     if (sub === "status") {
       const channelId = await ctx.services.confession.getChannel(ctx.guild.id);
-      await ctx.reply({
-        content: channelId ? `Confession wall: <#${channelId}>` : "No confession wall configured.",
-        ephemeral: true,
-      });
+      await ctx.reply(
+        card({
+          title: "Confession wall",
+          body: channelId ? `**Channel** · <#${channelId}>` : "No confession wall configured.",
+          ephemeral: true,
+        }),
+      );
       return;
     }
     await ctx.reply({ content: "Usage: `confession channel #channel | channel clear | delete <number> | status`", ephemeral: true });

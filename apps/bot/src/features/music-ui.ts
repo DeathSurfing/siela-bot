@@ -107,3 +107,72 @@ export function buildMusicPayload(
     flags: MessageFlags.IsComponentsV2,
   };
 }
+
+export function buildQueuePayload(
+  guildId: string,
+  state: MusicQueueState | null,
+  page = 1,
+  disabled = false,
+): ReplyPayload {
+  if (!state?.current) {
+    return {
+      components: [
+        new ContainerBuilder()
+          .setAccentColor(UI_ACCENT)
+          .addTextDisplayComponents(text(`## ${ICONS.music} Nothing playing`))
+          .addTextDisplayComponents(text("-# Use `/play` to start a track.")),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    };
+  }
+
+  const perPage = 6;
+  const totalPages = Math.max(1, Math.ceil(state.upcoming.length / perPage));
+  const currentPage = Math.max(1, Math.min(totalPages, page));
+  const start = (currentPage - 1) * perPage;
+  const slice = state.upcoming.slice(start, start + perPage);
+  const totalMs = state.upcoming.reduce((sum, track) => sum + (track.isStream ? 0 : track.length), 0);
+  const lines = slice.map((track, index) => {
+    const duration = track.isStream ? "LIVE" : formatDuration(track.length);
+    return `**${start + index + 1}.** ${truncate(track.title, 56)} — ${truncate(track.author, 28)} \`${duration}\``;
+  });
+
+  const container = new ContainerBuilder()
+    .setAccentColor(UI_ACCENT)
+    .addTextDisplayComponents(
+      text(`## ${ICONS.music} Queue`),
+      text(
+        `-# ${state.upcoming.length} upcoming · ${formatDuration(totalMs)} total · page ${currentPage}/${totalPages}`,
+      ),
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
+    )
+    .addTextDisplayComponents(
+      text(`**Now** · ${truncate(state.current.title, 64)} — ${truncate(state.current.author, 32)}`),
+    );
+
+  if (lines.length) {
+    container.addTextDisplayComponents(text(lines.join("\n")));
+  } else {
+    container.addTextDisplayComponents(text("-# Queue is empty."));
+  }
+
+  if (totalPages > 1) {
+    const prev = new ButtonBuilder()
+      .setCustomId(`queue:page:${guildId}:${currentPage - 1}`)
+      .setLabel("Previous")
+      .setEmoji(EMOJI.rewind)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(disabled || currentPage <= 1);
+    const next = new ButtonBuilder()
+      .setCustomId(`queue:page:${guildId}:${currentPage + 1}`)
+      .setLabel("Next")
+      .setEmoji(EMOJI.forward)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(disabled || currentPage >= totalPages);
+    container.addActionRowComponents(actionRow(prev, next));
+  }
+
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
+}

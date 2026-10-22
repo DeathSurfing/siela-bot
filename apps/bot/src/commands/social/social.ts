@@ -1,12 +1,12 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
 import {
-  COLORS,
   INTERACTION_KINDS,
   INTERACTION_META,
   type InteractionKind,
 } from "@siela/shared";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { fetchInteractionGif } from "../../features/social.js";
+import { attachPagination, card, pagedCard, rankLabel, success, text, UI_ACCENT } from "../../features/ui.js";
 
 function isKind(value: string | undefined): value is InteractionKind {
   return Boolean(value && INTERACTION_KINDS.includes(value as InteractionKind));
@@ -48,13 +48,18 @@ function socialCommand(kind: InteractionKind): Command {
       const count = await ctx.services.counters.increment(ctx.guild.id, ctx.author.id, target.id, kind);
       await ctx.services.friendship.addXp(ctx.guild.id, ctx.author.id, target.id, 1).catch(() => undefined);
       const gif = await fetchInteractionGif(kind);
-      const embed = new EmbedBuilder()
-        .setColor(COLORS.social)
-        .setDescription(
-          `${meta.emoji} **${ctx.member.displayName}** ${meta.verb} **${target.displayName}**!\nThat makes **${count}** ${meta.label.toLowerCase()} interaction${count === 1 ? "" : "s"}.`,
+      const container = new ContainerBuilder()
+        .setAccentColor(UI_ACCENT)
+        .addTextDisplayComponents(
+          text(`### ${meta.emoji} ${ctx.member.displayName} ${meta.verb} ${target.displayName}`),
+          text(`-# ${count} ${meta.label.toLowerCase()} interaction${count === 1 ? "" : "s"}`),
         );
-      if (gif) embed.setImage(gif);
-      await ctx.reply({ embeds: [embed] });
+      if (gif) {
+        container.addMediaGalleryComponents(
+          new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(gif)),
+        );
+      }
+      await ctx.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     },
   };
 }
@@ -95,14 +100,7 @@ export const socialStatsCommand: Command = {
       const meta = INTERACTION_META[kind];
       return `${meta.emoji} **${meta.label}** — given **${given.get(kind) ?? 0}**, received **${received.get(kind) ?? 0}**`;
     });
-    await ctx.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(COLORS.social)
-          .setTitle(`Interaction stats for ${member.displayName}`)
-          .setDescription(lines.join("\n")),
-      ],
-    });
+    await ctx.reply(card({ title: "Interaction stats", subtitle: member.displayName, body: lines.join("\n") }));
   },
 };
 
@@ -130,25 +128,33 @@ export const socialTopCommand: Command = {
       await ctx.reply({ content: `Unknown kind. Use one of: ${INTERACTION_KINDS.join(", ")}`, ephemeral: true });
       return;
     }
-    const rows = await ctx.services.counters.leaderboard(ctx.guild.id, kind as InteractionKind | undefined, 10);
+    const rows = await ctx.services.counters.leaderboard(ctx.guild.id, kind as InteractionKind | undefined, 100);
     if (!rows.length) {
       await ctx.reply({ content: "No counters yet.", ephemeral: true });
       return;
     }
-    const lines = rows.map((row, index) => {
-      const meta = INTERACTION_META[row.kind];
-      return `**${index + 1}.** <@${row.userId}> — ${meta.emoji} ${meta.label}: **${row.total}**`;
-    });
-    await ctx.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(COLORS.social)
-          .setTitle(kind ? `${INTERACTION_META[kind as InteractionKind].label} leaderboard` : "Interaction leaderboard")
-          .setDescription(lines.join("\n"))
-          .setFooter({ text: "Counts are pair-based; totals are aggregated per actor" }),
-      ],
-      allowedMentions: { parse: [] },
-    });
+    const perPage = 10;
+    const totalPages = Math.max(1, Math.ceil(rows.length / perPage));
+    const buildPage = (page: number, disabled = false) => {
+      const start = (page - 1) * perPage;
+      const lines = rows.slice(start, start + perPage).map((row, index) => {
+        const meta = INTERACTION_META[row.kind];
+        return `${rankLabel(start + index + 1)} <@${row.userId}> — ${meta.emoji} ${meta.label}: **${row.total}**`;
+      });
+      return {
+        ...pagedCard({
+          title: kind ? `${INTERACTION_META[kind as InteractionKind].label} leaderboard` : "Interaction leaderboard",
+          subtitle: "pair counters",
+          body: lines.join("\n"),
+          page,
+          totalPages,
+          disabled,
+        }),
+        allowedMentions: { parse: [] as never[] },
+      };
+    };
+    const message = await ctx.reply(buildPage(1));
+    if (message) attachPagination(message, ctx.author.id, 1, buildPage);
   },
 };
 
@@ -184,18 +190,13 @@ function optCommand(kind: "optout" | "optin"): Command {
       } else {
         await ctx.services.counters.optIn(ctx.guild.id, ctx.author.id, value as InteractionKind | "*");
       }
-      await ctx.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(COLORS.success)
-            .setDescription(
-              kind === "optout"
-                ? `You will no longer be targeted by ${value === "*" ? "interaction commands" : INTERACTION_META[value as InteractionKind].label}.`
-                : `You can be targeted by ${value === "*" ? "interaction commands" : INTERACTION_META[value as InteractionKind].label} again.`,
-            ),
-        ],
-        ephemeral: true,
-      });
+      await ctx.reply(
+        success(
+          kind === "optout"
+            ? `You will no longer be targeted by ${value === "*" ? "interaction commands" : INTERACTION_META[value as InteractionKind].label}.`
+            : `You can be targeted by ${value === "*" ? "interaction commands" : INTERACTION_META[value as InteractionKind].label} again.`,
+        ),
+      );
     },
   };
 }

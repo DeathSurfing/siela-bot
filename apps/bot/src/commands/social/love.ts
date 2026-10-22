@@ -1,8 +1,8 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
-import { COLORS } from "@siela/shared";
+import { SlashCommandBuilder } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { UserError } from "../../lib/errors.js";
 import { loveBar, loveResult } from "../../features/love.js";
+import { ICONS, card } from "../../features/ui.js";
 
 function normalizeId(value: string | undefined): string | undefined {
   return value?.replace(/^<@!?|>$/g, "");
@@ -47,20 +47,17 @@ export const loveCalcCommand: Command = {
 
     const result = loveResult(ctx.guild.id, first.id, second.id);
     await ctx.services.friendship.addXp(ctx.guild.id, first.id, second.id, 1).catch(() => undefined);
-    const embed = new EmbedBuilder()
-      .setColor(result.score >= 80 ? 0xff4f8b : COLORS.social)
-      .setTitle(`💘 Love Calculator — ${result.score}%`)
-      .setDescription(
-        [
+    await ctx.reply(
+      card({
+        title: `${ICONS.social} Love calculator`,
+        subtitle: `${result.score}% · ${result.title}`,
+        body: [
           `**${first.displayName}** + **${second.displayName}**`,
           "",
           loveBar(result.score),
-          `**${result.score}%** — **${result.title}**`,
           result.message,
         ].join("\n"),
-      )
-      .setFooter({ text: "This result is permanent for this pair." });
-
-    await ctx.reply({ embeds: [embed] });
+      }),
+    );
   },
 };

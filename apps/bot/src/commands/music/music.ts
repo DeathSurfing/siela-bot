@@ -1,9 +1,9 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
-import { COLORS, formatDuration, parseDuration, truncate } from "@siela/shared";
+import { ComponentType, SlashCommandBuilder } from "discord.js";
+import { formatDuration, parseDuration } from "@siela/shared";
 import type { Command, CommandContext } from "../../framework/types.js";
 import type { MusicService } from "../../features/music.js";
-import { buildMusicPayload } from "../../features/music-ui.js";
-import { card, success } from "../../features/ui.js";
+import { buildMusicPayload, buildQueuePayload } from "../../features/music-ui.js";
+import { attachConfirmation, card, confirmCard, success } from "../../features/ui.js";
 import { canManageMusic } from "../../framework/permissions.js";
 import { UserError } from "../../lib/errors.js";
 
@@ -25,10 +25,6 @@ function requireSameVoice(ctx: CommandContext): void {
   if (ctx.member.voice.channelId !== channelId) {
     throw new UserError("Join the bot's voice channel first.");
   }
-}
-
-function trackLine(track: { title: string; author: string; length: number; isStream: boolean }): string {
-  return `**${truncate(track.title, 80)}** — ${truncate(track.author, 40)} ${track.isStream ? "🔴 live" : `\`${formatDuration(track.length)}\``}`;
 }
 
 
@@ -151,8 +147,29 @@ const stopCommand: Command = {
   async execute(ctx) {
     requireSameVoice(ctx);
     await requireDj(ctx);
-    await music(ctx).stop(ctx.guild.id);
-    await ctx.reply(success("Stopped and cleared."));
+    const confirmId = "music:stop:confirm";
+    const cancelId = "music:stop:cancel";
+    const message = await ctx.reply(
+      confirmCard({
+        title: "Stop playback?",
+        body: "This stops the current track and clears the queue.",
+        confirmId,
+        cancelId,
+        confirmLabel: "Stop",
+      }),
+    );
+    if (!message) return;
+    attachConfirmation({
+      message,
+      userId: ctx.author.id,
+      confirmId,
+      cancelId,
+      onConfirm: async () => {
+        await music(ctx).stop(ctx.guild.id);
+        return card({ title: "Stopped", body: "Playback stopped and the queue was cleared." });
+      },
+      onCancel: () => card({ title: "Cancelled", body: "Playback continues." }),
+    });
   },
 };
 
@@ -170,32 +187,27 @@ const queueCommand: Command = {
       option.setName("page").setDescription("Page number").setRequired(false).setMinValue(1),
     ),
   async execute(ctx) {
-    const state = music(ctx).state(ctx.guild.id);
+    const service = music(ctx);
+    const state = service.state(ctx.guild.id);
     if (!state?.current) throw new UserError("Nothing is playing.");
-    const perPage = 10;
-    const totalPages = Math.max(1, Math.ceil(state.upcoming.length / perPage));
     const requested = Number(ctx.args[0] ?? 1) || 1;
-    const page = Math.max(1, Math.min(totalPages, requested));
-    const start = (page - 1) * perPage;
-    const slice = state.upcoming.slice(start, start + perPage);
-    const totalMs = state.upcoming.reduce((sum, track) => sum + (track.isStream ? 0 : track.length), 0);
-    const lines = slice.map((track, index) => `**${start + index + 1}.** ${trackLine(track)}`);
-    await ctx.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(COLORS.music)
-          .setTitle("Music queue")
-          .setDescription(
-            [
-              `**Now:** ${trackLine(state.current)}`,
-              "",
-              lines.length ? lines.join("\n") : "Queue is empty.",
-            ].join("\n"),
-          )
-          .setFooter({
-            text: `${state.upcoming.length} upcoming • ${formatDuration(totalMs)} total • page ${page}/${totalPages} • volume ${state.volume}% • loop ${state.loop}`,
-          }),
-      ],
+    const message = await ctx.reply(buildQueuePayload(ctx.guild.id, state, requested));
+    if (!message) return;
+    let currentPage = requested;
+
+    const collector = message.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      time: 120_000,
+      filter: (interaction) => interaction.user.id === ctx.author.id,
+    });
+    collector.on("collect", async (interaction) => {
+      const [, , , pageRaw] = interaction.customId.split(":");
+      const page = Number(pageRaw) || 1;
+      currentPage = page;
+      await interaction.update(buildQueuePayload(ctx.guild.id, service.state(ctx.guild.id), page, false)).catch(() => undefined);
+    });
+    collector.on("end", () => {
+      message.edit(buildQueuePayload(ctx.guild.id, service.state(ctx.guild.id), currentPage, true)).catch(() => undefined);
     });
   },
 };
@@ -317,36 +329,45 @@ const removeCommand: Command = {
   },
 };
 
-const clearCommand: Command = {
-  name: "clear",
-  category: "music",
-  description: "Clear upcoming tracks.",
-  usage: "",
-  examples: ["clear"],
-  slash: new SlashCommandBuilder().setName("clear").setDescription("Clear upcoming tracks"),
-  async execute(ctx) {
-    requireSameVoice(ctx);
-    await requireDj(ctx);
-    await music(ctx).clear(ctx.guild.id);
-    music(ctx).refreshNowPlaying(ctx.guild.id);
-    await ctx.reply(success("Queue cleared."));
-  },
-};
+async function confirmClearQueue(ctx: CommandContext): Promise<void> {
+  requireSameVoice(ctx);
+  await requireDj(ctx);
+  const confirmId = "music:clear:confirm";
+  const cancelId = "music:clear:cancel";
+  const message = await ctx.reply(
+    confirmCard({
+      title: "Clear the queue?",
+      body: "This removes every upcoming track. The current song keeps playing.",
+      confirmId,
+      cancelId,
+      confirmLabel: "Clear queue",
+    }),
+  );
+  if (!message) return;
+  attachConfirmation({
+    message,
+    userId: ctx.author.id,
+    confirmId,
+    cancelId,
+    onConfirm: async () => {
+      await music(ctx).clear(ctx.guild.id);
+      music(ctx).refreshNowPlaying(ctx.guild.id);
+      return card({ title: "Queue cleared", body: "Every upcoming track was removed." });
+    },
+    onCancel: () => card({ title: "Cancelled", body: "The queue was not changed." }),
+  });
+}
 
 const clearQueueCommand: Command = {
   name: "clearqueue",
-  aliases: ["cq", "emptyqueue"],
+  aliases: ["cq", "emptyqueue", "clear"],
   category: "music",
   description: "Clear every upcoming track while keeping the current song.",
   usage: "",
   examples: ["clearqueue"],
   slash: new SlashCommandBuilder().setName("clearqueue").setDescription("Clear every upcoming track"),
   async execute(ctx) {
-    requireSameVoice(ctx);
-    await requireDj(ctx);
-    await music(ctx).clear(ctx.guild.id);
-    music(ctx).refreshNowPlaying(ctx.guild.id);
-    await ctx.reply(success("Queue cleared."));
+    await confirmClearQueue(ctx);
   },
 };
 
@@ -472,7 +493,6 @@ export const musicCommands = [
   loopCommand,
   shuffleCommand,
   removeCommand,
-  clearCommand,
   clearQueueCommand,
   moveCommand,
   jumpCommand,

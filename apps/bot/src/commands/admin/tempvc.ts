@@ -1,6 +1,6 @@
-import { ChannelType, EmbedBuilder, PermissionFlagsBits, SlashCommandBuilder, type CategoryChannel, type VoiceChannel } from "discord.js";
-import { COLORS } from "@siela/shared";
+import { ChannelType, PermissionFlagsBits, SlashCommandBuilder, type CategoryChannel, type VoiceChannel } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
+import { card } from "../../features/ui.js";
 
 function normalizeId(value: string | undefined): string | undefined {
   return value?.replace(/^<#|>$/g, "");
@@ -12,21 +12,21 @@ function onOff(value: string | undefined): boolean {
   throw new Error("Use `on` or `off`.");
 }
 
-function configEmbed(settings: Awaited<ReturnType<CommandContext["services"]["settings"]["getTempVc"]>>) {
-  return new EmbedBuilder()
-    .setColor(COLORS.voice)
-    .setTitle("Temporary VC configuration")
-    .addFields(
-      { name: "Enabled", value: settings.enabled ? "yes" : "no", inline: true },
-      { name: "Hub", value: settings.hubChannelId ? `<#${settings.hubChannelId}>` : "not set", inline: true },
-      { name: "Category", value: settings.categoryId ? `<#${settings.categoryId}>` : "not set", inline: true },
-      { name: "Name template", value: `\`${settings.nameTemplate}\``, inline: false },
-      { name: "Default locked", value: settings.defaultLocked ? "yes" : "no", inline: true },
-      { name: "Default limit", value: String(settings.defaultUserLimit), inline: true },
-      { name: "Grace", value: `${settings.graceSeconds}s`, inline: true },
-      { name: "Max channels", value: String(settings.maxChannels), inline: true },
-      { name: "Max per user", value: String(settings.maxPerUser), inline: true },
-    );
+function configCard(settings: Awaited<ReturnType<CommandContext["services"]["settings"]["getTempVc"]>>) {
+  return card({
+    title: "Temporary VC",
+    body: [
+      `**Enabled** · ${settings.enabled ? "yes" : "no"}`,
+      `**Hub** · ${settings.hubChannelId ? `<#${settings.hubChannelId}>` : "not set"}`,
+      `**Category** · ${settings.categoryId ? `<#${settings.categoryId}>` : "not set"}`,
+      `**Name template** · \`${settings.nameTemplate}\``,
+      `**Default locked** · ${settings.defaultLocked ? "yes" : "no"}`,
+      `**Default limit** · ${settings.defaultUserLimit}`,
+      `**Grace** · ${settings.graceSeconds}s`,
+      `**Max channels** · ${settings.maxChannels}`,
+      `**Max per user** · ${settings.maxPerUser}`,
+    ].join("\n"),
+  });
 }
 
 async function connectivityWarning(ctx: CommandContext): Promise<string | null> {
@@ -104,7 +104,7 @@ export const tempVcCommand: Command = {
     const before = await ctx.services.settings.getTempVc(ctx.guild.id);
     try {
       if (action === "show" || action === "config") {
-        await ctx.reply({ embeds: [configEmbed(before)] });
+        await ctx.reply(configCard(before));
         return;
       }
       if (action === "setup" || action === "hub" || action === "category") {

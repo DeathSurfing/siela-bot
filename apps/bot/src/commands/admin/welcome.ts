@@ -1,6 +1,6 @@
-import { EmbedBuilder, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
-import { COLORS } from "@siela/shared";
+import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
+import { card } from "../../features/ui.js";
 
 function normalizeId(value: string | undefined): string | undefined {
   if (!value) return undefined;
@@ -13,21 +13,21 @@ function onOff(value: string | undefined): boolean {
   throw new Error("Use `on` or `off`.");
 }
 
-function configEmbed(prefix: string, settings: Awaited<ReturnType<CommandContext["services"]["settings"]["getWelcome"]>>) {
-  return new EmbedBuilder()
-    .setColor(COLORS.primary)
-    .setTitle("Welcome configuration")
-    .addFields(
-      { name: "Enabled", value: settings.enabled ? "yes" : "no", inline: true },
-      { name: "Channel", value: settings.channelId ? `<#${settings.channelId}>` : "not set", inline: true },
-      { name: "Embed", value: settings.embed ? "yes" : "no", inline: true },
-      { name: "Card", value: settings.card ? "yes" : "no", inline: true },
-      { name: "Ping user", value: settings.pingUser ? "yes" : "no", inline: true },
-      { name: "DM", value: settings.dmEnabled ? "yes" : "no", inline: true },
-      { name: "Message", value: `\`\`\`${settings.message.slice(0, 900)}\`\`\`` },
-      { name: "Goodbye", value: settings.goodbyeEnabled ? `enabled${settings.goodbyeChannelId ? ` in <#${settings.goodbyeChannelId}>` : ""}` : "disabled", inline: true },
-      { name: "Usage", value: `\`${prefix}welcome <channel|message|embed|ping|dm|test|disable|goodbye>\`` },
-    );
+function configCard(prefix: string, settings: Awaited<ReturnType<CommandContext["services"]["settings"]["getWelcome"]>>) {
+  return card({
+    title: "Welcome",
+    body: [
+      `**Enabled** · ${settings.enabled ? "yes" : "no"}`,
+      `**Channel** · ${settings.channelId ? `<#${settings.channelId}>` : "not set"}`,
+      `**Embed** · ${settings.embed ? "yes" : "no"}`,
+      `**Card** · ${settings.card ? "yes" : "no"}`,
+      `**Ping user** · ${settings.pingUser ? "yes" : "no"}`,
+      `**DM** · ${settings.dmEnabled ? "yes" : "no"}`,
+      `**Goodbye** · ${settings.goodbyeEnabled ? `enabled${settings.goodbyeChannelId ? ` in <#${settings.goodbyeChannelId}>` : ""}` : "disabled"}`,
+      `**Message**\n\`\`\`${settings.message.slice(0, 900)}\`\`\``,
+      `-# \`${prefix}welcome <channel|message|embed|ping|dm|test|disable|goodbye>\``,
+    ].join("\n"),
+  });
 }
 
 export const welcomeCommand: Command = {
@@ -93,7 +93,7 @@ export const welcomeCommand: Command = {
 
     try {
       if (action === "show" || action === "config") {
-        await ctx.reply({ embeds: [configEmbed(prefix, before)] });
+        await ctx.reply(configCard(prefix, before));
         return;
       }
       if (action === "disable") {

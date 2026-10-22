@@ -2,11 +2,13 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ComponentType,
   ContainerBuilder,
   MessageFlags,
   SeparatorBuilder,
   SeparatorSpacingSize,
   TextDisplayBuilder,
+  type Message,
   type MessageActionRowComponentBuilder,
 } from "discord.js";
 import { COLORS } from "@siela/shared";
@@ -151,5 +153,103 @@ export function confirmCard(options: {
           .setStyle(ButtonStyle.Secondary),
       ),
     ],
+  });
+}
+
+export function rankLabel(rank: number): string {
+  return rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `${rank}.`;
+}
+
+export function pagedCard(options: {
+  title: string;
+  subtitle: string;
+  body: string;
+  page: number;
+  totalPages: number;
+  disabled?: boolean;
+}): ReplyPayload {
+  const rows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
+  if (options.totalPages > 1) {
+    rows.push(
+      actionRow(
+        new ButtonBuilder()
+          .setCustomId(`lb:page:${options.page - 1}`)
+          .setLabel("Previous")
+          .setEmoji(EMOJI.rewind)
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(Boolean(options.disabled) || options.page <= 1),
+        new ButtonBuilder()
+          .setCustomId(`lb:page:${options.page + 1}`)
+          .setLabel("Next")
+          .setEmoji(EMOJI.forward)
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(Boolean(options.disabled) || options.page >= options.totalPages),
+      ),
+    );
+  }
+  return card({
+    title: options.title,
+    subtitle: `${options.subtitle} · page ${options.page}/${options.totalPages}`,
+    body: options.body,
+    rows,
+  });
+}
+
+export function attachPagination(
+  message: Message,
+  userId: string,
+  initialPage: number,
+  render: (page: number, disabled?: boolean) => ReplyPayload,
+): void {
+  let currentPage = initialPage;
+  const collector = message.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: 120_000,
+    filter: (interaction) => interaction.user.id === userId,
+  });
+  collector.on("collect", async (interaction) => {
+    const page = Number(interaction.customId.split(":").pop()) || 1;
+    currentPage = page;
+    await interaction.update(render(page, false)).catch(() => undefined);
+  });
+  collector.on("end", () => {
+    void message.edit(render(currentPage, true)).catch(() => undefined);
+  });
+}
+
+export function attachConfirmation(options: {
+  message: Message;
+  userId: string;
+  confirmId: string;
+  cancelId: string;
+  onConfirm: () => Promise<ReplyPayload>;
+  onCancel: () => ReplyPayload | Promise<ReplyPayload>;
+  timeoutMs?: number;
+}): void {
+  const collector = options.message.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: options.timeoutMs ?? 15_000,
+    filter: (interaction) => interaction.customId === options.confirmId || interaction.customId === options.cancelId,
+  });
+  collector.on("collect", async (interaction) => {
+    if (interaction.user.id !== options.userId) {
+      await interaction.reply({ content: "This confirmation is not for you.", ephemeral: true }).catch(() => undefined);
+      return;
+    }
+    await interaction.deferUpdate().catch(() => undefined);
+    collector.stop(interaction.customId === options.confirmId ? "confirmed" : "cancelled");
+  });
+  collector.on("end", async (_collected, reason) => {
+    try {
+      if (reason === "confirmed") {
+        await options.message.edit(await options.onConfirm());
+      } else {
+        await options.message.edit(await options.onCancel());
+      }
+    } catch {
+      await options.message
+        .edit(card({ title: "Failed", body: "That action could not be completed." }))
+        .catch(() => undefined);
+    }
   });
 }

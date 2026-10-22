@@ -1,11 +1,11 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { confessions, guildSettings, type Database, type ConfessionRow } from "@siela/db";
-import { EmbedBuilder, type Client, type Guild, type TextChannel } from "discord.js";
+import { type Client, type TextChannel } from "discord.js";
 import { ChannelType } from "discord.js";
-import { COLORS } from "@siela/shared";
 import type { SettingsService } from "./settings.js";
 import type { Logger } from "../lib/logger.js";
 import { UserError } from "../lib/errors.js";
+import { card } from "./ui.js";
 
 export class ConfessionService {
   constructor(
@@ -88,15 +88,15 @@ export class ConfessionService {
       throw new UserError("The confession channel is no longer available.");
     }
 
-    const embed = new EmbedBuilder()
-      .setColor(COLORS.primary)
-      .setTitle(`Confession #${number}`)
-      .setDescription(trimmed)
-      .setFooter({ text: "Anonymous confession" })
-      .setTimestamp();
-
     try {
-      const message = await (channel as TextChannel).send({ embeds: [embed], allowedMentions: { parse: [] } });
+      const message = await (channel as TextChannel).send({
+        ...card({
+          title: `Confession #${number}`,
+          subtitle: `Anonymous · <t:${Math.floor(Date.now() / 1000)}:R>`,
+          body: trimmed,
+        }),
+        allowedMentions: { parse: [] },
+      });
       await this.db.update(confessions).set({ messageId: message.id }).where(eq(confessions.id, row.id));
     } catch (error) {
       await this.db.delete(confessions).where(eq(confessions.id, row.id));

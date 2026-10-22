@@ -1,6 +1,6 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
-import { COLORS } from "@siela/shared";
+import { SlashCommandBuilder } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
+import { attachPagination, card, empty, pagedCard, rankLabel } from "../../features/ui.js";
 
 function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -24,21 +24,18 @@ export const activityCommand: Command = {
     const targetId = ctx.args[0] ?? ctx.author.id;
     const member = await ctx.guild.members.fetch(targetId).catch(() => null);
     if (!member) {
-      await ctx.reply({ content: "Member not found.", ephemeral: true });
+      await ctx.reply(empty("Member not found."));
       return;
     }
     const row = await ctx.services.activity.get(ctx.guild.id, member.id);
-    const embed = new EmbedBuilder()
-      .setColor(COLORS.primary)
-      .setTitle(`Activity for ${member.displayName}`)
-      .addFields(
-        { name: "Messages", value: String(row?.messages ?? 0), inline: true },
-        { name: "Commands", value: String(row?.commands ?? 0), inline: true },
-        { name: "Reactions", value: String(row?.reactions ?? 0), inline: true },
-        { name: "Voice time", value: formatDuration(row?.voiceSeconds ?? 0), inline: true },
-        { name: "Last active", value: row?.lastActiveAt ? `<t:${Math.floor(row.lastActiveAt.getTime() / 1000)}:R>` : "never", inline: true },
-      );
-    await ctx.reply({ embeds: [embed] });
+    const body = [
+      `**Messages** · ${row?.messages ?? 0}`,
+      `**Commands** · ${row?.commands ?? 0}`,
+      `**Reactions** · ${row?.reactions ?? 0}`,
+      `**Voice** · ${formatDuration(row?.voiceSeconds ?? 0)}`,
+      `**Last active** · ${row?.lastActiveAt ? `<t:${Math.floor(row.lastActiveAt.getTime() / 1000)}:R>` : "never"}`,
+    ].join("\n");
+    await ctx.reply(card({ title: "Activity", subtitle: member.displayName, body }));
   },
 };
 
@@ -70,27 +67,41 @@ export const activityTopCommand: Command = {
     const metric = ["messages", "commands", "reactions", "voice"].includes(metricArg)
       ? (metricArg as "messages" | "commands" | "reactions" | "voice")
       : "voice";
-    const rows = await ctx.services.activity.leaderboard(ctx.guild.id, metric, 10);
+    const rows = await ctx.services.activity.leaderboard(ctx.guild.id, metric, 100);
     if (!rows.length) {
-      await ctx.reply({ content: "No activity recorded yet.", ephemeral: true });
+      await ctx.reply(empty("No activity recorded yet."));
       return;
     }
-    const lines = await Promise.all(
-      rows.map(async (row, index) => {
-        const member = await ctx.guild.members.fetch(row.userId).catch(() => null);
+
+    const ids = [...new Set(rows.map((row) => row.userId))];
+    const members = await ctx.guild.members.fetch({ user: ids }).catch(() => null);
+    const names = new Map((members ? [...members.values()] : []).map((member) => [member.id, member.displayName]));
+    const perPage = 10;
+    const totalPages = Math.max(1, Math.ceil(rows.length / perPage));
+    const buildPage = (page: number, disabled = false) => {
+      const start = (page - 1) * perPage;
+      const lines = rows.slice(start, start + perPage).map((row, index) => {
         const value =
           metric === "messages"
-            ? row.messages
+            ? `${row.messages} messages`
             : metric === "commands"
-              ? row.commands
+              ? `${row.commands} commands`
               : metric === "reactions"
-                ? row.reactions
-                : `${formatDuration(row.voiceSeconds)}`;
-        return `${index + 1}. ${member?.displayName ?? row.userId} — ${value}`;
-      }),
-    );
-    await ctx.reply({
-      embeds: [new EmbedBuilder().setColor(COLORS.primary).setTitle(`Activity leaderboard (${metric})`).setDescription(lines.join("\n"))],
-    });
+                ? `${row.reactions} reactions`
+                : formatDuration(row.voiceSeconds);
+        return `${rankLabel(start + index + 1)} **${names.get(row.userId) ?? row.userId}** — ${value}`;
+      });
+      return pagedCard({
+        title: "Activity leaderboard",
+        subtitle: metric,
+        body: lines.join("\n"),
+        page,
+        totalPages,
+        disabled,
+      });
+    };
+
+    const message = await ctx.reply(buildPage(1));
+    if (message) attachPagination(message, ctx.author.id, 1, buildPage);
   },
 };

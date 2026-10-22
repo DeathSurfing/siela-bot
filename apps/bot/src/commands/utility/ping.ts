@@ -1,6 +1,7 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
-import { COLORS, formatDuration } from "@siela/shared";
+import { SlashCommandBuilder } from "discord.js";
+import { APP_NAME, APP_VERSION, formatDuration } from "@siela/shared";
 import type { Command, CommandContext } from "../../framework/types.js";
+import { ICONS, card } from "../../features/ui.js";
 
 export const pingCommand: Command = {
   name: "ping",
@@ -14,17 +15,13 @@ export const pingCommand: Command = {
   async execute(ctx: CommandContext) {
     const started = Date.now();
     const music = (await ctx.services.music?.isUp().catch(() => false)) ?? false;
-    const embed = new EmbedBuilder()
-      .setColor(COLORS.primary)
-      .setTitle("Siela status")
-      .addFields(
-        { name: "Gateway", value: `${ctx.client.ws.ping}ms`, inline: true },
-        { name: "Round trip", value: `${Date.now() - started}ms`, inline: true },
-        { name: "Uptime", value: formatDuration(ctx.client.uptime ?? 0), inline: true },
-        { name: "Music", value: music ? "🟢 up" : "🔴 down", inline: true },
-        { name: "Database", value: "🟢 connected", inline: true },
-      )
-      .setTimestamp();
-    await ctx.reply({ embeds: [embed] });
+    const body = [
+      `**Gateway** · ${ctx.client.ws.ping}ms`,
+      `**Round trip** · ${Date.now() - started}ms`,
+      `**Uptime** · ${formatDuration(ctx.client.uptime ?? 0)}`,
+      `**Music** · ${music ? "up" : "down"}`,
+      `**Database** · connected`,
+    ].join("\n");
+    await ctx.reply(card({ title: `${ICONS.utility} Status`, subtitle: `${APP_NAME} ${APP_VERSION}`, body }));
   },
 };

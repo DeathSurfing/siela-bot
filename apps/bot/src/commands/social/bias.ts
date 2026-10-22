@@ -1,7 +1,8 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
-import { BTS_MEMBERS, type BtsMember, COLORS } from "@siela/shared";
+import { SlashCommandBuilder } from "discord.js";
+import { BTS_MEMBERS, type BtsMember } from "@siela/shared";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { UserError } from "../../lib/errors.js";
+import { card } from "../../features/ui.js";
 
 const BTS_ALIASES = new Map<string, BtsMember>([
   ["rm", "RM"],
@@ -28,14 +29,11 @@ function normalizeId(value: string | undefined): string | undefined {
   return value?.replace(/^<@!?|>$/g, "");
 }
 
-function biasEmbed(displayName: string, bias: string, wrecker: string) {
-  return new EmbedBuilder()
-    .setColor(COLORS.social)
-    .setTitle(`${displayName}'s BTS bias`)
-    .addFields(
-      { name: "Bias", value: bias, inline: true },
-      { name: "Bias wrecker", value: wrecker, inline: true },
-    );
+function biasCard(displayName: string, bias: string, wrecker: string) {
+  return card({
+    title: `${displayName}'s bias`,
+    body: `**Bias** · ${bias}\n**Bias wrecker** · ${wrecker}`,
+  });
 }
 
 export const biasCommand: Command = {
@@ -94,7 +92,7 @@ export const biasCommand: Command = {
         }
         if (bias === wrecker) throw new UserError("Your bias and bias wrecker must be different members.");
         await ctx.services.bias.set(ctx.guild.id, ctx.author.id, bias, wrecker);
-        await ctx.reply({ embeds: [biasEmbed(ctx.member.displayName, bias, wrecker)] });
+        await ctx.reply(biasCard(ctx.member.displayName, bias, wrecker));
         return;
       }
 
@@ -110,7 +108,7 @@ export const biasCommand: Command = {
           });
           return;
         }
-        await ctx.reply({ embeds: [biasEmbed(member.displayName, row.bias, row.biasWrecker)] });
+        await ctx.reply(biasCard(member.displayName, row.bias, row.biasWrecker));
         return;
       }
 
@@ -121,7 +119,7 @@ export const biasCommand: Command = {
       if (first && second && bias && wrecker) {
         if (bias === wrecker) throw new UserError("Your bias and bias wrecker must be different members.");
         await ctx.services.bias.set(ctx.guild.id, ctx.author.id, bias, wrecker);
-        await ctx.reply({ embeds: [biasEmbed(ctx.member.displayName, bias, wrecker)] });
+        await ctx.reply(biasCard(ctx.member.displayName, bias, wrecker));
         return;
       }
 
@@ -133,7 +131,7 @@ export const biasCommand: Command = {
           await ctx.reply({ content: `${targetMember.displayName} has not set a BTS bias yet.`, ephemeral: true });
           return;
         }
-        await ctx.reply({ embeds: [biasEmbed(targetMember.displayName, row.bias, row.biasWrecker)] });
+        await ctx.reply(biasCard(targetMember.displayName, row.bias, row.biasWrecker));
         return;
       }
 
@@ -145,7 +143,7 @@ export const biasCommand: Command = {
         });
         return;
       }
-      await ctx.reply({ embeds: [biasEmbed(ctx.member.displayName, row.bias, row.biasWrecker)] });
+      await ctx.reply(biasCard(ctx.member.displayName, row.bias, row.biasWrecker));
     } catch (error) {
       const message = error instanceof UserError ? error.message : "Something went wrong.";
       await ctx.reply({ content: message, ephemeral: true }).catch(() => undefined);

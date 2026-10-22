@@ -687,3 +687,31 @@ Still planned:
 - Confirmation for `privacy delete`, `clearqueue`, `stop`, `confession delete`
   (P1).
 - Social/family/confession/delulu polish (P2).
+
+---
+
+## 10. P1/P2 implementation status (2026-10-22)
+
+Completed:
+
+- Queue card with Previous/Next pagination and cleaner metadata.
+- Family consent card with relative expiry, disabled-after-decision outcome.
+- Leaderboard pagination for activity, social, and friendship, with medals for
+  the top three.
+- Confirmation cards for `privacy delete`, `clearqueue`/`clear`, `stop`, and
+  `confession delete`.
+- Social interaction, social stats, social top, lovecalc, bias, friendship,
+  friendship top, activity, activity top, birthday, ping, privacy, confession
+  wall, confession status, delulu, and `vc info` converted to V2 cards.
+- Admin configuration views converted to consistent V2 cards.
+- `clear` folded into `clearqueue` as an alias; `stop` and `disconnect` remain
+  separate because they have different effects.
+- Family tree image now has a short edge legend.
+- Pagination controls disable when their collector expires.
+
+Remaining:
+
+- Inline admin edit buttons/modals (config cards are still command-driven).
+- Welcome message/card V2 conversion review.
+- Final mobile screenshot pass on a real Discord client.
+- Decide whether to fold `stop` into `disconnect` or keep both semantics.
