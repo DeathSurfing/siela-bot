@@ -146,6 +146,36 @@ describe("TambolaGame", () => {
     expect(game.claim("host", "top_line")).toMatchObject({ ok: false, code: "not_complete" });
   });
 
+  it("auto-marks called numbers when the setting is enabled", () => {
+    const game = new TambolaGame({
+      id: "AUTO",
+      guildId: "guild",
+      channelId: "channel",
+      hostId: "host",
+      autoMark: true,
+      rng: mulberry32(11),
+    });
+    game.addPlayer("host", "Host");
+    game.addPlayer("player", "Player");
+    game.start();
+    const player = game.player("host")!;
+    const ticket = ticketNumbers(player.ticket);
+    let called: number | null = null;
+    for (let index = 0; index < 90 && called === null; index += 1) {
+      const number = game.nextCall();
+      if (number !== null && ticket.includes(number)) called = number;
+    }
+    expect(called).not.toBeNull();
+    expect(player.marked.has(called!)).toBe(true);
+  });
+
+  it("does not auto-mark by default", () => {
+    const game = makeGame();
+    game.start();
+    callAll(game);
+    expect(game.player("host")!.marked.size).toBe(0);
+  });
+
   it("transfers the host to another player", () => {
     const game = makeGame();
     expect(game.transferHost("player")).toBe(true);

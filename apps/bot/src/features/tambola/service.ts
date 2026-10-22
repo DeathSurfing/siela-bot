@@ -48,6 +48,7 @@ interface TambolaSession {
   finalizeTimer: NodeJS.Timeout | null;
   gameTimer: NodeJS.Timeout | null;
   voice: TambolaVoice | null;
+  voiceTask: Promise<boolean> | null;
   voiceChannelId: string | null;
   voiceNote: string | null;
   lastGenericIndex: number | null;
@@ -97,6 +98,8 @@ export class TambolaService {
     channel: GuildBasedChannel;
     host: GuildMember;
     maxPlayers: number;
+    intervalSeconds?: number;
+    autoMark?: boolean;
     voiceChannelId: string | null;
   }): Promise<TambolaSession> {
     const existing = this.byGuild.get(options.guild.id);
@@ -121,7 +124,8 @@ export class TambolaService {
       channelId: options.channel.id,
       hostId: options.host.id,
       maxPlayers: options.maxPlayers,
-      intervalSeconds: 8,
+      intervalSeconds: options.intervalSeconds,
+      autoMark: options.autoMark,
     });
     const session: TambolaSession = {
       game,
@@ -131,6 +135,7 @@ export class TambolaService {
       finalizeTimer: null,
       gameTimer: null,
       voice: null,
+      voiceTask: null,
       voiceChannelId: options.voiceChannelId,
       voiceNote: null,
       lastGenericIndex: null,
@@ -152,6 +157,8 @@ export class TambolaService {
       () => void this.cancel(session, "The lobby timed out."),
       LOBBY_TIMEOUT_MS,
     );
+    await this.ensureVoice(session);
+    await this.updateCard(session);
     return session;
   }
 
@@ -181,7 +188,7 @@ export class TambolaService {
     const result = session.game.start();
     if (!result.ok) throw new UserError(result.reason);
     this.clearTimers(session, "lobby");
-    await this.startVoice(session);
+    await this.ensureVoice(session);
     await this.updateCard(session);
     if (session.voice) void session.voice.speak("Eyes down, let's play Tambola!");
     session.gameTimer = setTimeout(() => {
@@ -481,31 +488,67 @@ export class TambolaService {
     );
   }
 
-  private async startVoice(session: TambolaSession): Promise<void> {
+  private ensureVoice(session: TambolaSession): Promise<boolean> {
+    if (session.voiceTask) return session.voiceTask;
+    const task = this.connectVoice(session).finally(() => {
+      if (session.voiceTask === task) session.voiceTask = null;
+    });
+    session.voiceTask = task;
+    return task;
+  }
+
+  private async connectVoice(session: TambolaSession): Promise<boolean> {
+    const guildId = session.game.guildId;
+    if (this.music.isConnected(guildId)) {
+      try {
+        await this.music.disconnect(guildId);
+        this.logger.info({ guildId }, "tambola stopped music to use the voice channel");
+      } catch (error) {
+        this.logger.warn({ err: error, guildId }, "tambola could not stop music");
+        session.voiceNote = "Text only · music active";
+        return false;
+      }
+      if (session.voice) {
+        session.voice.leave();
+        session.voice = null;
+      }
+    }
+    if (session.voice?.connected) {
+      session.voiceNote = null;
+      return true;
+    }
     if (!session.voiceChannelId) {
       session.voiceNote = "Text only";
-      return;
+      return false;
     }
-    if (this.music.isConnected(session.game.guildId)) {
-      session.voiceNote = "Text only · music active";
-      return;
-    }
-    const guild = this.client.guilds.cache.get(session.game.guildId);
+    const guild = this.client.guilds.cache.get(guildId);
     const channel = guild
       ? await guild.channels.fetch(session.voiceChannelId).catch(() => null)
       : null;
     if (!channel || channel.type !== ChannelType.GuildVoice) {
       session.voiceNote = "Text only · voice channel unavailable";
-      return;
+      this.logger.warn({ guildId, channelId: session.voiceChannelId }, "tambola voice channel unavailable");
+      return false;
     }
+    let joined = false;
     const voice = new TambolaVoice(this.logger);
-    const joined = await voice.join(channel as VoiceChannel);
+    try {
+      joined = await voice.join(channel as VoiceChannel);
+    } catch (error) {
+      this.logger.warn({ err: error, guildId, channelId: session.voiceChannelId }, "tambola voice join failed");
+    }
     if (!joined) {
       session.voiceNote = "Text only · TTS unavailable";
-      return;
+      return false;
+    }
+    if (this.byId.get(session.game.id) !== session || session.game.status === "cancelled") {
+      voice.leave();
+      return false;
     }
     session.voice = voice;
     session.voiceNote = null;
+    this.logger.info({ guildId, channelId: session.voiceChannelId }, "tambola voice ready");
+    return true;
   }
 
   private async callNext(session: TambolaSession, manual = false): Promise<number | null> {

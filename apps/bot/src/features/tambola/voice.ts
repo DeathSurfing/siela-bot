@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import {
   AudioPlayerStatus,
   NoSubscriberBehavior,
+  StreamType,
   VoiceConnectionStatus,
   createAudioPlayer,
   createAudioResource,
@@ -15,12 +16,12 @@ import {
   type AudioPlayer,
   type VoiceConnection,
 } from "@discordjs/voice";
-import type { VoiceChannel } from "discord.js";
+import { PermissionFlagsBits, type VoiceChannel } from "discord.js";
 import type { Logger } from "../../lib/logger.js";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_VOICE = "en-IN-NeerjaNeural";
-const DEFAULT_RATE = "+8%";
+const DEFAULT_RATE = "-5%";
 const CACHE_DIR = "/tmp/siela-tambola-tts";
 const MAX_CACHE_FILES = 300;
 
@@ -61,6 +62,20 @@ export class TambolaVoice {
 
   async join(channel: VoiceChannel): Promise<boolean> {
     if (this.connection) return true;
+    const me = channel.guild.members.me
+      ?? await channel.guild.members.fetchMe().catch(() => null);
+    const permissions = me ? channel.permissionsFor(me) : null;
+    if (
+      !permissions ||
+      !permissions.has(PermissionFlagsBits.Connect) ||
+      !permissions.has(PermissionFlagsBits.Speak)
+    ) {
+      this.logger.warn(
+        { guildId: channel.guild.id, channelId: channel.id },
+        "tambola TTS needs Connect and Speak permissions",
+      );
+      return false;
+    }
     if (getVoiceConnection(channel.guild.id)) {
       this.logger.warn({ guildId: channel.guild.id }, "tambola TTS skipped because a voice connection already exists");
       return false;
@@ -80,9 +95,14 @@ export class TambolaVoice {
     }
 
     const player = createAudioPlayer({
-      behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
+      behaviors: { noSubscriber: NoSubscriberBehavior.Play },
     });
-    connection.subscribe(player);
+    const subscription = connection.subscribe(player);
+    if (!subscription) {
+      this.logger.warn({ guildId: channel.guild.id, channelId: channel.id }, "tambola audio player could not subscribe");
+      connection.destroy();
+      return false;
+    }
     connection.on("error", (error) => {
       this.logger.warn({ err: error, guildId: channel.guild.id }, "tambola voice connection error");
     });
@@ -91,6 +111,7 @@ export class TambolaVoice {
     });
     this.connection = connection;
     this.player = player;
+    this.logger.info({ guildId: channel.guild.id, channelId: channel.id }, "tambola voice connected");
     return true;
   }
 
@@ -102,7 +123,7 @@ export class TambolaVoice {
       if (this.player.state.status !== AudioPlayerStatus.Idle) {
         this.player.stop(true);
       }
-      this.player.play(createAudioResource(createReadStream(file)));
+      this.player.play(createAudioResource(createReadStream(file), { inputType: StreamType.Arbitrary }));
     } catch (error) {
       this.logger.warn({ err: error }, "tambola TTS playback failed");
     }

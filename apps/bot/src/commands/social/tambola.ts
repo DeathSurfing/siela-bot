@@ -7,15 +7,33 @@ function privateReply(ctx: CommandContext, payload: Parameters<CommandContext["r
   return { ...payload, ephemeral: true };
 }
 
-async function hostOptions(ctx: CommandContext): Promise<{ maxPlayers: number; voiceChannelId: string | null }> {
+async function hostOptions(ctx: CommandContext): Promise<{
+  maxPlayers: number;
+  intervalSeconds: number;
+  autoMark: boolean;
+  voiceChannelId: string | null;
+}> {
   let maxPlayers = 20;
+  let intervalSeconds = 12;
+  let autoMark = false;
   let voiceChannelId: string | null = null;
   for (const raw of ctx.args.slice(1)) {
+    const lower = raw.toLowerCase();
     const value = raw.replace(/^<#|>$/g, "");
     if (/^\d{17,20}$/.test(value)) {
       voiceChannelId = value;
     } else if (/^\d+$/.test(raw)) {
       maxPlayers = Number(raw);
+    } else if (lower === "fast") {
+      intervalSeconds = 8;
+    } else if (lower === "normal") {
+      intervalSeconds = 12;
+    } else if (lower === "slow") {
+      intervalSeconds = 15;
+    } else if (["auto", "automark", "auto-mark", "true"].includes(lower)) {
+      autoMark = true;
+    } else if (["manual", "manualmark", "manual-mark", "false"].includes(lower)) {
+      autoMark = false;
     }
   }
   if (!Number.isInteger(maxPlayers) || maxPlayers < 2 || maxPlayers > 20) {
@@ -29,18 +47,19 @@ async function hostOptions(ctx: CommandContext): Promise<{ maxPlayers: number; v
       throw new UserError("Choose a voice channel for Tambola.");
     }
   }
-  return { maxPlayers, voiceChannelId };
+  return { maxPlayers, intervalSeconds, autoMark, voiceChannelId };
 }
 
 export const tambolaCommand: Command = {
   name: "tambola",
   aliases: ["housie"],
   category: "social",
-  description: "Play Tambola with private tickets, live calls, and TTS.",
+  description: "Play Tambola with private tickets, live calls, TTS, and auto-marking.",
   usage: "<host|join|leave|start|ticket|call|pause|resume|end|status|rules>",
   examples: [
     "tambola host",
-    "tambola host 20 #General",
+    "tambola host 20 normal #General",
+    "tambola host 20 fast auto",
     "tambola join",
     "tambola ticket",
     "tambola start",
@@ -61,10 +80,27 @@ export const tambolaCommand: Command = {
             .setMinValue(2)
             .setMaxValue(20),
         )
+        .addStringOption((option) =>
+          option
+            .setName("speed")
+            .setDescription("Number calling speed")
+            .setRequired(false)
+            .addChoices(
+              { name: "Fast · 8s", value: "fast" },
+              { name: "Normal · 12s", value: "normal" },
+              { name: "Slow · 15s", value: "slow" },
+            ),
+        )
         .addChannelOption((option) =>
           option
             .setName("voice")
             .setDescription("Voice channel for number calls")
+            .setRequired(false),
+        )
+        .addBooleanOption((option) =>
+          option
+            .setName("auto_mark")
+            .setDescription("Automatically mark called numbers")
             .setRequired(false),
         ),
     )
@@ -90,6 +126,8 @@ export const tambolaCommand: Command = {
         channel: ctx.channel,
         host: ctx.member,
         maxPlayers: options.maxPlayers,
+        intervalSeconds: options.intervalSeconds,
+        autoMark: options.autoMark,
         voiceChannelId: options.voiceChannelId,
       });
       await ctx.reply(privateReply(ctx, success("Tambola lobby created.")));

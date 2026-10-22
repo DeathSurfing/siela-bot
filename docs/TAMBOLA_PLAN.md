@@ -4,12 +4,12 @@
 
 | Decision | Choice |
 |---|---|
-| Marking | Players mark their own numbers |
+| Marking | Players mark their own numbers by default; the host can enable auto-marking |
 | Active games | One per guild |
 | Winning patterns | Top Line, Middle Line, Bottom Line, Full House |
 | Stats/leaderboard | Deferred to a later phase |
 | Host | Can play too |
-| Calls | Auto-call every 8 seconds, with manual host calls |
+| Calls | Auto-call every 12 seconds by default; fast 8s and slow 15s options; manual host calls |
 | Tickets | Sent by DM, with an ephemeral fallback |
 | TTS | Runtime Edge TTS, Indian English female voice, bingo classics |
 | Players | 2–20 per game |
@@ -71,7 +71,7 @@ Add a 90-ball Tambola/Housie game mode that runs inside Discord:
 - A shuffled deck contains each number from 1 to 90 exactly once.
 - Each call removes one number from the deck and adds it to `calledNumbers`.
 - The game ends when Full House is claimed or all 90 numbers have been called.
-- Auto-call interval: 8 seconds.
+- Auto-call interval: 12 seconds by default; the host can choose fast (8s) or slow (15s).
 - Pausing stops the timer. Resuming continues from the next call.
 - Manual calls are allowed while paused.
 - Manual calls are throttled to one every 2 seconds.
@@ -625,11 +625,12 @@ Stats and leaderboards are a later phase.
 
 - Max players: 20
 - Min players: 2
-- Auto-call interval: 8 seconds
+- Auto-call interval: 12 seconds; fast 8s and slow 15s options
+- Auto-marking: off by default; the host can enable it
 - Lobby timeout: 5 minutes
 - Game timeout: 45 minutes
 - Manual call throttle: 2 seconds
-- TTS voice: `en-IN-NeerjaNeural` (Indian English, female)
+- TTS voice: `en-IN-NeerjaNeural` (Indian English, female), slightly slowed
 - TTS engine: Edge TTS at runtime
 - TTS cache: `/tmp/siela-tambola-tts/`
 - Generic flavour pool: 15–20 lines
@@ -638,7 +639,6 @@ Stats and leaderboards are a later phase.
 ## Out of scope for v1
 
 - Multiple tickets per player.
-- Auto-marking.
 - Stats, leaderboards, and game history.
 - Entry fees, prizes, coins, or XP rewards.
 - Image-rendered tickets.

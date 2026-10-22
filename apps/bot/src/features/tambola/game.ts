@@ -42,6 +42,7 @@ export interface TambolaGameOptions {
   hostId: string;
   maxPlayers?: number;
   intervalSeconds?: number;
+  autoMark?: boolean;
   rng?: () => number;
 }
 
@@ -166,6 +167,7 @@ export class TambolaGame {
   hostId: string;
   readonly maxPlayers: number;
   readonly intervalSeconds: number;
+  readonly autoMark: boolean;
   readonly players = new Map<string, TambolaPlayer>();
   readonly called: number[] = [];
   readonly calledSet = new Set<number>();
@@ -184,7 +186,8 @@ export class TambolaGame {
     this.channelId = options.channelId;
     this.hostId = options.hostId;
     this.maxPlayers = Math.max(2, Math.min(options.maxPlayers ?? MAX_PLAYERS, MAX_PLAYERS));
-    this.intervalSeconds = Math.max(5, Math.min(options.intervalSeconds ?? 8, 20));
+    this.intervalSeconds = Math.max(5, Math.min(options.intervalSeconds ?? 12, 20));
+    this.autoMark = Boolean(options.autoMark);
     this.rng = options.rng ?? defaultRng;
   }
 
@@ -247,6 +250,11 @@ export class TambolaGame {
     if (number === undefined) return null;
     this.called.push(number);
     this.calledSet.add(number);
+    if (this.autoMark) {
+      for (const player of this.players.values()) {
+        if (ticketNumbers(player.ticket).includes(number)) player.marked.add(number);
+      }
+    }
     return number;
   }
 

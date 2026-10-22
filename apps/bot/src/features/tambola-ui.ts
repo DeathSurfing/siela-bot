@@ -48,7 +48,7 @@ function calledBoard(game: TambolaGame): string {
 }
 
 function ticketGrid(player: TambolaPlayer): string {
-  const header = `    ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((number) => ` ${number} `).join("")}`;
+  const header = `   ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((number) => ` ${number} `).join("")}`;
   const rows = player.ticket.rows.map((row, index) => {
     const cells = row.map((number) => {
       if (number === null) return " · ";
@@ -69,11 +69,16 @@ export function buildTambolaLobbyPayload(game: TambolaGame, voiceChannelId: stri
   container.addTextDisplayComponents(text(`## ${ICONS.music} Tambola · Lobby`));
   container.addTextDisplayComponents(text(`Host · <@${game.hostId}>`));
   container.addTextDisplayComponents(
-    text(`Players ${game.players.size}/${game.maxPlayers} · Auto-call ${game.intervalSeconds}s`),
+    text(
+      `Players ${game.players.size}/${game.maxPlayers} · Auto-call ${game.intervalSeconds}s · Marking ${game.autoMark ? "Auto" : "Manual"}`,
+    ),
   );
   container.addTextDisplayComponents(text(voiceLabel(game, voiceChannelId)));
   container.addSeparatorComponents(separator());
   container.addTextDisplayComponents(text(playerList(game)));
+  if (voiceChannelId) {
+    container.addTextDisplayComponents(text("-# TTS uses the selected voice channel; active music will be stopped."));
+  }
   container.addTextDisplayComponents(text("-# Tickets are sent by DM. Join before the host starts."));
   container.addActionRowComponents(
     actionRow(
@@ -81,7 +86,8 @@ export function buildTambolaLobbyPayload(game: TambolaGame, voiceChannelId: stri
         .setCustomId(id(game, "join"))
         .setLabel("Join")
         .setEmoji(EMOJI.music)
-        .setStyle(ButtonStyle.Success),
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(game.players.size >= game.maxPlayers),
       new ButtonBuilder()
         .setCustomId(id(game, "leave"))
         .setLabel("Leave")
@@ -115,7 +121,7 @@ export function buildTambolaGamePayload(
   );
   container.addTextDisplayComponents(
     text(
-      `**Status** · ${game.status === "paused" ? "Paused" : "Live"} · Auto-call ${game.intervalSeconds}s · ${voiceChannelId ? voiceLabel(game, voiceChannelId) : voiceNote ?? "Text only"}`,
+      `**Status** · ${game.status === "paused" ? "Paused" : "Live"} · ${game.intervalSeconds}s calls · Marking ${game.autoMark ? "Auto" : "Manual"} · ${voiceChannelId ? voiceLabel(game, voiceChannelId) : voiceNote ?? "Text only"}`,
     ),
   );
   container.addSeparatorComponents(separator());
@@ -144,7 +150,8 @@ export function buildTambolaGamePayload(
         .setCustomId(id(game, "call"))
         .setLabel("Call next")
         .setEmoji(EMOJI.play)
-        .setStyle(ButtonStyle.Secondary),
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(game.remainingCalls === 0),
       new ButtonBuilder()
         .setCustomId(id(game, game.status === "paused" ? "resume" : "pause"))
         .setLabel(game.status === "paused" ? "Resume" : "Pause")
@@ -184,7 +191,13 @@ export function buildTambolaTicketPayload(game: TambolaGame, player: TambolaPlay
   container.addTextDisplayComponents(text(`## ${ICONS.music} Your Tambola ticket`));
   container.addTextDisplayComponents(text(`Game \`${game.id}\` · ${player.marked.size}/15 marked`));
   container.addTextDisplayComponents(text(`\`\`\`\n${ticketGrid(player)}\n\`\`\``));
-  container.addTextDisplayComponents(text("-# `*` = marked · Tap a called number to mark it."));
+  container.addTextDisplayComponents(
+    text(
+      game.autoMark
+        ? "-# Auto-marking is on. Use Refresh to see your marks."
+        : "-# `*` = marked · Tap a called number to mark it.",
+    ),
+  );
 
   for (const row of player.ticket.rows) {
     const numbers = row.filter((number): number is number => number !== null);
@@ -196,16 +209,17 @@ export function buildTambolaTicketPayload(game: TambolaGame, player: TambolaPlay
             .setCustomId(id(game, "mark", String(number)))
             .setLabel(String(number))
             .setStyle(marked ? ButtonStyle.Success : game.calledSet.has(number) ? ButtonStyle.Primary : ButtonStyle.Secondary)
-            .setDisabled(!playable || marked);
+            .setDisabled(!playable || marked || game.autoMark);
         }),
       ),
     );
   }
 
+  const hasAvailableClaim = CLAIM_PATTERNS.some((pattern) => !game.claims.has(pattern));
   const select = new StringSelectMenuBuilder()
     .setCustomId(id(game, "claimselect"))
     .setPlaceholder("Claim a pattern")
-    .setDisabled(!playable)
+    .setDisabled(!playable || !hasAvailableClaim)
     .addOptions(
       CLAIM_PATTERNS.map((pattern) => ({
         label: CLAIM_LABELS[pattern],
