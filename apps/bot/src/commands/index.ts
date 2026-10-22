@@ -8,6 +8,7 @@ import { autoRoleCommand } from "./admin/autorole.js";
 import { birthdayCommand } from "./utility/birthday.js";
 import { activityCommand, activityTopCommand } from "./utility/activity.js";
 import { biasCommand } from "./social/bias.js";
+import { deluluCommand } from "./social/delulu.js";
 import { confessCommand } from "./social/confess.js";
 import { friendshipCommand, friendshipTopCommand } from "./social/friendship.js";
 import { tempVcCommand } from "./admin/tempvc.js";
@@ -48,6 +49,7 @@ export const commands: Command[] = [
   vcCommand,
   loveCalcCommand,
   biasCommand,
+  deluluCommand,
   confessCommand,
   friendshipCommand,
   friendshipTopCommand,

@@ -49,6 +49,7 @@ const botSchema = z.object({
   DEFAULT_PREFIX: z.string().default("!"),
   ADMIN_ROLE_IDS: z.string().optional(),
   BOT_OWNER_ID: optionalSnowflake,
+  HF_TOKEN: z.string().optional(),
 
   LOG_LEVEL: logLevel.default("info"),
   AUDIT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
@@ -85,6 +86,7 @@ export function loadBotConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     DISCORD_TOKEN: readSecret("DISCORD_TOKEN", env) ?? env.DISCORD_TOKEN,
     DATABASE_URL: readSecret("DATABASE_URL", env) ?? env.DATABASE_URL,
     MCP_TOKEN: readSecret("MCP_TOKEN", env) ?? env.MCP_TOKEN,
+    HF_TOKEN: readSecret("HF_TOKEN", env) ?? env.HF_TOKEN,
   });
   if (!parsed.success) {
     const details = parsed.error.issues
