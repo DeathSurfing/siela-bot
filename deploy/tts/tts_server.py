@@ -1,6 +1,7 @@
 import io
 import os
 import tempfile
+import threading
 from pathlib import Path
 
 import soundfile as sf
@@ -11,6 +12,7 @@ from pocket_tts_onnx import PocketTTSOnnx
 
 app = FastAPI()
 tts: PocketTTSOnnx | None = None
+sync_lock = threading.Lock()
 
 
 @app.on_event("startup")
@@ -55,7 +57,8 @@ def synthesize(
         else:
             voice = "/app/fallback.wav"
 
-        audio = tts.generate(text, voice=voice)
+        with sync_lock:
+            audio = tts.generate(text, voice=voice)
         buffer = io.BytesIO()
         sf.write(buffer, audio, tts.sample_rate, format="WAV")
         return Response(content=buffer.getvalue(), media_type="audio/wav")
