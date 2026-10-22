@@ -173,7 +173,7 @@ export class TambolaVoice {
     try {
       if (this.backend === "kitten") {
         await execFileAsync(
-          "python3",
+          process.env.TTS_PYTHON ?? "python3",
           [
             this.kittenScript,
             "--voice",
@@ -187,7 +187,7 @@ export class TambolaVoice {
         );
       } else {
         await execFileAsync(
-          "python3",
+          process.env.TTS_PYTHON ?? "python3",
           [
             "-m",
             "edge_tts",

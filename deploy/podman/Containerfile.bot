@@ -16,13 +16,16 @@ RUN bun run --cwd apps/bot build
 RUN mkdir -p /out && cp -Lr /app/apps/bot/dist /out/dist && cp -Lr /app/node_modules /out/node_modules && mkdir -p /out/assets /out/packages/db && cp -r /app/apps/bot/assets /out/assets && cp -r /app/packages/db/drizzle /out/packages/db/drizzle
 
 FROM oven/bun:1 AS runtime
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg mpv python3 python3-pip ca-certificates fontconfig fonts-dejavu fonts-noto-cjk \
-  && pip3 install --no-cache-dir --break-system-packages yt-dlp edge-tts==7.3.1 kittenml soundfile \
-  && pip3 install --no-cache-dir --break-system-packages torch --index-url https://download.pytorch.org/whl/cu121 \
-  && python3 -c "from kittenml import KittenTTS; KittenTTS('KittenML/kitten-tts-2')" \
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg mpv python3 python3-pip python3-venv ca-certificates fontconfig fonts-dejavu fonts-noto-cjk \
+  && python3 -m venv /opt/tts \
+  && /opt/tts/bin/pip install --no-cache-dir yt-dlp edge-tts==7.3.1 kittenml soundfile \
+  && /opt/tts/bin/pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu121 \
+  && /opt/tts/bin/python -c "from kittenml import KittenTTS; KittenTTS('KittenML/kitten-tts-2')" \
   && rm -rf /var/lib/apt/lists/* /root/.cache
 ENV NODE_ENV=production
 ENV XDG_CACHE_HOME=/tmp
+ENV TTS_PYTHON=/opt/tts/bin/python
+ENV TTS_BACKEND=kitten
 WORKDIR /app
 COPY --from=build /out/ ./
 USER bun
