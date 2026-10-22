@@ -529,6 +529,7 @@ export class SielaBot {
     await interaction.deferUpdate();
     try {
       await music.filters(guild.id, value as MusicFilterPreset);
+      music.refreshNowPlaying(guild.id);
       await interaction.editReply({ content: `Filter preset set to **${value}**.`, components: [] });
     } catch (error) {
       await interaction.editReply({

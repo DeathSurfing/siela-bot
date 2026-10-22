@@ -14,6 +14,25 @@ import type { ReplyPayload } from "../framework/types.js";
 
 export const UI_ACCENT = COLORS.primary;
 
+export const ICONS = {
+  music: "♪",
+  social: "♥",
+  voice: "◉",
+  utility: "⚙",
+  admin: "⌘",
+  success: "✓",
+  error: "!",
+  live: "●",
+  lock: "🔒",
+  unlock: "🔓",
+  rename: "✎",
+  limit: "#",
+  more: "⋯",
+  play: "▶",
+  pause: "⏸",
+  skip: "⏭",
+} as const;
+
 export function text(content: string): TextDisplayBuilder {
   return new TextDisplayBuilder().setContent(content);
 }
@@ -57,11 +76,11 @@ export function progressBar(current: number, total: number, width = 12): string 
 }
 
 export function success(message: string): ReplyPayload {
-  return { content: `✅ ${message}`, ephemeral: true };
+  return { content: `${ICONS.success} ${message}`, ephemeral: true };
 }
 
 export function error(message: string): ReplyPayload {
-  return { content: `⚠️ ${message}`, ephemeral: true };
+  return { content: `${ICONS.error} ${message}`, ephemeral: true };
 }
 
 export function empty(message: string): ReplyPayload {

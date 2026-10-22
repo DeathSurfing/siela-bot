@@ -11,7 +11,7 @@ import type { BotConfig } from "@siela/config";
 import type { CommandRegistry } from "../framework/registry.js";
 import type { ReplyPayload } from "../framework/types.js";
 import { isAdmin } from "../framework/permissions.js";
-import { actionRow, card } from "./ui.js";
+import { ICONS, actionRow, card } from "./ui.js";
 
 export interface HelpOptions {
   registry: CommandRegistry;
@@ -64,18 +64,18 @@ export async function buildHelpPayload(options: HelpOptions): Promise<ReplyPaylo
   let body: string;
 
   if (selected) {
-    title = selected.name;
+    title = `${ICONS[selected.category]} ${selected.name}`;
     subtitle = CATEGORY_LABELS[selected.category];
     body = [`${selected.description}`, "", commandDetail(selected, prefix)].join("\n");
   } else if (category) {
     const list = commands.filter((command) => command.category === category);
-    title = CATEGORY_LABELS[category];
+    title = `${ICONS[category]} ${CATEGORY_LABELS[category]}`;
     subtitle = `${list.length} command${list.length === 1 ? "" : "s"}`;
     body = list.map(commandLine).join("\n") || "No commands.";
   } else {
     const summary = categories.map((cat) => {
       const count = commands.filter((command) => command.category === cat).length;
-      return `**${CATEGORY_LABELS[cat]}** — ${count} command${count === 1 ? "" : "s"}`;
+      return `${ICONS[cat]} **${CATEGORY_LABELS[cat]}** — ${count} command${count === 1 ? "" : "s"}`;
     });
     body = [
       summary.join("\n"),
@@ -91,6 +91,7 @@ export async function buildHelpPayload(options: HelpOptions): Promise<ReplyPaylo
       categories.map((cat) => ({
         label: CATEGORY_LABELS[cat],
         value: cat,
+        emoji: ICONS[cat],
         default: category === cat,
       })),
     );

@@ -59,9 +59,11 @@ const playCommand: Command = {
       await ctx.defer();
     }
     try {
-      const result = await music(ctx).play(ctx.member, query, ctx.args[1]);
+      const service = music(ctx);
+      const result = await service.play(ctx.member, query, ctx.args[1]);
       const notice = result.added > 1 ? `Added ${result.added} tracks to the queue.` : "Added to the queue.";
-      await ctx.edit(buildMusicPayload(ctx.guild.id, music(ctx).state(ctx.guild.id), notice));
+      const message = await ctx.edit(buildMusicPayload(ctx.guild.id, service.state(ctx.guild.id), notice));
+      if (message) service.setNowPlayingMessage(ctx.guild.id, message);
     } catch (error) {
       const message = error instanceof Error ? error.message : "That play request failed.";
       await ctx.edit(card({ title: "Could not play", body: message })).catch(() => undefined);
@@ -100,6 +102,7 @@ const pauseCommand: Command = {
   async execute(ctx) {
     requireSameVoice(ctx);
     await music(ctx).pause(ctx.guild.id);
+    music(ctx).refreshNowPlaying(ctx.guild.id);
     await ctx.reply(success("Paused."));
   },
 };
@@ -114,6 +117,7 @@ const resumeCommand: Command = {
   async execute(ctx) {
     requireSameVoice(ctx);
     await music(ctx).resume(ctx.guild.id);
+    music(ctx).refreshNowPlaying(ctx.guild.id);
     await ctx.reply(success("Resumed."));
   },
 };
@@ -205,7 +209,9 @@ const nowPlayingCommand: Command = {
   examples: ["nowplaying"],
   slash: new SlashCommandBuilder().setName("nowplaying").setDescription("Show the current track"),
   async execute(ctx) {
-    await ctx.reply(buildMusicPayload(ctx.guild.id, music(ctx).state(ctx.guild.id)));
+    const service = music(ctx);
+    const message = await ctx.reply(buildMusicPayload(ctx.guild.id, service.state(ctx.guild.id)));
+    if (message) service.setNowPlayingMessage(ctx.guild.id, message);
   },
 };
 
@@ -226,6 +232,7 @@ const volumeCommand: Command = {
     const value = Number(ctx.args[0]);
     if (!Number.isInteger(value) || value < 0 || value > 150) throw new UserError("Volume must be 0-150.");
     const actual = await music(ctx).volume(ctx.guild.id, value);
+    music(ctx).refreshNowPlaying(ctx.guild.id);
     await ctx.reply(success(`Volume set to **${actual}%**.`));
   },
 };
@@ -271,6 +278,7 @@ const loopCommand: Command = {
     const mode = ctx.args[0]?.toLowerCase();
     if (mode !== "off" && mode !== "track" && mode !== "queue") throw new UserError("Use off, track, or queue.");
     await music(ctx).loop(ctx.guild.id, mode);
+    music(ctx).refreshNowPlaying(ctx.guild.id);
     await ctx.reply(success(`Loop mode: **${mode}**.`));
   },
 };
@@ -285,6 +293,7 @@ const shuffleCommand: Command = {
   async execute(ctx) {
     requireSameVoice(ctx);
     await music(ctx).shuffle(ctx.guild.id);
+    music(ctx).refreshNowPlaying(ctx.guild.id);
     await ctx.reply(success("Queue shuffled."));
   },
 };
@@ -303,6 +312,7 @@ const removeCommand: Command = {
     requireSameVoice(ctx);
     await requireDj(ctx);
     const removed = await music(ctx).remove(ctx.guild.id, Number(ctx.args[0]));
+    music(ctx).refreshNowPlaying(ctx.guild.id);
     await ctx.reply(success(`Removed **${removed.title}**.`));
   },
 };
@@ -318,6 +328,7 @@ const clearCommand: Command = {
     requireSameVoice(ctx);
     await requireDj(ctx);
     await music(ctx).clear(ctx.guild.id);
+    music(ctx).refreshNowPlaying(ctx.guild.id);
     await ctx.reply(success("Queue cleared."));
   },
 };
@@ -334,6 +345,7 @@ const clearQueueCommand: Command = {
     requireSameVoice(ctx);
     await requireDj(ctx);
     await music(ctx).clear(ctx.guild.id);
+    music(ctx).refreshNowPlaying(ctx.guild.id);
     await ctx.reply(success("Queue cleared."));
   },
 };
@@ -353,6 +365,7 @@ const moveCommand: Command = {
     requireSameVoice(ctx);
     await requireDj(ctx);
     await music(ctx).move(ctx.guild.id, Number(ctx.args[0]), Number(ctx.args[1]));
+    music(ctx).refreshNowPlaying(ctx.guild.id);
     await ctx.reply(success("Track moved."));
   },
 };
@@ -440,6 +453,7 @@ const filtersCommand: Command = {
       throw new UserError("Use off, bassboost, nightcore, or vaporwave.");
     }
     await music(ctx).filters(ctx.guild.id, preset);
+    music(ctx).refreshNowPlaying(ctx.guild.id);
     await ctx.reply(success(`Filter preset: **${preset}**.`));
   },
 };

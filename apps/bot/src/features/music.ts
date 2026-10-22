@@ -17,11 +17,12 @@ import {
   type AudioResource,
   type VoiceConnection,
 } from "@discordjs/voice";
-import { ChannelType, type Client, type GuildMember } from "discord.js";
+import { ChannelType, type Client, type GuildMember, type Message } from "discord.js";
 import type { MusicLoopMode, MusicQueueState, MusicTrackInfo } from "@siela/shared";
 import { UserError, ServiceUnavailableError } from "../lib/errors.js";
 import type { Logger } from "../lib/logger.js";
 import type { SettingsService } from "./settings.js";
+import { buildMusicPayload } from "./music-ui.js";
 
 const execFileAsync = promisify(execFile);
 const AUDIO_FORMAT = "bestaudio[abr<=312]/bestaudio/best[abr<=312]/best";
@@ -478,6 +479,8 @@ export class MusicService extends EventEmitter {
   private readonly cacheDir = "/tmp/siela-music-cache";
   private readonly cacheMaxBytes = 250 * 1024 * 1024;
   private readonly cacheInFlight = new Map<string, Promise<string | null>>();
+  private readonly nowPlayingMessages = new Map<string, Message>();
+  private readonly nowPlayingUpdating = new Set<string>();
   private binariesCheckedAt = 0;
   private binariesOk = false;
 
@@ -490,6 +493,46 @@ export class MusicService extends EventEmitter {
     this.logger = logger;
     this.on("error", () => undefined);
     mkdirSync(this.cacheDir, { recursive: true });
+    this.on("trackStart", (payload: { guildId: string }) => {
+      void this.updateNowPlaying(payload.guildId);
+    });
+    this.on("queueEnd", (payload: { guildId: string }) => {
+      void this.clearNowPlaying(payload.guildId);
+    });
+  }
+
+  setNowPlayingMessage(guildId: string, message: Message): void {
+    this.nowPlayingMessages.set(guildId, message);
+  }
+
+  refreshNowPlaying(guildId: string): void {
+    void this.updateNowPlaying(guildId);
+  }
+
+  private async updateNowPlaying(guildId: string): Promise<void> {
+    const message = this.nowPlayingMessages.get(guildId);
+    if (!message || this.nowPlayingUpdating.has(guildId)) return;
+    const state = this.state(guildId);
+    if (!state?.current) {
+      this.nowPlayingMessages.delete(guildId);
+      return;
+    }
+    if (state.paused) return;
+    this.nowPlayingUpdating.add(guildId);
+    try {
+      await message.edit(buildMusicPayload(guildId, state));
+    } catch {
+      this.nowPlayingMessages.delete(guildId);
+    } finally {
+      this.nowPlayingUpdating.delete(guildId);
+    }
+  }
+
+  private async clearNowPlaying(guildId: string): Promise<void> {
+    const message = this.nowPlayingMessages.get(guildId);
+    this.nowPlayingMessages.delete(guildId);
+    if (!message) return;
+    await message.edit(buildMusicPayload(guildId, null)).catch(() => undefined);
   }
 
   private cacheKey(track: QueueTrack): string {
@@ -952,6 +995,7 @@ export class MusicService extends EventEmitter {
     gp.autoplay = false;
     gp.stopProcess();
     gp.player.stop(true);
+    void this.clearNowPlaying(guildId);
   }
 
   async disconnect(guildId: string): Promise<void> {
@@ -964,6 +1008,7 @@ export class MusicService extends EventEmitter {
       gp.connection.destroy();
     }
     this.players.delete(guildId);
+    void this.clearNowPlaying(guildId);
   }
 
   async volume(guildId: string, volume: number): Promise<number> {

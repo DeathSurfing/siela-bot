@@ -12,7 +12,7 @@ import {
 } from "discord.js";
 import { formatDuration, truncate, type MusicQueueState } from "@siela/shared";
 import type { ReplyPayload } from "../framework/types.js";
-import { UI_ACCENT, actionRow, progressBar, text } from "./ui.js";
+import { ICONS, UI_ACCENT, actionRow, progressBar, text } from "./ui.js";
 
 function buttonId(guildId: string, action: string): string {
   return `music:${action}:${guildId}`;
@@ -28,7 +28,7 @@ export function buildMusicPayload(
       components: [
         new ContainerBuilder()
           .setAccentColor(UI_ACCENT)
-          .addTextDisplayComponents(text("## Nothing playing"))
+          .addTextDisplayComponents(text(`## ${ICONS.music} Nothing playing`))
           .addTextDisplayComponents(text("-# Use `/play` to start a track.")),
       ],
       flags: MessageFlags.IsComponentsV2,
@@ -38,7 +38,7 @@ export function buildMusicPayload(
   const track = state.current;
   const length = track.isStream ? 0 : track.length;
   const progress = track.isStream
-    ? "🔴 LIVE"
+    ? `${ICONS.live} LIVE`
     : `${progressBar(state.position, length, 14)}  \`${formatDuration(state.position)} / ${formatDuration(length)}\``;
   const next = state.upcoming[0];
 
@@ -52,8 +52,8 @@ export function buildMusicPayload(
 
   const titleSection = new SectionBuilder()
     .addTextDisplayComponents(
-      text(`### ${truncate(track.title, 80)}`),
-      text(`-# ${truncate(track.author, 48)}${track.isStream ? " · LIVE" : ""}`),
+      text(`### ${ICONS.music} ${truncate(track.title, 80)}`),
+      text(`-# ${truncate(track.author, 48)}${track.isStream ? ` · ${ICONS.live} LIVE` : ""}`),
     );
   if (track.artworkUrl) {
     titleSection.setThumbnailAccessory(new ThumbnailBuilder({ media: { url: track.artworkUrl } }));
@@ -76,17 +76,19 @@ export function buildMusicPayload(
       new ButtonBuilder()
         .setCustomId(buttonId(guildId, "pause"))
         .setLabel(state.paused ? "Resume" : "Pause")
+        .setEmoji(state.paused ? ICONS.play : ICONS.pause)
         .setStyle(state.paused ? ButtonStyle.Success : ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(buttonId(guildId, "skip"))
         .setLabel("Skip")
+        .setEmoji(ICONS.skip)
         .setStyle(ButtonStyle.Secondary),
     ),
   );
 
   const more = new StringSelectMenuBuilder()
     .setCustomId(`music:more:${guildId}`)
-    .setPlaceholder("More controls…")
+    .setPlaceholder(`${ICONS.more} More controls…`)
     .addOptions(
       { label: "Rewind 10s", value: "rewind" },
       { label: "Forward 10s", value: "forward" },
