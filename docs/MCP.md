@@ -36,6 +36,16 @@ The control API runs inside the bot process. The MCP server reaches it through t
 
 The MCP server is attached to two networks when it runs in compose. `control` provides access to `bot-control`. `mcp` provides access to clients.
 
+## Container image
+
+The MCP image builds and runs with Bun. Build it from the repository root:
+
+```bash
+podman build -f deploy/podman/Containerfile.mcp -t localhost/siela-mcp:latest .
+```
+
+The container starts with `bun dist/index.js`. The resulting `localhost/siela-mcp:latest` image is the one `compose.mcp.yaml` runs.
+
 ## Client examples
 
 ### stdio in a container
@@ -111,6 +121,8 @@ Some control API mutations write an audit entry. Coverage is not universal. The 
 - Welcome updates.
 - Auto-role updates and synchronization.
 - Counter resets.
+- Temporary voice channel configuration updates (`PATCH /v1/tempvc/config`).
+- Music configuration updates (`PATCH /v1/music/config`).
 - Message sends.
 - Privacy deletion.
 
