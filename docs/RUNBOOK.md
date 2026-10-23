@@ -81,7 +81,7 @@ For a code-only deployment, build locally and use the fast overlay:
 REMOTE=user@host SSH_KEY=~/.ssh/your-key ./scripts/deploy-fast.sh
 ```
 
-The fast script requires `REMOTE`. It builds `apps/bot/dist`, copies it to the server, and starts the bot with `compose.fast.yaml`.
+The fast script requires `REMOTE`. It builds `apps/bot/dist`, copies it to the server, recreates the bot container, and starts it with `compose.fast.yaml`.
 
 ## Backups
 
@@ -92,11 +92,12 @@ podman exec siela-postgres pg_dump -U "${POSTGRES_USER:-siela}" -Fc "${POSTGRES_
   | gzip > "/var/backups/siela/siela-$(date +%F).dump.gz"
 ```
 
-Restore (stop the bot — and MCP if enabled — first so nothing writes mid-restore):
+Restore (stop the bot first so nothing writes mid-restore, and stop MCP if it is enabled):
 
 ```bash
 set -a; . deploy/podman/.env; set +a
-./scripts/podman-stack.sh stop bot mcp
+./scripts/podman-stack.sh stop bot
+podman stop siela-mcp >/dev/null 2>&1 || true
 gunzip -c /var/backups/siela/siela-YYYY-MM-DD.dump.gz \
   | podman exec -i siela-postgres pg_restore -U "${POSTGRES_USER:-siela}" -d "${POSTGRES_DB:-siela}" --clean --if-exists
 ./scripts/podman-stack.sh up -d
@@ -104,11 +105,9 @@ gunzip -c /var/backups/siela/siela-YYYY-MM-DD.dump.gz \
 
 ## Remote Podman Desktop
 
-Podman Desktop can manage the server stack over SSH. The remote host needs the
-rootful Podman socket (`/run/podman/podman.sock`), which is already enabled by
-`podman.socket` on this host.
+Podman Desktop can manage a remote stack over SSH. The remote host needs the rootful Podman socket (`/run/podman/podman.sock`). Enable `podman.socket` on that host before connecting.
 
-On the Mac:
+On the client machine:
 
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/siela_podman_ed25519

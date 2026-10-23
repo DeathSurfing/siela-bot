@@ -42,7 +42,12 @@ podman --version                 # 5.0 or newer
 podman compose version           # must print a compose provider
 stat -fc %T /sys/fs/cgroup       # cgroup2fs
 df -h .                          # allow about 25 GB for images and models
+git --version
+curl --version
+python3 --version                # used by podman-init.sh to derive the client ID
 ```
+
+The init script can use an explicit `DISCORD_CLIENT_ID` instead of `curl` and `python3`. Set it if those tools are unavailable.
 
 For a rootless install, confirm that `/etc/subuid` and `/etc/subgid` contain your user, then enable lingering:
 
@@ -124,7 +129,6 @@ Test the bot in Discord:
 These steps are optional but make the bot useful:
 
 ```text
-!prefix set ?
 !welcome channel #welcome
 !welcome card on
 !welcome test
@@ -135,7 +139,10 @@ These steps are optional but make the bot useful:
 !musicconfig djrole @DJ
 !confession channel #confessions
 !config
+!prefix set ?
 ```
+
+Change the prefix last. After `!prefix set ?`, every prefix command must use `?` instead of `!`.
 
 Admin commands require the guild owner, `Manage Server`, `BOT_OWNER_ID`, or a role in `ADMIN_ROLE_IDS`. The bot’s role must sit above any role it assigns.
 

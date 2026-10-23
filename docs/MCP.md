@@ -108,7 +108,7 @@ There are no MCP tools for the economy, Delulu, TTS, or social commands. Those f
 Some control API mutations write an audit entry. Coverage is not universal. The following routes currently call `AuditService`:
 
 - Prefix updates.
-- Welcome updates and test sends.
+- Welcome updates.
 - Auto-role updates and synchronization.
 - Counter resets.
 - Message sends.

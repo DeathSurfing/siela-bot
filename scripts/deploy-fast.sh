@@ -13,4 +13,4 @@ ssh -i "$SSH_KEY" "$REMOTE" "mkdir -p $REMOTE_REPO/apps/bot/dist"
 scp -r -i "$SSH_KEY" "$ROOT"/apps/bot/dist/* "$REMOTE:$REMOTE_REPO/apps/bot/dist/"
 
 ssh -i "$SSH_KEY" "$REMOTE" \
-  "cd $REMOTE_REPO && podman compose -p siela -f deploy/podman/compose.yaml -f deploy/podman/compose.fast.yaml up -d bot && sleep 8 && podman logs --tail 5 siela-bot"
+  "cd $REMOTE_REPO && podman compose -p siela -f deploy/podman/compose.yaml -f deploy/podman/compose.fast.yaml up -d --force-recreate bot && sleep 8 && podman logs --tail 5 siela-bot"
