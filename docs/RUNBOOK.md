@@ -108,11 +108,11 @@ On the Mac:
 
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/siela_podman_ed25519
-ssh-copy-id -i ~/.ssh/siela_podman_ed25519.pub root@192.168.1.3
+ssh-copy-id -i ~/.ssh/siela_podman_ed25519.pub root@<server-ip>
 
 podman system connection add siela-server \
   --identity "$HOME/.ssh/siela_podman_ed25519" \
-  ssh://root@192.168.1.3/run/podman/podman.sock
+  ssh://root@<server-ip>/run/podman/podman.sock
 ```
 
 Then enable **Podman Desktop → Settings → Preferences → Enable remote
