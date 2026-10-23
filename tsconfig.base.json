@@ -14,11 +14,10 @@
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
     "types": ["node", "bun-types"],
-    "baseUrl": ".",
     "paths": {
-      "@siela/shared": ["packages/shared/src/index.ts"],
-      "@siela/db": ["packages/db/src/index.ts"],
-      "@siela/config": ["packages/config/src/index.ts"]
+      "@siela/shared": ["./packages/shared/src/index.ts"],
+      "@siela/db": ["./packages/db/src/index.ts"],
+      "@siela/config": ["./packages/config/src/index.ts"]
     }
   }
 }
