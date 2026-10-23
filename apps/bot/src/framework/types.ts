@@ -38,6 +38,7 @@ import type { MusicService } from "../features/music.js";
 import type { LyricsService } from "../features/lyrics.js";
 import type { TambolaService } from "../features/tambola/service.js";
 import type { TtsService } from "../features/tts.js";
+import type { VoiceSfxService } from "../features/voiceSfx.js";
 import type { EconomyService } from "../features/economy.js";
 import type { ScheduledEventService } from "../features/scheduledEvents.js";
 import type { PrivacyService } from "../features/privacy.js";
@@ -68,6 +69,7 @@ export interface Services {
   economy: EconomyService;
   relics: RelicService;
   tts: TtsService;
+  voiceSfx: VoiceSfxService;
   scheduledEvents: ScheduledEventService;
 }
 

@@ -28,6 +28,7 @@ import {
   type VoiceChannel,
   type VoiceState,
 } from "discord.js";
+import { getVoiceConnection } from "@discordjs/voice";
 import { APP_VERSION, DEFAULTS, type BotStatus } from "@siela/shared";
 import { pingDatabase, type DatabaseHandle, type TempVoiceChannelRow } from "@siela/db";
 import type { BotConfig } from "@siela/config";
@@ -64,6 +65,7 @@ import { BirthdayService } from "./features/birthday.js";
 import { parseTempVcPanelCustomId, tempVcPanelCustomId, TempVcService } from "./features/tempvc.js";
 
 import { MusicService, type MusicFilterPreset } from "./features/music.js";
+import { VoiceSfxService } from "./features/voiceSfx.js";
 import { buildMusicPayload } from "./features/music-ui.js";
 import { LyricsService } from "./features/lyrics.js";
 import { buildLyricsPayload } from "./features/lyrics-ui.js";
@@ -145,6 +147,20 @@ export class SielaBot {
     const tambola = new TambolaService(this.client, music, this.config, this.logger, economy);
     const tts = new TtsService(music, this.config, this.logger);
     music.setVoiceBusyChecker((guildId) => tambola.isUsingVoice(guildId) || tts.isEnabled(guildId));
+    const isBotInVoice = (guildId: string): boolean =>
+      Boolean(
+        getVoiceConnection(guildId) ||
+          music.isConnected(guildId) ||
+          music.isVoiceLocked(guildId) ||
+          tambola.isUsingVoice(guildId) ||
+          tts.isEnabled(guildId),
+      );
+    const voiceSfx = new VoiceSfxService({
+      ytdlpPath: this.config.YTDLP_PATH,
+      ffmpegPath: this.config.FFMPEG_PATH,
+      logger: this.logger,
+      isVoiceBusy: isBotInVoice,
+    });
     const isVoiceBusy = (guildId: string): boolean => Boolean(tambola.get(guildId));
     this.randomVc = new RandomVcService(music, this.logger, isVoiceBusy);
     this.scheduledEvents = new ScheduledEventService(
@@ -179,6 +195,7 @@ export class SielaBot {
       lyrics,
       tambola,
       tts,
+      voiceSfx,
       economy,
       relics,
       scheduledEvents: this.scheduledEvents,
@@ -317,7 +334,10 @@ export class SielaBot {
       }
       const prefix = await this.services.settings.getPrefix(message.guild.id);
       const parsed = parsePrefixCommand(message.content, prefix, this.client.user?.id ?? "");
-      if (!parsed) return;
+      if (!parsed) {
+        void this.services.voiceSfx.maybePlay(message).catch(() => undefined);
+        return;
+      }
       const command = this.registry.get(parsed.name);
       if (!command) {
         const now = Date.now();
@@ -1083,6 +1103,7 @@ export class SielaBot {
     if (this.music) await this.music.shutdown().catch(() => undefined);
     this.services.tambola.stop();
     this.services.tts.stop();
+    this.services.voiceSfx.stop();
     this.services.tempVc.stop();
     this.randomVc.stop();
     this.scheduledEvents.stop();

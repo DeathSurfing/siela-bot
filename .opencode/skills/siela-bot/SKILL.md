@@ -85,6 +85,7 @@ Categories: `music`, `social`, `voice`, `utility`, `admin`.
 | Feature | Main files | Notes |
 |---|---|---|
 | Music | `features/music.ts`, `features/music-ui.ts`, `commands/music/music.ts` | yt-dlp + mpv (ffmpeg fallback), queue, filters, Spotify, cache, now-playing V2 card. |
+| Voice SFX | `features/voiceSfx.ts` | Chat trigger `gay` joins the author's VC when the bot is idle, plays a cached 384 kbps clip once, then leaves. 60s guild cooldown. |
 | Lyrics | `features/lyrics.ts`, `features/lyrics-ui.ts` | LRCLIB, `/lyrics` and now-playing button, in-memory cache, long lyrics attach `.txt`. |
 | Tambola | `features/tambola/*`, `features/tambola-ui.ts`, `commands/social/tambola.ts` | 90-ball game, DM tickets, auto/manual marking, claims, KittenTTS calls with Edge TTS fallback, lobby settings. Ticket 25 SC, automark 10 SC. Rewards 5 SC participation, 10 SC per line, 40 SC Full House. |
 | Welcome | `features/welcome.ts`, `features/welcomeCard.ts`, `commands/admin/welcome.ts` | Join/goodbye messages, optional image card/DM. |

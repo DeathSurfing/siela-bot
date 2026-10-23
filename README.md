@@ -12,6 +12,7 @@ The project is open source under the MIT license. Contributions, bug reports, an
 ## What it does
 
 - **Music.** Streams from SoundCloud, YouTube, and Spotify links through `yt-dlp` and `mpv`. Includes a persistent queue, live filters, lyrics from LRCLIB, and interactive controls.
+- **Voice sound effects.** Typing `gay` in chat makes the bot join the author's voice channel and play the "Gay Echo" clip once, then leave. It stays out of the way when the bot is already busy in a voice channel.
 - **Economy.** Tracks Siela Coins in a PostgreSQL ledger. Supports daily rewards, work, voice and Tambola income, transfers, gambling, a shop, premium passes, a six-stock exchange, and surge-priced Delulu with daily AI caps.
 - **Siela Relics.** Auctions one procedurally generated, one-of-one meme card every day from 4:00 PM to 5:00 PM IST. Escrowed SC bidding, weekend rarity boosts, permanent vaults, passive yield, showcase profiles, and player trades.
 - **Tambola.** Runs 90-ball games with private DM tickets, line and full-house claims, paid extra tickets, paid auto-marking, and spoken number calls.
