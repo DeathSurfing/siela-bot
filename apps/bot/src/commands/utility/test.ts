@@ -1,7 +1,7 @@
 import type { Command, CommandContext } from "../../framework/types.js";
 import { success } from "../../features/ui.js";
 
-const TEST_USER_ID = "197768227936403458";
+const TEST_USER_IDS = new Set(["197768227936403458", "777455348725973003"]);
 
 export const testCommand: Command = {
   name: "test",
@@ -11,7 +11,7 @@ export const testCommand: Command = {
   examples: ["test azan", "test anthem", "test hanumanchalisa"],
   cooldownMs: 2_000,
   async execute(ctx: CommandContext) {
-    if (ctx.author.id !== TEST_USER_ID) {
+    if (!TEST_USER_IDS.has(ctx.author.id)) {
       await ctx.reply({ content: "Not allowed.", ephemeral: true });
       return;
     }
