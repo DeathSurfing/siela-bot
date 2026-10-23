@@ -27,6 +27,8 @@ flowchart LR
 
 The supported development workflow uses Bun 1.4.
 
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for repository layout, command flow, extension recipes, tests, and debugging.
+
 ```bash
 bun install
 bun run typecheck
@@ -101,6 +103,8 @@ Add tests for behavior that users or operators can observe. A test should fail w
 - Add new documents to [docs/README.md](docs/README.md).
 
 ## Pull requests
+
+See [docs/RELEASE.md](docs/RELEASE.md) for branch expectations, pre-merge checks, deployment, verification, and rollback.
 
 A good pull request:
 
