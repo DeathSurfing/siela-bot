@@ -715,3 +715,17 @@ Remaining:
 - Welcome message/card V2 conversion review.
 - Final mobile screenshot pass on a real Discord client.
 - Decide whether to fold `stop` into `disconnect` or keep both semantics.
+
+## 11. Economy and exchange surfaces (2026-10-23)
+
+Completed:
+
+- `economy balance`, `top`, `shop`, `slots`, `blackjack`, and `premium` use the shared V2 kit. Blackjack no longer builds its own container with a second accent color.
+- `stocks` adds a public market board, a private portfolio card, and buy/sell modals. The board uses one accent, a compact per-stock row, a sparkline, and the latest headline.
+- Portfolio and trade replies are ephemeral; the market board is public so the server can see the same prices.
+- The exchange shows relative update time and keeps the primary actions to Portfolio, Buy, and Sell.
+
+Still open:
+
+- Inline admin editing for economy settings and shop items.
+- Mobile screenshot pass for the market board on a real client.

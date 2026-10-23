@@ -12,16 +12,21 @@ import type { TempVcService } from "./tempvc.js";
 import type { LevelingService } from "./leveling.js";
 import type { MusicService } from "./music.js";
 import { FriendshipService } from "./friendship.js";
+import type { EconomyService } from "./economy.js";
 import type { Logger } from "../lib/logger.js";
 
 const FLUSH_INTERVAL_MS = 5 * 60 * 1000;
 const VOICE_XP_INTERVAL_MS = 10 * 60 * 1000;
+const VOICE_AWARD_INTERVAL_MS = 10 * 60 * 1000;
+const VOICE_AWARD_DAILY_CAP = 20;
 const RETENTION_DAYS = 90;
 
 interface VoiceSession {
   channelId: string;
   joinedAt: number;
   lastFlushedAt: number;
+  lastAwardedAt: number;
+  eligible: boolean;
 }
 
 interface PairSession {
@@ -58,6 +63,7 @@ export class ActivityService {
     private readonly tempVc: TempVcService,
     private readonly music: MusicService,
     private readonly logger: Logger,
+    private readonly economy: EconomyService | null = null,
   ) {}
 
   private guildSessions(guildId: string): Map<string, VoiceSession> {
@@ -123,7 +129,16 @@ export class ActivityService {
       if (channel.type !== ChannelType.GuildVoice) continue;
       for (const member of channel.members.values()) {
         if (member.user.bot) continue;
-        guildSessions.set(member.id, { channelId: channel.id, joinedAt: Date.now(), lastFlushedAt: Date.now() });
+        guildSessions.set(member.id, {
+          channelId: channel.id,
+          joinedAt: Date.now(),
+          lastFlushedAt: Date.now(),
+          lastAwardedAt: Date.now(),
+          eligible:
+            channel.id !== guild.afkChannelId &&
+            !member.voice.selfDeaf &&
+            !member.voice.selfMute,
+        });
       }
       if (await this.trackedFriendshipChannel(guild.id, channel.id)) {
         const members = [...channel.members.keys()].filter((id) => !channel.members.get(id)?.user.bot);
@@ -174,7 +189,19 @@ export class ActivityService {
     }
 
     if (newChannel) {
-      sessions.set(userId, { channelId: newChannel, joinedAt: now, lastFlushedAt: now });
+      const existing = sessions.get(userId);
+      const eligible = newChannel !== guild.afkChannelId && !newState.selfDeaf && !newState.selfMute;
+      if (existing && existing.channelId === newChannel) {
+        existing.eligible = eligible;
+      } else {
+        sessions.set(userId, {
+          channelId: newChannel,
+          joinedAt: now,
+          lastFlushedAt: now,
+          lastAwardedAt: now,
+          eligible,
+        });
+      }
       if (await this.trackedFriendshipChannel(guild.id, newChannel)) {
         const members = this.channelMembers(guild, newChannel);
         for (const other of members) {
@@ -324,6 +351,33 @@ export class ActivityService {
         const elapsed = Math.max(0, Math.floor((now - session.lastFlushedAt) / 1000));
         if (elapsed > 0) this.addVoiceTime(guildId, userId, elapsed);
         session.lastFlushedAt = now;
+      }
+    }
+
+    if (this.economy) {
+      for (const [guildId, sessions] of this.voiceSessions) {
+        for (const [userId, session] of sessions) {
+          if (!session.eligible) continue;
+          if (now - session.lastAwardedAt < VOICE_AWARD_INTERVAL_MS) continue;
+          session.lastAwardedAt = now;
+          try {
+            const allowed = await this.economy.rateLimit(
+              `voice:${guildId}:${userId}`,
+              VOICE_AWARD_DAILY_CAP,
+              24 * 60 * 60 * 1000,
+            );
+            if (!allowed) continue;
+            await this.economy.award(
+              guildId,
+              userId,
+              1,
+              "voice",
+              `voice:${guildId}:${userId}:${Math.floor(now / VOICE_AWARD_INTERVAL_MS)}`,
+            );
+          } catch (error) {
+            this.logger.warn({ err: error, guildId, userId }, "failed to award voice coins");
+          }
+        }
       }
     }
 

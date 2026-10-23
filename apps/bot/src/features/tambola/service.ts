@@ -40,6 +40,9 @@ const LOBBY_TIMEOUT_MS = 5 * 60 * 1000;
 const FINAL_CLAIM_WINDOW_MS = 30_000;
 const GAME_TIMEOUT_MS = 45 * 60 * 1000;
 const MANUAL_CALL_THROTTLE_MS = 2_000;
+const REWARD_PARTICIPATION = 5;
+const REWARD_LINE = 10;
+const REWARD_FULL_HOUSE = 40;
 
 type ComponentInteraction =
   | ButtonInteraction
@@ -572,6 +575,13 @@ export class TambolaService {
         await this.updateCard(session);
         if (pattern === "full_house") {
           const winner = interaction.user.id;
+          this.reward(
+            session.game.guildId,
+            winner,
+            REWARD_FULL_HOUSE,
+            "tambola_win",
+            `tambola:${session.game.id}:full_house:${winner}`,
+          );
           await this.finishGame(session, `<@${winner}> claimed Full House.`);
           await this.privateReply(interaction, {
             content: "Full House! Congratulations!",
@@ -579,6 +589,13 @@ export class TambolaService {
           });
           return;
         }
+        this.reward(
+          session.game.guildId,
+          interaction.user.id,
+          REWARD_LINE,
+          "tambola_line",
+          `tambola:${session.game.id}:line:${pattern}:${interaction.user.id}`,
+        );
         if (session.voice) void session.voice.speak(`${CLAIM_LABELS[pattern]} claimed!`);
         await this.privateReply(interaction, {
           content: `${CLAIM_LABELS[pattern]} claimed!`,
@@ -833,6 +850,19 @@ export class TambolaService {
     }, FINAL_CLAIM_WINDOW_MS);
   }
 
+  private reward(
+    guildId: string,
+    userId: string,
+    amount: number,
+    kind: string,
+    key: string,
+  ): void {
+    if (!this.economy) return;
+    void this.economy.award(guildId, userId, amount, kind, key).catch((error) => {
+      this.logger.warn({ err: error, guildId, userId, kind }, "tambola reward failed");
+    });
+  }
+
   private async finishGame(session: TambolaSession, note?: string): Promise<void> {
     if (session.game.status === "lobby") {
       await this.cancel(session, "The lobby was closed.");
@@ -842,6 +872,17 @@ export class TambolaService {
     const winner = session.game.winnerId;
     if (session.game.status !== "finished" && session.game.status !== "cancelled") {
       session.game.finish();
+    }
+    if (session.game.called.length >= 10) {
+      for (const userId of session.game.players.keys()) {
+        this.reward(
+          session.game.guildId,
+          userId,
+          REWARD_PARTICIPATION,
+          "tambola_participation",
+          `tambola:${session.game.id}:participation:${userId}`,
+        );
+      }
     }
     await this.updateCard(session, note);
     const voice = session.voice;

@@ -38,7 +38,6 @@ const STREAK_WINDOW_MS = 36 * 60 * 60 * 1000;
 const DAILY_BASE = 10;
 const STARTING_BALANCE = 50;
 const MAX_STOCK_SHARES = 1_000_000;
-const MAX_BET = 10_000;
 
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
@@ -72,10 +71,21 @@ export class EconomyService {
   }
 
   async ensureAccount(guildId: string, userId: string): Promise<void> {
-    await this.db
-      .insert(economyAccounts)
-      .values({ guildId, userId, balance: STARTING_BALANCE })
-      .onConflictDoNothing();
+    await this.db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(economyAccounts)
+        .values({ guildId, userId, balance: STARTING_BALANCE })
+        .onConflictDoNothing()
+        .returning({ userId: economyAccounts.userId });
+      if (!inserted.length || STARTING_BALANCE <= 0) return;
+      await tx.insert(economyTransactions).values({
+        guildId,
+        toUserId: userId,
+        amount: STARTING_BALANCE,
+        kind: "starting_balance",
+        reason: "welcome grant",
+      });
+    });
   }
 
   async getBalance(guildId: string, userId: string): Promise<EconomyBalance> {
@@ -198,7 +208,7 @@ export class EconomyService {
     if (account?.lastWorkAt && new Date(account.lastWorkAt as string | Date).getTime() > cutoff.getTime()) {
       throw new Error(`WORK_COOLDOWN:${new Date(new Date(account.lastWorkAt as string | Date).getTime() + 2 * 60 * 60 * 1000).toISOString()}`);
     }
-    const amount = 1 + Math.floor(Math.random() * 4);
+    const amount = 3 + Math.floor(Math.random() * 6);
     const updated = await this.db.transaction(async (tx) => {
       const rows = await tx
         .update(economyAccounts)
@@ -614,21 +624,26 @@ export class EconomyService {
       .where(and(eq(economyInventory.guildId, guildId), eq(economyInventory.userId, userId)));
   }
 
-  async countSpendsToday(guildId: string, userId: string, kind: string): Promise<number> {
+  async countDeluluUsesToday(guildId: string, userId: string, kind: string): Promise<number> {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     const [row] = await this.db
-      .select({ count: sql<number>`count(*)::int` })
+      .select({
+        used: sql<number>`count(*) filter (where ${economyTransactions.kind} = ${kind})::int`,
+        refunded: sql<number>`count(*) filter (where ${economyTransactions.kind} = 'delulu_refund' and ${economyTransactions.idempotencyKey} like ${`delulu:${kind}:%:refund`})::int`,
+      })
       .from(economyTransactions)
       .where(
         and(
           eq(economyTransactions.guildId, guildId),
-          eq(economyTransactions.fromUserId, userId),
-          eq(economyTransactions.kind, kind),
+          or(
+            eq(economyTransactions.fromUserId, userId),
+            eq(economyTransactions.toUserId, userId),
+          ),
           gte(economyTransactions.createdAt, start),
         ),
       );
-    return Number(row?.count ?? 0);
+    return Math.max(0, Number(row?.used ?? 0) - Number(row?.refunded ?? 0));
   }
 
   async stats(guildId: string, days = 7): Promise<Array<{ kind: string; total: number; count: number }>> {
@@ -825,9 +840,8 @@ export class EconomyService {
 
     await this.ensureAccount(guildId, userId);
     await this.ensureMarketRows(guildId);
-    let result: StockBuyResult | null = null;
 
-    await this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       await this.advanceMarketTx(tx, guildId);
       const [stock] = await tx
         .select()
@@ -899,7 +913,7 @@ export class EconomyService {
         reason: `${stock.symbol} x${shares} @ ${stock.price}`,
       });
 
-      result = {
+      return {
         symbol: stock.symbol,
         shares,
         price: stock.price,
@@ -910,7 +924,7 @@ export class EconomyService {
     });
 
     await this.invalidateBalance(guildId, userId);
-    return result!;
+    return result;
   }
 
   async sellStock(
@@ -927,9 +941,8 @@ export class EconomyService {
 
     await this.ensureAccount(guildId, userId);
     await this.ensureMarketRows(guildId);
-    let result: StockSellResult | null = null;
 
-    await this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       await this.advanceMarketTx(tx, guildId);
       const [stock] = await tx
         .select()
@@ -1001,7 +1014,7 @@ export class EconomyService {
         reason: `${stock.symbol} x${shares} @ ${stock.price}`,
       });
 
-      result = {
+      return {
         symbol: stock.symbol,
         shares,
         price: stock.price,
@@ -1013,7 +1026,7 @@ export class EconomyService {
     });
 
     await this.invalidateBalance(guildId, userId);
-    return result!;
+    return result;
   }
 
   private readonly blackjackGames = new Map<string, BlackjackGame>();

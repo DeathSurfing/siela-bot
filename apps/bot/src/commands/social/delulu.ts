@@ -32,20 +32,32 @@ export const deluluCommand: Command = {
       });
       return;
     }
-    const cost = nsfw ? 15 : 5;
-    const paymentId = `delulu:${ctx.guild.id}:${ctx.author.id}:${Date.now()}`;
+    const kind = nsfw ? "delulu_nsfw" : "delulu";
+    const used = await ctx.services.economy
+      .countDeluluUsesToday(ctx.guild.id, ctx.author.id, kind)
+      .catch(() => 0);
+    const limit = nsfw ? 2 : 4;
+    if (used >= limit) {
+      throw new UserError(
+        `Daily ${nsfw ? "NSFW " : ""}delulu limit reached (${limit} uses). Try again tomorrow.`,
+      );
+    }
+    const cost = (nsfw ? 15 : 5) * 2 ** used;
+    const paymentId = `delulu:${kind}:${ctx.guild.id}:${ctx.author.id}:${Date.now()}`;
     try {
       await ctx.services.economy.spend(
         ctx.guild.id,
         ctx.author.id,
         cost,
-        "delulu",
+        kind,
         paymentId,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Payment failed.";
       if (message === "INSUFFICIENT_FUNDS") {
-        throw new UserError(`You need ${cost} SC to run delulu${nsfw ? " NSFW" : ""}.`);
+        throw new UserError(
+          `You need ${cost} SC for delulu${nsfw ? " NSFW" : ""} (use ${used + 1} today).`,
+        );
       }
       throw new UserError(message);
     }
