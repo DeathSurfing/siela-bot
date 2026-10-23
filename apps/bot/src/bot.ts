@@ -51,6 +51,7 @@ import { CounterService } from "./features/counters.js";
 import { WelcomeService } from "./features/welcome.js";
 import { AutoRoleService } from "./features/autorole.js";
 import { ActivityService } from "./features/activity.js";
+import { LevelingService } from "./features/leveling.js";
 import { BiasService } from "./features/bias.js";
 import { FamilyService } from "./features/family.js";
 import { DeluluService } from "./features/delulu.js";
@@ -144,12 +145,15 @@ export class SielaBot {
       isVoiceBusy,
     );
     const activity = new ActivityService(this.dbHandle.db, friendship, tempVc, music, this.logger);
+    const leveling = new LevelingService(this.dbHandle.db, settings, this.client, this.logger);
+    activity.leveling = leveling;
     this.services = {
       config: this.config,
       registry: this.registry,
       settings,
       audit: new AuditService(this.dbHandle.db, this.logger),
       activity,
+      leveling,
       counters,
       welcome: new WelcomeService(settings, this.logger),
       autoRole: new AutoRoleService(settings, this.logger),
@@ -270,6 +274,7 @@ export class SielaBot {
     await this.services.tempVc.reconcile(guild).catch((error) => this.logger.warn({ err: error }, "temp VC reconcile failed"));
     await this.services.activity.purgeOld().catch((error) => this.logger.warn({ err: error }, "activity purge failed"));
     await this.services.activity.reconcile(guild).catch((error) => this.logger.warn({ err: error }, "activity reconcile failed"));
+    await this.services.leveling.reconcile(guild).catch((error) => this.logger.warn({ err: error }, "leveling reconcile failed"));
     this.services.activity.start();
     this.randomVc.start(guild);
     this.scheduledEvents.start(guild);
@@ -292,6 +297,7 @@ export class SielaBot {
       if (message.author.bot || !message.inGuild() || message.webhookId) return;
       if (!this.guildId || message.guild.id !== this.guildId) return;
       this.services.activity.recordMessage(message.guild.id, message.author.id);
+      void this.services.leveling.awardMessage(message.guild.id, message.author.id).catch(() => undefined);
       if (this.services.tts.isEnabledChannel(message.guild.id, message.channel.id)) {
         if (!message.content.startsWith("/") && !message.content.startsWith("!")) {
           void this.services.tts.speak(message.guild.id, message.content).catch(() => undefined);
@@ -349,6 +355,7 @@ export class SielaBot {
       }
       if (!guildId || guildId !== this.guildId) return;
       this.services.activity.recordReaction(guildId, user.id);
+      void this.services.leveling.awardReaction(guildId, user.id).catch(() => undefined);
     } catch {
       // ignore reaction tracking failures
     }
@@ -437,6 +444,7 @@ export class SielaBot {
       return;
     }
     this.services.activity.recordCommand(interaction.guild!.id, interaction.user.id);
+    void this.services.leveling.awardCommand(interaction.guild!.id, interaction.user.id).catch(() => undefined);
     void (async () => {
       const allowed = await this.services.economy.rateLimit(`command:${interaction.guild!.id}:${interaction.user.id}`, 5, 60 * 60 * 1000).catch(() => true);
       if (allowed) await this.services.economy.award(interaction.guild!.id, interaction.user.id, 1, "command", interaction.id).catch(() => undefined);

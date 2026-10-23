@@ -9,6 +9,7 @@ import {
 import { ChannelType } from "discord.js";
 import type { Client, Guild, GuildMember, VoiceState } from "discord.js";
 import type { TempVcService } from "./tempvc.js";
+import type { LevelingService } from "./leveling.js";
 import type { MusicService } from "./music.js";
 import { FriendshipService } from "./friendship.js";
 import type { Logger } from "../lib/logger.js";
@@ -40,6 +41,7 @@ interface ActivityDelta {
 
 export class ActivityService {
   private readonly voiceSessions = new Map<string, Map<string, VoiceSession>>();
+  leveling?: LevelingService;
   private readonly pairSessions = new Map<string, PairSession>();
   private readonly activity = new Map<string, Map<string, ActivityDelta>>();
   private readonly dirtyActivity = new Set<string>();
@@ -244,6 +246,7 @@ export class ActivityService {
     current.voiceSeconds += seconds;
     current.lastActiveAt = Date.now();
     this.markDirty(guildId, userId);
+    void this.leveling?.awardVoiceSeconds(guildId, userId, seconds).catch(() => undefined);
   }
 
   recordMessage(guildId: string, userId: string): void {

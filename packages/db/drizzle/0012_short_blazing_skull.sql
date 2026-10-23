@@ -1,0 +1,1 @@
+ALTER TABLE "welcome_settings" ALTER COLUMN "card" SET DEFAULT true;

@@ -8,6 +8,7 @@ import { welcomeCommand } from "./admin/welcome.js";
 import { autoRoleCommand } from "./admin/autorole.js";
 import { birthdayCommand } from "./utility/birthday.js";
 import { activityCommand, activityTopCommand } from "./utility/activity.js";
+import { levelCommand, levelChannelCommand } from "./utility/leveling.js";
 import { testCommand } from "./utility/test.js";
 import { ttsCommand } from "./utility/tts.js";
 import { biasCommand } from "./social/bias.js";
@@ -50,6 +51,8 @@ export const commands: Command[] = [
   birthdayCommand,
   activityCommand,
   activityTopCommand,
+  levelCommand,
+  levelChannelCommand,
   testCommand,
   ttsCommand,
   prefixCommand,
