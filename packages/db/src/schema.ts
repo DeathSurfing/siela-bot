@@ -21,6 +21,7 @@ export const guildSettings = pgTable("guild_settings", {
   locale: varchar("locale", { length: 10 }).notNull().default("en"),
   birthdayChannelId: text("birthday_channel_id"),
   confessionChannelId: text("confession_channel_id"),
+  levelingChannelId: text("leveling_channel_id"),
   confessionCounter: integer("confession_counter").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -33,9 +34,9 @@ export const welcomeSettings = pgTable("welcome_settings", {
     .references(() => guildSettings.guildId, { onDelete: "cascade" }),
   enabled: boolean("enabled").notNull().default(false),
   channelId: text("channel_id"),
-  message: text("message").notNull().default("Welcome {mention} to **{server}**!"),
+  message: text("message").notNull().default("𓆩♡𓆪 yooo {mention} just spawned in ⋆.𐙚 ̊Sierra's 서버~~!!!!\n\nbro really joined the server 😭\ndude does NOT know what they're getting into ...💀\n\nanyways welcome to this mentally unstable household\ntake a seat, start yapping, and pretend we're normal~~\n\n𖤐 read the rules before the mods get a new victim\n𖤐 yap in general\n𖤐 make friends or lurk like an npc\n\nhave fun gang 🗣️🔥"),
   embed: boolean("embed").notNull().default(true),
-  card: boolean("card").notNull().default(false),
+  card: boolean("card").notNull().default(true),
   pingUser: boolean("ping_user").notNull().default(false),
   dmEnabled: boolean("dm_enabled").notNull().default(false),
   dmMessage: text("dm_message"),
@@ -200,6 +201,8 @@ export const memberActivity = pgTable(
     commands: integer("commands").notNull().default(0),
     reactions: integer("reactions").notNull().default(0),
     voiceSeconds: integer("voice_seconds").notNull().default(0),
+    xp: integer("xp").notNull().default(0),
+    level: integer("level").notNull().default(0),
     lastActiveAt: timestamp("last_active_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -391,4 +394,55 @@ export const economyInventory = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("economy_inventory_user_item_uq").on(t.guildId, t.userId, t.itemKey)],
+);
+
+export const economyMarkets = pgTable("economy_markets", {
+  guildId: text("guild_id")
+    .primaryKey()
+    .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+  lastTickAt: timestamp("last_tick_at", { withTimezone: true }).notNull().defaultNow(),
+  tickCount: bigint("tick_count", { mode: "number" }).notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const economyStocks = pgTable(
+  "economy_stocks",
+  {
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    symbol: varchar("symbol", { length: 8 }).notNull(),
+    name: text("name").notNull(),
+    sector: text("sector").notNull(),
+    description: text("description").notNull(),
+    price: bigint("price", { mode: "number" }).notNull(),
+    fairValue: bigint("fair_value", { mode: "number" }).notNull(),
+    volatility: integer("volatility").notNull(),
+    history: jsonb("history").$type<number[]>().notNull().default([]),
+    lastEvent: text("last_event"),
+    lastEventAt: timestamp("last_event_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.guildId, t.symbol] }),
+    check("economy_stock_price_positive", sql`${t.price} > 0`),
+  ],
+);
+
+export const economyHoldings = pgTable(
+  "economy_holdings",
+  {
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    symbol: varchar("symbol", { length: 8 }).notNull(),
+    shares: bigint("shares", { mode: "number" }).notNull().default(0),
+    avgCost: bigint("avg_cost", { mode: "number" }).notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.guildId, t.userId, t.symbol] }),
+    check("economy_holding_shares_nonneg", sql`${t.shares} >= 0`),
+  ],
 );

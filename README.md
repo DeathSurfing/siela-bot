@@ -1,60 +1,93 @@
 # Siela Bot
 
-A single-guild Discord bot with music, Tambola, social features, economy, TTS, temporary voice channels, a global prefix, and an MCP control server. Deployed with rootless Podman. Runtime is Bun 1.x.
+[![CI](https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Runtime: Bun](https://img.shields.io/badge/runtime-Bun%201.4-f9f1e1)](https://bun.sh)
+[![Deploy: Podman](https://img.shields.io/badge/deploy-Podman%205%2B-892ca0)](https://podman.io)
 
-59 registered commands (58 slash-enabled; `test` is prefix-only). 51 MCP tools.
+Siela Bot is a self-hosted Discord bot for a single community server. It combines music, a coin economy, Tambola, social features, text-to-speech, temporary voice channels, welcome automation, and an optional MCP control server.
 
-## Features
+The project is open source under the MIT license. Contributions, bug reports, and documentation fixes are welcome.
 
-- **Music** — yt-dlp + mpv streaming: SoundCloud works out of the box; YouTube/YouTube Music playlists and Spotify playlists/albums import into the queue. Use `join` to reconnect to your VC, `queue [page]` to inspect, `clearqueue` to empty upcoming tracks, `nowplaying` (aliases `current`, `currentlyplaying`, `cp`, `np`) to show the current track, and `lyrics` (or the Lyrics button) to fetch lyrics for the current track from LRCLIB. Now-playing messages include buttons for pause/resume, lyrics, skip, a More select (seek back/forward 10s, shuffle, loop, filters), and stop/disconnect. Filters apply live through mpv without restarting the track.
-- **Tambola** — host 90-ball Tambola games with private DM tickets, auto or manual marking, Top/Middle/Bottom Line and Full House claims, a live called board, and runtime TTS calls. One game per guild, 2–20 players, 12-second calls (fast 8s, slow 15s), with auto-marking on by default (toggleable in lobby settings). Tickets cost 25 Siela Coins; auto-marking costs 10 SC per game.
-- **Delulu** — `/delulu` generates scenarios using the local vLLM service running `Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3`. Costs 5 Siela Coins (15 SC for NSFW in an NSFW channel). No Hugging Face token required.
-- **Economy** — Siela Coins wallet with earn/spend flows, delulu and Tambola pricing above, and premium (2000 SC for 30 days). See `docs/ECONOMY.md`.
-- **TTS** — standalone text-to-speech via `/tts on|off` plus in-voice playback. Primary voice is KittenTTS Nano ONNX (voice Bruno) via the local `tts` service, with Edge TTS (`en-IN-NeerjaNeural`) as fallback. See `docs/TTS.md`.
-- **Welcomer** — join messages, generated welcome image cards (`welcome card on/off`), optional DMs, optional goodbye messages.
-- **Auto-role** — admin-configurable roles with hierarchy and dangerous-permission checks.
-- **Persistent music queue** — the upcoming queue is saved in Valkey and restored when the bot next creates a player; `stop` clears it, while `disconnect` preserves it. The current playback position is not resumed. Current, next, and previous tracks are cached locally to reduce stutter and network hiccups.
-- **Social** — `slap`, `kiss`, `hug`, `chodu`, `wuzu` with PostgreSQL pair counters, stats, leaderboard, and opt-out; plus a permanent pair-based `lovecalc`, a BTS `bias` command, automatic birthday wishes, **Friendship Levels** (XP and time together with fixed tiers; time is buffered in Valkey before bulk database writes), a locally rendered **family tree** image, and an anonymous **Confession Wall**.
-- **Random VC drops** — every 2–6 hours, rarely joins a populated voice channel, plays a short synthetic "faahhh" or pipe-drop sound, and leaves.
-- **Scheduled voice events (optional)** — at the selected Delhi prayer time, then +1h and +2h, moves everyone already in voice through `masjid`, `parliament`, and `mandir` channels and plays admin-supplied licensed audio. Disabled by default; requires `EVENT_SCHEDULE_ENABLED=true` and files in `apps/bot/assets/events/`.
-- **Temporary VC** — join-to-create private voice channels with a control panel in the channel's text chat for lock/unlock, rename, limit, kick, ownership transfer, and delete. Only the channel owner and admins can kick members. Empty temp VCs are removed immediately. `jointocreate #voice [template]` (alias `j2c`) auto-creates a **Temporary VCs** category and sets the default `{user}'s VC` template.
-- **Activity monitoring** — per-member message, command, reaction, and voice-time stats with `activity` and `activetop` (90-day retention).
-- **Prefix** — global single-guild prefix with validation and audit.
-- **Hybrid commands** — prefix + slash + context menu + mention prefix.
-- **MCP (optional)** — 51 tools exposed on the Podman `mcp` network via `MCP_URL` and one `MCP_TOKEN`. Off by default; set `MCP_ENABLED=true` to enable.
-- **Podman** — `podman compose`-compatible core stack: Postgres, Valkey, vLLM (`llm`), TTS (`tts`), bot, and a one-shot migrate service. MCP and Caddy are optional overlays. The bot image includes yt-dlp and mpv.
+## What it does
 
-## Quickstart
+- **Music.** Streams from SoundCloud, YouTube, and Spotify links through `yt-dlp` and `mpv`. Includes a persistent queue, live filters, lyrics from LRCLIB, and interactive controls.
+- **Economy.** Tracks Siela Coins in a PostgreSQL ledger. Supports daily rewards, work, transfers, gambling, a shop, premium passes, and paid Delulu and Tambola features.
+- **Tambola.** Runs 90-ball games with private DM tickets, line and full-house claims, paid extra tickets, paid auto-marking, and spoken number calls.
+- **Delulu.** Generates short bias scenarios through a local vLLM service. Falls back to Hugging Face, Pollinations, and built-in scenarios when the local service is unavailable.
+- **TTS.** Reads enabled voice-channel chat with KittenTTS Nano ONNX and the Bruno voice. Edge TTS remains available as a fallback.
+- **Community features.** Welcome cards, auto-role, temporary voice channels, confessions, birthdays, friendship levels, family trees, activity tracking, and scheduled prayer-time voice events.
+- **Operations.** Runs as a rootless Podman stack with PostgreSQL, Valkey, vLLM, KittenTTS, health endpoints, and an optional MCP server. The bot registers 59 commands and exposes 51 MCP tools.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  U[Discord users] -->|slash, prefix, buttons| DG[Discord gateway]
+  DG <--> BOT[Bot process<br/>discord.js + Bun]
+
+  BOT --> REG[Command registry and guards]
+  REG --> FEAT[Feature services]
+  FEAT --> PG[(PostgreSQL)]
+  FEAT --> VK[(Valkey)]
+  FEAT --> LLM[Local vLLM<br/>Delulu]
+  FEAT --> TTS[KittenTTS service]
+  FEAT --> EXT[YouTube, SoundCloud,<br/>Spotify, LRCLIB, Aladhan]
+  FEAT --> MEM[In-memory state<br/>Tambola, blackjack, cooldowns]
+
+  BOT --> API[Control API<br/>Bearer token]
+  API --> MCP[Optional MCP server]
+  MCP --> CLIENT[MCP clients]
+```
+
+The bot is one long-lived Bun process. The control API and health server run inside that process. The MCP server is the only separate application process, and it reaches the bot over the internal control network. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for command flow, boot order, persistence, and deployment diagrams.
+
+## Quick start
+
+The full production stack targets Linux with Podman 5 or newer and an NVIDIA GPU for the local vLLM service. Local development works without a GPU.
 
 ```bash
+git clone https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot.git
+cd siela-nogseuui-seobeo-bot
+
 export DISCORD_TOKEN="..."
+export GUILD_ID="..."   # recommended for a single-guild install
+
 ./scripts/podman-init.sh
 ./scripts/podman-stack.sh up -d --build
 ```
 
-Only `DISCORD_TOKEN` is required. The init script derives the client ID, prints an invite URL, generates the internal Postgres/MCP secrets, and writes a 600-permission `.env`. `GUILD_ID` is auto-detected when the bot is in exactly one guild. MCP is disabled by default; set `MCP_ENABLED=true` in `deploy/podman/.env` (or run `MCP_ENABLED=true ./scripts/podman-stack.sh up -d`) to start it. The wrapper selects `compose.mcp.yaml` only when the flag is on.
+`DISCORD_TOKEN` is the only secret you must provide. The init script derives the client ID, generates the database and MCP secrets, writes a mode 600 `.env`, and prints an invite URL with the recommended permissions.
 
-## Repository
+The complete first-run checklist, including Discord intents, invite permissions, verification, and troubleshooting, is in [GET_STARTED.md](GET_STARTED.md).
 
-- `apps/bot` — discord.js bot, feature services, control API, health/metrics.
-- `apps/mcp` — MCP server (stdio + Streamable HTTP) and tool catalog.
-- `packages/shared` — Zod schemas, types, constants, utilities.
-- `packages/db` — Drizzle schema, migrations, Postgres client.
-- `packages/config` — environment validation.
-- `deploy/podman` — compose, Containerfiles, optional host/proxy overlays.
+## Technology
 
-## Docs
+| Layer | Choice |
+|---|---|
+| Runtime and package manager | Bun 1.4 |
+| Language | TypeScript, ESM |
+| Discord client | discord.js |
+| Database | PostgreSQL 17 with Drizzle ORM and Bun SQL |
+| Cache and queues | Valkey 8, optional |
+| Local LLM | vLLM with an OpenAI-compatible API |
+| Local TTS | KittenTTS Nano ONNX, Edge TTS fallback |
+| Music | yt-dlp, mpv, ffmpeg |
+| Containers | Rootless Podman and Podman Compose |
+| Control and automation | Fastify control API, MCP server, Prometheus metrics |
 
-- `docs/ECONOMY.md` — Siela Coins, pricing, premium.
-- `docs/TTS.md` — KittenTTS service, voices, fallback, `/tts`.
-- `docs/DELULU.md` — vLLM delulu generation and costs.
-- `docs/RUNBOOK.md` — deploy, updates, backups, remote Podman.
-- `docs/MCP.md` — MCP transports, clients, tool groups.
-- `docs/THREAT-MODEL.md` — security boundaries.
-- `docs/UI_AUDIT.md` — UI conventions and audit status.
-- `docs/TAMBOLA_PLAN.md` — Tambola rules, state, TTS, implementation phases.
-- `docs/PLAN.md` — historical planning doc (Draft v0.2), not current architecture. No translation feature was built.
-- `.opencode/skills/siela-bot/SKILL.md` — agent-facing repo guide covering architecture, features, development, and deployment.
+## Repository layout
+
+```text
+apps/bot        Discord bot, feature services, control API, health server
+apps/mcp        Optional MCP server and tool catalog
+packages/db     Drizzle schema, migrations, PostgreSQL client
+packages/config Environment validation
+packages/shared Shared types, schemas, constants, utilities
+deploy/podman   Compose files, Containerfiles, TTS service, overlays
+docs            Architecture, operations, feature, and security documentation
+scripts         Podman setup, stack wrapper, smoke test, fast deploy
+```
 
 ## Development
 
@@ -65,4 +98,34 @@ bun run test
 bun run build
 ```
 
-Bun 1.x is required (`packageManager bun@1.4.2`). `pnpm-lock.yaml` is still present because the MCP image uses pnpm/node; it is not the dev workflow. The deployment target uses Podman 5+ with cgroups v2.
+For local development, use a PostgreSQL container and a `.env` file inside `apps/bot`. The process working directory is `apps/bot`, so a repository-root `.env` is not loaded. [GET_STARTED.md](GET_STARTED.md) includes a complete local setup and an example environment file.
+
+## Documentation
+
+- [GET_STARTED.md](GET_STARTED.md) is the short path from clone to a working bot.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains process structure, command flow, boot order, and storage.
+- [docs/RUNBOOK.md](docs/RUNBOOK.md) covers deployment, updates, backups, and troubleshooting.
+- [docs/MCP.md](docs/MCP.md) covers MCP transports, clients, and the 51-tool catalog.
+- [docs/ECONOMY.md](docs/ECONOMY.md) explains Siela Coins and pricing.
+- [docs/TTS.md](docs/TTS.md) explains voice playback and the TTS service.
+- [docs/DELULU.md](docs/DELULU.md) explains the LLM fallback chain.
+- [docs/TAMBOLA_PLAN.md](docs/TAMBOLA_PLAN.md) documents Tambola rules and state.
+- [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) lists security boundaries and residual risks.
+- [docs/README.md](docs/README.md) is the full documentation index, including historical design documents.
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. It covers the development loop, command registration, database migrations, tests, and documentation expectations.
+
+- Use GitHub Issues for bugs and feature requests.
+- Use GitHub Security Advisories for vulnerabilities. Do not open a public issue for a security problem.
+- Run `bun run typecheck`, `bun run test`, and `bun run build` before submitting a change.
+- Keep pull requests focused. A small, tested change is easier to review than a large rewrite.
+
+## Security
+
+The security policy is in [SECURITY.md](SECURITY.md). The deployment model, trust boundaries, and known residual risks are in [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md).
+
+## License
+
+MIT. See [LICENSE](LICENSE).

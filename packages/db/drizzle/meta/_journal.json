@@ -78,6 +78,20 @@
       "when": 1792693609689,
       "tag": "0010_melted_darkstar",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792731597562,
+      "tag": "0011_vengeful_anthem",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792731761892,
+      "tag": "0012_short_blazing_skull",
+      "breakpoints": true
     }
   ]
 }

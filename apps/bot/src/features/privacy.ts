@@ -2,6 +2,7 @@ import { and, eq, or } from "drizzle-orm";
 import {
   memberActivity,
   economyAccounts,
+  economyHoldings,
   economyInventory,
   economyTransactions,
   familyChildren,
@@ -49,6 +50,7 @@ export class PrivacyService {
       await tx.delete(memberActivity).where(and(eq(memberActivity.guildId, guildId), eq(memberActivity.userId, userId)));
       await tx.delete(tempVoiceChannels).where(and(eq(tempVoiceChannels.guildId, guildId), eq(tempVoiceChannels.ownerId, userId)));
       await tx.delete(economyAccounts).where(and(eq(economyAccounts.guildId, guildId), eq(economyAccounts.userId, userId)));
+      await tx.delete(economyHoldings).where(and(eq(economyHoldings.guildId, guildId), eq(economyHoldings.userId, userId)));
       await tx.delete(economyTransactions).where(and(eq(economyTransactions.guildId, guildId), or(eq(economyTransactions.fromUserId, userId), eq(economyTransactions.toUserId, userId))!));
       await tx.delete(premiumPasses).where(and(eq(premiumPasses.guildId, guildId), eq(premiumPasses.userId, userId)));
       await tx.delete(economyInventory).where(and(eq(economyInventory.guildId, guildId), eq(economyInventory.userId, userId)));

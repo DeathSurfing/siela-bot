@@ -24,6 +24,20 @@ export class SettingsService {
     await ensureGuild(this.db, guildId);
   }
 
+  async getLevelingChannel(guildId: string): Promise<string | null> {
+    const row = await this.getGuild(guildId);
+    return row.levelingChannelId ?? null;
+  }
+
+  async setLevelingChannel(guildId: string, channelId: string | null, actorId: string): Promise<string | null> {
+    await this.ensure(guildId);
+    await this.db
+      .update(guildSettings)
+      .set({ levelingChannelId: channelId, updatedAt: new Date(), updatedBy: actorId })
+      .where(eq(guildSettings.guildId, guildId));
+    return channelId;
+  }
+
   async getGuild(guildId: string): Promise<GuildSettingsRow> {
     await this.ensure(guildId);
     const [row] = await this.db

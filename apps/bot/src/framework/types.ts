@@ -25,6 +25,7 @@ import type { AuditService } from "../features/audit.js";
 import type { CounterService } from "../features/counters.js";
 import type { WelcomeService } from "../features/welcome.js";
 import type { ActivityService } from "../features/activity.js";
+import type { LevelingService } from "../features/leveling.js";
 import type { AutoRoleService } from "../features/autorole.js";
 import type { BiasService } from "../features/bias.js";
 import type { FamilyService } from "../features/family.js";
@@ -50,6 +51,7 @@ export interface Services {
   counters: CounterService;
   welcome: WelcomeService;
   activity: ActivityService;
+  leveling: LevelingService;
   autoRole: AutoRoleService;
   bias: BiasService;
   family: FamilyService;
