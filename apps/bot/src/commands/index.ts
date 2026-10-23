@@ -29,6 +29,7 @@ import { joinToCreateCommand } from "./admin/jointocreate.js";
 import { musicConfigCommand } from "./admin/musicconfig.js";
 import { configCommand } from "./admin/config.js";
 import { vcCommand } from "./voice/vc.js";
+import { moveallCommand } from "./voice/moveall.js";
 import { loveCalcCommand } from "./social/love.js";
 import { tambolaCommand } from "./social/tambola.js";
 import { relicsCommand } from "./social/relics.js";
@@ -67,6 +68,7 @@ export const commands: Command[] = [
   musicConfigCommand,
   configCommand,
   vcCommand,
+  moveallCommand,
   loveCalcCommand,
   tambolaCommand,
   relicsCommand,
