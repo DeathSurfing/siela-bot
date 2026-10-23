@@ -84,6 +84,19 @@ services:
     shm_size: 2gb
     mem_limit: 12g
 
+  tts:
+    build:
+      context: ./tts
+      dockerfile: Containerfile.tts
+    container_name: siela-tts
+    networks: [data]
+    environment:
+      KITTEN_TTS_MODEL: KittenML/kitten-tts-nano-0.8
+      TTS_VOICE: Bruno
+      TTS_SPEED: "1.0"
+    restart: unless-stopped
+    mem_limit: 2g
+
   migrate:
     image: localhost/siela-bot:latest
     build:
@@ -113,10 +126,13 @@ services:
       - migrate
       - llm
       - valkey
+      - tts
     environment:
       LLM_URL: ${LLM_URL:-http://llm:8000}
       LLM_MODEL: ${LLM_MODEL:-Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3}
       VALKEY_URL: ${VALKEY_URL:-redis://valkey:6379}
+      TTS_SERVICE_URL: ${TTS_SERVICE_URL:-http://tts:8000}
+      TTS_STREAM: "true"
     restart: unless-stopped
     init: true
     read_only: true
