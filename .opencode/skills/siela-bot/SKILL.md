@@ -33,9 +33,11 @@ apps/bot (discord.js)
   ├─ optional local vLLM (delulu)
   └─ optional local KittenTTS (tts)
         ▲
-apps/mcp (optional, no Discord/DB credentials)
+apps/mcp (optional, no Discord or DB client)
   └─ typed MCP tools → Bearer MCP_TOKEN → control API
 ```
+
+The MCP process has no Discord or database client, but the compose service receives the shared deployment env file. Treat the MCP container as secret-bearing. See `docs/MCP.md`.
 
 ## Repository map
 
@@ -102,7 +104,7 @@ Categories: `music`, `social`, `voice`, `utility`, `admin`.
 | TTS | `features/tts.ts`, `/tts on\|off` | Standalone TTS via local KittenTTS Nano ONNX (Bruno), Edge TTS fallback. See `docs/TTS.md`. |
 | Scheduled events | `features/scheduledEvents.ts`, `commands/utility/test.ts` | Aladhan Delhi prayer, three phases, admin-supplied audio. |
 | Privacy/audit | `features/privacy.ts`, `features/audit.ts`, `commands/utility/privacy.ts` | Data deletion, audit log. |
-| Control API | `control/server.ts` | Bearer `MCP_TOKEN`, typed routes, audit for mutations. |
+| Control API | `control/server.ts` | Bearer `MCP_TOKEN`, typed routes, partial audit coverage. |
 | Health | `control/health.ts` | `/healthz`, `/readyz`, `/metrics`. |
 
 ## Music
@@ -309,11 +311,11 @@ Control API (`apps/bot/src/control/server.ts`):
 - Listens on `CONTROL_API_PORT` (default 3001), internal network.
 - Requires `Authorization: Bearer <MCP_TOKEN>`.
 - Routes include status, commands, prefix, welcome, autorole, tempvc, music, counters, audit, message send, privacy delete.
-- Mutations are audited.
+- Some mutations are audited. See `docs/MCP.md` for the covered routes.
 
 MCP (`apps/mcp`):
 
-- Separate optional process with no Discord token and no DB credentials.
+- Separate optional process with no Discord or database client. The compose service receives the shared deployment env file, so treat the container as secret-bearing.
 - Transports: stdio, HTTP on `siela_mcp`, optional host/TLS overlays.
 - Destructive tools require `confirm: true`.
 - See `docs/MCP.md`.
