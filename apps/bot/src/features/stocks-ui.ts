@@ -108,6 +108,8 @@ export function stockModal(side: "buy" | "sell"): ModalBuilder {
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
           .setMaxLength(8),
+      ),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId("shares")
           .setLabel("Shares")
