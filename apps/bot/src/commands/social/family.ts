@@ -8,7 +8,7 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
-import { card } from "../../features/ui.js";
+import { attachConfirmation, card, confirmCard } from "../../features/ui.js";
 import { generateFamilyTreeCard } from "../../features/familyCard.js";
 import { ServiceUnavailableError } from "../../lib/errors.js";
 
@@ -132,9 +132,40 @@ export const divorceCommand: Command = {
   cooldownMs: 5_000,
   slash: new SlashCommandBuilder().setName("divorce").setDescription("Divorce your spouse"),
   async execute(ctx: CommandContext) {
-    const spouseId = await ctx.services.family.divorce(ctx.guild.id, ctx.author.id);
+    const marriage = await ctx.services.family.getActiveMarriage(ctx.guild.id, ctx.author.id);
+    if (!marriage) {
+      await ctx.reply({ content: "You are not currently married.", ephemeral: true });
+      return;
+    }
+    const spouseId = marriage.spouseA === ctx.author.id ? marriage.spouseB : marriage.spouseA;
     const spouse = await ctx.guild.members.fetch(spouseId).catch(() => null);
-    await ctx.reply(card({ title: "Divorced", body: `**${ctx.member.displayName}** divorced **${spouse?.displayName ?? spouseId}**.` }));
+    const spouseName = spouse?.displayName ?? spouseId;
+
+    const confirmId = "family:divorce:confirm";
+    const cancelId = "family:divorce:cancel";
+    const message = await ctx.reply(
+      confirmCard({
+        title: "Divorce?",
+        body: `**${ctx.member.displayName}** and **${spouseName}** will end their marriage.`,
+        confirmId,
+        cancelId,
+        confirmLabel: "Divorce",
+      }),
+    );
+    if (!message) return;
+
+    attachConfirmation({
+      message,
+      userId: ctx.author.id,
+      confirmId,
+      cancelId,
+      onConfirm: async () => {
+        await ctx.services.family.divorce(ctx.guild.id, ctx.author.id);
+        await ctx.followUp(card({ title: "Divorced", body: `**${ctx.member.displayName}** divorced **${spouseName}**.` })).catch(() => undefined);
+        return card({ title: "Divorce finalized", body: "Your marriage has ended." });
+      },
+      onCancel: () => card({ title: "Cancelled", body: "The marriage was not changed." }),
+    });
   },
 };
 
@@ -189,11 +220,73 @@ export const runawayCommand: Command = {
     .setDescription("Run away from a family relationship")
     .addUserOption((option) => option.setName("user").setDescription("Related member").setRequired(false)),
   async execute(ctx: CommandContext) {
-    const target = ctx.args[0] ? await resolveMember(ctx, ctx.args[0]) : null;
-    const removed = await ctx.services.family.runaway(ctx.guild.id, ctx.author.id, target?.id);
-    await ctx.reply({
-      content: removed > 0 ? `🏃 Ran away from ${removed} family relationship(s).` : "No family relationship was changed.",
-      ephemeral: true,
+    if (ctx.args[0]) {
+      const target = await resolveMember(ctx, ctx.args[0]);
+      if (!target) {
+        await ctx.reply({ content: "Member not found.", ephemeral: true });
+        return;
+      }
+
+      const confirmId = "family:runaway:confirm";
+      const cancelId = "family:runaway:cancel";
+      const message = await ctx.reply(
+        confirmCard({
+          title: "Run away?",
+          body: `The active parent-child relationship with **${target.displayName}** will be removed.`,
+          confirmId,
+          cancelId,
+          confirmLabel: "Run away",
+        }),
+      );
+      if (!message) return;
+
+      attachConfirmation({
+        message,
+        userId: ctx.author.id,
+        confirmId,
+        cancelId,
+        onConfirm: async () => {
+          const removed = await ctx.services.family.runaway(ctx.guild.id, ctx.author.id, target.id);
+          const noun = removed === 1 ? "family relationship" : "family relationships";
+          return card({
+            title: "Ran away",
+            body: `Ran away from ${removed} ${noun}.`,
+            ephemeral: true,
+          });
+        },
+        onCancel: () => card({ title: "Cancelled", body: "No family relationship was changed." }),
+      });
+      return;
+    }
+
+    const confirmId = "family:runaway:confirm";
+    const cancelId = "family:runaway:cancel";
+    const message = await ctx.reply(
+      confirmCard({
+        title: "Run away?",
+        body: "Every parent relationship for you will be removed.",
+        confirmId,
+        cancelId,
+        confirmLabel: "Run away",
+      }),
+    );
+    if (!message) return;
+
+    attachConfirmation({
+      message,
+      userId: ctx.author.id,
+      confirmId,
+      cancelId,
+      onConfirm: async () => {
+        const removed = await ctx.services.family.runaway(ctx.guild.id, ctx.author.id);
+        const noun = removed === 1 ? "family relationship" : "family relationships";
+        return card({
+          title: "Ran away",
+          body: `Ran away from ${removed} ${noun}.`,
+          ephemeral: true,
+        });
+      },
+      onCancel: () => card({ title: "Cancelled", body: "No family relationship was changed." }),
     });
   },
 };
@@ -229,7 +322,7 @@ export const familyTreeCommand: Command = {
     }
     const attachment = new AttachmentBuilder(buffer, { name: "family-tree.png" });
     await ctx.reply({
-      content: [`-# Marriage — · Parent →`, tree.truncated ? "Family tree truncated for size." : null]
+      content: [`-# Marriage links connect partners. Parent links point from parent to child.`, tree.truncated ? "Family tree truncated for size." : null]
         .filter(Boolean)
         .join("\n"),
       files: [attachment],
