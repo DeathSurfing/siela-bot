@@ -23,11 +23,13 @@ import type { MusicService } from "../music.js";
 import type { EconomyService } from "./../economy.js";
 import { UI_ACCENT, text } from "../ui.js";
 import {
+  buildTambolaBoardPayload,
   buildTambolaClaimPayload,
   buildTambolaEndConfirmPayload,
   buildTambolaFinalPayload,
   buildTambolaGamePayload,
   buildTambolaLobbyPayload,
+  buildTambolaPlayersPayload,
   buildTambolaRulesPayload,
   buildTambolaSettingsPayload,
   buildTambolaTicketPayload,
@@ -555,6 +557,23 @@ export class TambolaService {
         await this.editPrivate(interaction, dmSent ? { content: "Ticket sent by DM." } : payload);
         return;
       }
+      if (action === "ticketpage") {
+        const player = session.game.player(interaction.user.id);
+        if (!player) throw new UserError("You are not in this game.");
+        const page = Number(parts[3]);
+        await interaction.update(
+          messageOptions(buildTambolaTicketPayload(session.game, player, { page }), false),
+        );
+        return;
+      }
+      if (action === "board") {
+        await this.privateReply(interaction, buildTambolaBoardPayload(session.game));
+        return;
+      }
+      if (action === "players") {
+        await this.privateReply(interaction, buildTambolaPlayersPayload(session.game));
+        return;
+      }
       if (action === "claim") {
         const player = session.game.player(interaction.user.id);
         if (!player) throw new UserError("You are not in this game.");
@@ -613,7 +632,12 @@ export class TambolaService {
           await this.privateReply(interaction, { content: result.reason, ephemeral: true });
           return;
         }
-        await interaction.update(messageOptions(buildTambolaTicketPayload(session.game, player), false));
+        await interaction.update(
+          messageOptions(
+            buildTambolaTicketPayload(session.game, player, { focusNumber: number }),
+            false,
+          ),
+        );
         return;
       }
       if (action === "buyticket") {

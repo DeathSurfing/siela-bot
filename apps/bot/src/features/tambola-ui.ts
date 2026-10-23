@@ -19,6 +19,8 @@ import {
   ticketNumbers,
 } from "./tambola/game.js";
 
+const TICKET_PAGE_SIZE = 20;
+
 function id(game: TambolaGame, action: string, extra?: string): string {
   return `tambola:${action}:${game.id}${extra ? `:${extra}` : ""}`;
 }
@@ -50,9 +52,19 @@ function calledBoard(game: TambolaGame): string {
   return lines.join("\n");
 }
 
-function voiceLabel(game: TambolaGame, voiceChannelId: string | null): string {
-  if (!voiceChannelId) return "Text only";
-  return `Voice · <#${voiceChannelId}>`;
+function voiceLine(voiceChannelId: string | null, voiceNote?: string): string {
+  const note = voiceNote ?? (voiceChannelId ? "Ready" : "Text only");
+  if (!voiceChannelId) return `**Voice and TTS** · ${note}`;
+  return `**Voice** · <#${voiceChannelId}> · **TTS** ${note}`;
+}
+
+function clampTicketPage(page: number, totalPages: number): number {
+  const value = Number.isFinite(page) ? Math.trunc(page) : 1;
+  return Math.min(Math.max(value, 1), totalPages);
+}
+
+function uniqueTicketNumbers(player: TambolaPlayer): number[] {
+  return [...new Set(player.tickets.flatMap((ticket) => ticketNumbers(ticket)))].sort((a, b) => a - b);
 }
 
 export function buildTambolaLobbyPayload(
@@ -61,17 +73,14 @@ export function buildTambolaLobbyPayload(
   voiceNote?: string,
 ): ReplyPayload {
   const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
-  container.addTextDisplayComponents(text(`## ${ICONS.music} Tambola · Lobby`));
+  container.addTextDisplayComponents(text("## Tambola · Lobby"));
   container.addTextDisplayComponents(text(`Host · <@${game.hostId}>`));
   container.addTextDisplayComponents(
     text(
       `Players ${game.players.size}/${game.maxPlayers} · Auto-call ${game.intervalSeconds}s · Marking ${game.autoMark ? "Auto" : "Manual"}`,
     ),
   );
-  container.addTextDisplayComponents(text(voiceLabel(game, voiceChannelId)));
-  container.addTextDisplayComponents(
-    text(`**TTS** · ${voiceNote ?? (voiceChannelId ? "Ready" : "Text only")}`),
-  );
+  container.addTextDisplayComponents(text(voiceLine(voiceChannelId, voiceNote)));
   container.addSeparatorComponents(separator());
   container.addTextDisplayComponents(text(playerList(game)));
   if (voiceChannelId) {
@@ -101,10 +110,6 @@ export function buildTambolaLobbyPayload(
         .setLabel("Settings")
         .setEmoji(EMOJI.filter)
         .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(id(game, "rules"))
-        .setLabel("Rules")
-        .setStyle(ButtonStyle.Secondary),
     ),
   );
   container.addActionRowComponents(
@@ -112,6 +117,10 @@ export function buildTambolaLobbyPayload(
       new ButtonBuilder()
         .setCustomId(id(game, "buyticket"))
         .setLabel("Buy ticket")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(id(game, "rules"))
+        .setLabel("Rules")
         .setStyle(ButtonStyle.Secondary),
     ),
   );
@@ -124,16 +133,11 @@ export function buildTambolaSettingsPayload(
   voiceNote?: string,
 ): ReplyPayload {
   const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
-  container.addTextDisplayComponents(text(`## ${ICONS.music} Tambola settings`));
+  container.addTextDisplayComponents(text("## Tambola settings"));
   container.addTextDisplayComponents(
     text(`**Auto-marking** · ${game.autoMark ? "On" : "Off"}`),
   );
-  container.addTextDisplayComponents(
-    text(`**Voice** · ${voiceChannelId ? `<#${voiceChannelId}>` : "Text only"}`),
-  );
-  container.addTextDisplayComponents(
-    text(`**TTS** · ${voiceNote ?? (voiceChannelId ? "Ready" : "Text only")}`),
-  );
+  container.addTextDisplayComponents(text(voiceLine(voiceChannelId, voiceNote)));
   container.addTextDisplayComponents(
     text(`**Calls** · every ${game.intervalSeconds} seconds`),
   );
@@ -174,7 +178,7 @@ export function buildTambolaGamePayload(
 ): ReplyPayload {
   const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
   const last = game.called.at(-1);
-  container.addTextDisplayComponents(text(`## ${ICONS.music} Tambola · Live`));
+  container.addTextDisplayComponents(text("## Tambola · Live"));
   container.addTextDisplayComponents(text(`Host · <@${game.hostId}>`));
   container.addTextDisplayComponents(
     text(`**Last call** · ${last ? `\`${last}\`` : "Waiting"}   **Called** · ${game.called.length}/90`),
@@ -184,20 +188,15 @@ export function buildTambolaGamePayload(
       text("-# All 90 numbers called · Full House claims are open."),
     );
   }
+  const playerCount = `${game.players.size} player${game.players.size === 1 ? "" : "s"}`;
   container.addTextDisplayComponents(
     text(
-      `**Status** · ${game.status === "paused" ? "Paused" : "Live"} · ${game.intervalSeconds}s calls · Marking ${game.autoMark ? "Auto" : "Manual"} · ${voiceChannelId ? voiceLabel(game, voiceChannelId) : voiceNote ?? "Text only"}`,
+      `**Status** · ${game.status === "paused" ? "Paused" : "Live"} · ${game.intervalSeconds}s calls · Marking ${game.autoMark ? "Auto" : "Manual"} · ${playerCount}`,
     ),
   );
+  container.addTextDisplayComponents(text(voiceLine(voiceChannelId, voiceNote)));
   container.addSeparatorComponents(separator());
-  container.addTextDisplayComponents(text("**Called board**"));
-  container.addTextDisplayComponents(text(`\`\`\`\n${calledBoard(game)}\n\`\`\``));
-  container.addTextDisplayComponents(text("-# `*` = called"));
-  container.addTextDisplayComponents(text("**Claims**"));
-  container.addTextDisplayComponents(text(claimList(game)));
-  container.addSeparatorComponents(separator());
-  container.addTextDisplayComponents(text(`**Players** · ${game.players.size}`));
-  container.addTextDisplayComponents(text(playerList(game)));
+  container.addTextDisplayComponents(text(`**Claims**\n${claimList(game)}`));
   container.addActionRowComponents(
     actionRow(
       new ButtonBuilder()
@@ -208,6 +207,14 @@ export function buildTambolaGamePayload(
       new ButtonBuilder()
         .setCustomId(id(game, "ticket"))
         .setLabel("My ticket")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(id(game, "board"))
+        .setLabel("Board")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(id(game, "players"))
+        .setLabel("Players")
         .setStyle(ButtonStyle.Secondary),
     ),
     actionRow(
@@ -235,7 +242,7 @@ export function buildTambolaGamePayload(
 export function buildTambolaFinalPayload(game: TambolaGame, note?: string): ReplyPayload {
   const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
   const title = game.status === "cancelled" ? "Tambola · Cancelled" : "Tambola · Finished";
-  container.addTextDisplayComponents(text(`## ${ICONS.music} ${title}`));
+  container.addTextDisplayComponents(text(`## ${title}`));
   if (note) container.addTextDisplayComponents(text(note));
   if (game.winnerId) {
     container.addTextDisplayComponents(text(`**Full House** · <@${game.winnerId}>`));
@@ -245,16 +252,35 @@ export function buildTambolaFinalPayload(game: TambolaGame, note?: string): Repl
   container.addTextDisplayComponents(text(`**Called** · ${game.called.length}/90`));
   container.addTextDisplayComponents(text(`**Players** · ${game.players.size}`));
   container.addSeparatorComponents(separator());
-  container.addTextDisplayComponents(text("**Claims**"));
-  container.addTextDisplayComponents(text(claimList(game)));
+  container.addTextDisplayComponents(text(`**Claims**\n${claimList(game)}`));
+  container.addTextDisplayComponents(text("-# Start the next lobby with `/tambola host`."));
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-export function buildTambolaTicketPayload(game: TambolaGame, player: TambolaPlayer): ReplyPayload {
+export function buildTambolaTicketPayload(
+  game: TambolaGame,
+  player: TambolaPlayer,
+  options?: { page?: number; focusNumber?: number },
+): ReplyPayload {
   const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
   const playable = game.status !== "finished" && game.status !== "cancelled";
-  container.addTextDisplayComponents(text(`## ${ICONS.music} Your Tambola ticket`));
-  container.addTextDisplayComponents(text(`Game \`${game.id}\` · ${player.tickets.length} ticket${player.tickets.length === 1 ? "" : "s"} · ${player.marked.size} marked`));
+  const numbers = uniqueTicketNumbers(player);
+  const totalPages = Math.max(1, Math.ceil(numbers.length / TICKET_PAGE_SIZE));
+  let page = options?.page ?? 1;
+  if (options?.focusNumber !== undefined) {
+    const index = numbers.indexOf(options.focusNumber);
+    if (index >= 0) page = Math.floor(index / TICKET_PAGE_SIZE) + 1;
+    else page = 1;
+  }
+  const currentPage = clampTicketPage(page, totalPages);
+
+  container.addTextDisplayComponents(text("## Your Tambola ticket"));
+  const pageNote = totalPages > 1 ? ` · Page ${currentPage}/${totalPages}` : "";
+  container.addTextDisplayComponents(
+    text(
+      `${player.tickets.length} ticket${player.tickets.length === 1 ? "" : "s"} · ${player.marked.size} marked${pageNote}`,
+    ),
+  );
   container.addTextDisplayComponents(
     text(
       player.autoMark
@@ -263,9 +289,12 @@ export function buildTambolaTicketPayload(game: TambolaGame, player: TambolaPlay
     ),
   );
 
-  const numbers = [...new Set(player.tickets.flatMap((ticket) => ticketNumbers(ticket)))].sort((a, b) => a - b);
-  for (let index = 0; index < numbers.length; index += 5) {
-    const chunk = numbers.slice(index, index + 5);
+  const pageNumbers = numbers.slice(
+    (currentPage - 1) * TICKET_PAGE_SIZE,
+    currentPage * TICKET_PAGE_SIZE,
+  );
+  for (let index = 0; index < pageNumbers.length; index += 5) {
+    const chunk = pageNumbers.slice(index, index + 5);
     container.addActionRowComponents(
       actionRow(
         ...chunk.map((number) => {
@@ -276,6 +305,25 @@ export function buildTambolaTicketPayload(game: TambolaGame, player: TambolaPlay
             .setStyle(marked ? ButtonStyle.Success : game.calledSet.has(number) ? ButtonStyle.Primary : ButtonStyle.Secondary)
             .setDisabled(!playable || marked || player.autoMark);
         }),
+      ),
+    );
+  }
+
+  if (totalPages > 1) {
+    container.addActionRowComponents(
+      actionRow(
+        new ButtonBuilder()
+          .setCustomId(id(game, "ticketpage", String(Math.max(1, currentPage - 1))))
+          .setLabel("Previous")
+          .setEmoji(EMOJI.rewind)
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(currentPage <= 1),
+        new ButtonBuilder()
+          .setCustomId(id(game, "ticketpage", String(Math.min(totalPages, currentPage + 1))))
+          .setLabel("Next")
+          .setEmoji(EMOJI.forward)
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(currentPage >= totalPages),
       ),
     );
   }
@@ -319,8 +367,8 @@ export function buildTambolaTicketPayload(game: TambolaGame, player: TambolaPlay
 export function buildTambolaClaimPayload(game: TambolaGame, player: TambolaPlayer): ReplyPayload {
   const available = CLAIM_PATTERNS.filter((pattern) => !game.claims.has(pattern));
   const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
-  container.addTextDisplayComponents(text(`## ${ICONS.music} Claim a pattern`));
-  container.addTextDisplayComponents(text(`Game \`${game.id}\` · ${player.tickets.length} ticket${player.tickets.length === 1 ? "" : "s"} · ${player.marked.size} marked`));
+  container.addTextDisplayComponents(text("## Claim a pattern"));
+  container.addTextDisplayComponents(text(`${player.tickets.length} ticket${player.tickets.length === 1 ? "" : "s"} · ${player.marked.size} marked`));
   container.addTextDisplayComponents(
     text(
       available.length
@@ -351,9 +399,25 @@ export function buildTambolaClaimPayload(game: TambolaGame, player: TambolaPlaye
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
+export function buildTambolaBoardPayload(game: TambolaGame): ReplyPayload {
+  const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+  container.addTextDisplayComponents(text("## Called board"));
+  container.addTextDisplayComponents(text(`**Called** · ${game.called.length}/90`));
+  container.addTextDisplayComponents(text(`\`\`\`\n${calledBoard(game)}\n\`\`\``));
+  container.addTextDisplayComponents(text("-# `*` = called"));
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
+}
+
+export function buildTambolaPlayersPayload(game: TambolaGame): ReplyPayload {
+  const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+  container.addTextDisplayComponents(text(`## Players · ${game.players.size}`));
+  container.addTextDisplayComponents(text(playerList(game)));
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
+}
+
 export function buildTambolaEndConfirmPayload(game: TambolaGame): ReplyPayload {
   const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
-  container.addTextDisplayComponents(text(`## ${ICONS.music} End Tambola?`));
+  container.addTextDisplayComponents(text("## End Tambola?"));
   container.addTextDisplayComponents(text("This stops the game and leaves voice."));
   container.addSeparatorComponents(separator());
   container.addActionRowComponents(
@@ -373,13 +437,13 @@ export function buildTambolaEndConfirmPayload(game: TambolaGame): ReplyPayload {
 
 export function buildTambolaRulesPayload(): ReplyPayload {
   const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
-  container.addTextDisplayComponents(text(`## ${ICONS.music} Tambola rules`));
+  container.addTextDisplayComponents(text("## Tambola rules"));
   container.addTextDisplayComponents(
     text(
       [
         "**Tickets** · 3 rows × 9 columns, 15 numbers.",
-        "**Calls** · Numbers 1–90 are called every 8 seconds.",
-        "**Marking** · Tap a called number on your ticket to mark it.",
+        "**Calls** · The host sets 8, 12, or 15 seconds between calls.",
+        "**Marking** · Auto-marking is on by default; tap a called number when it is off.",
         "**Claims** · Top Line, Middle Line, Bottom Line, and Full House.",
         "**Winning** · The first valid claim for each pattern wins.",
         "**End** · Full House ends the game. The host can also end it.",
