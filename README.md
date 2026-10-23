@@ -12,7 +12,7 @@ The project is open source under the MIT license. Contributions, bug reports, an
 ## What it does
 
 - **Music.** Streams from SoundCloud, YouTube, and Spotify links through `yt-dlp` and `mpv`. Includes a persistent queue, live filters, lyrics from LRCLIB, and interactive controls.
-- **Economy.** Tracks Siela Coins in a PostgreSQL ledger. Supports daily rewards, work, transfers, gambling, a shop, premium passes, and paid Delulu and Tambola features.
+- **Economy.** Tracks Siela Coins in a PostgreSQL ledger. Supports daily rewards, work, voice and Tambola income, transfers, gambling, a shop, premium passes, a six-stock exchange, and surge-priced Delulu with daily AI caps.
 - **Tambola.** Runs 90-ball games with private DM tickets, line and full-house claims, paid extra tickets, paid auto-marking, and spoken number calls.
 - **Delulu.** Generates short bias scenarios through a local vLLM service. Falls back to Hugging Face, Pollinations, and built-in scenarios when the local service is unavailable.
 - **TTS.** Reads enabled voice-channel chat with KittenTTS Nano ONNX and the Bruno voice. Edge TTS remains available as a fallback.
@@ -107,6 +107,7 @@ For local development, use a PostgreSQL container and a `.env` file inside `apps
 - [docs/RUNBOOK.md](docs/RUNBOOK.md) covers deployment, updates, backups, and troubleshooting.
 - [docs/MCP.md](docs/MCP.md) covers MCP transports, clients, and the 51-tool catalog.
 - [docs/ECONOMY.md](docs/ECONOMY.md) explains Siela Coins and pricing.
+- [docs/ECONOMY_V2.md](docs/ECONOMY_V2.md) explains the earning, AI-gating, and exchange design choices.
 - [docs/TTS.md](docs/TTS.md) explains voice playback and the TTS service.
 - [docs/DELULU.md](docs/DELULU.md) explains the LLM fallback chain.
 - [docs/TAMBOLA_PLAN.md](docs/TAMBOLA_PLAN.md) documents Tambola rules and state.

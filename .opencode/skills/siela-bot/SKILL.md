@@ -84,7 +84,7 @@ Categories: `music`, `social`, `voice`, `utility`, `admin`.
 |---|---|---|
 | Music | `features/music.ts`, `features/music-ui.ts`, `commands/music/music.ts` | yt-dlp + mpv (ffmpeg fallback), queue, filters, Spotify, cache, now-playing V2 card. |
 | Lyrics | `features/lyrics.ts`, `features/lyrics-ui.ts` | LRCLIB, `/lyrics` and now-playing button, in-memory cache, long lyrics attach `.txt`. |
-| Tambola | `features/tambola/*`, `features/tambola-ui.ts`, `commands/social/tambola.ts` | 90-ball game, DM tickets, auto/manual marking, claims, KittenTTS calls with Edge TTS fallback, lobby settings. Ticket 25 SC, automark 10 SC. |
+| Tambola | `features/tambola/*`, `features/tambola-ui.ts`, `commands/social/tambola.ts` | 90-ball game, DM tickets, auto/manual marking, claims, KittenTTS calls with Edge TTS fallback, lobby settings. Ticket 25 SC, automark 10 SC. Rewards 5 SC participation, 10 SC per line, 40 SC Full House. |
 | Welcome | `features/welcome.ts`, `features/welcomeCard.ts`, `commands/admin/welcome.ts` | Join/goodbye messages, optional image card/DM. |
 | Auto-role | `features/autorole.ts`, `commands/admin/autorole.ts` | Safe role validation, hierarchy, sync preview/apply. |
 | Temp VC | `features/tempvc.ts`, `commands/voice/vc.ts`, `commands/admin/tempvc.ts`, `commands/admin/jointocreate.ts` | Join-to-create, owner panel, lock/rename/limit/kick/transfer/delete, reconcile. |
@@ -95,9 +95,9 @@ Categories: `music`, `social`, `voice`, `utility`, `admin`.
 | Confessions | `features/confession.ts`, `commands/social/confess.ts`, `commands/admin/confession.ts` | Anonymous wall, moderation. |
 | Birthdays | `features/birthday.ts`, `commands/utility/birthday.ts` | Daily scheduler, optional wishes. |
 | Activity | `features/activity.ts`, `commands/utility/activity.ts` | Message/command/reaction/voice stats, retention. |
-| Delulu | `features/delulu.ts`, `commands/social/delulu.ts` | Local vLLM (`Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3`); 5 SC, 15 SC for NSFW. No HF token required. |
+| Delulu | `features/delulu.ts`, `commands/social/delulu.ts` | Local vLLM (`Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3`); surge-priced 5/15 SC base, doubling per daily use. SFW capped at 4/day, NSFW at 2/day. No HF token required. |
 | Random VC | `features/randomVc.ts` | Rare 2–6h drop, synthetic SFX, skips when voice is busy. |
-| Economy | `features/economy.ts`, economy commands | Siela Coins wallet; delulu 5/15 SC, tambola ticket 25 / automark 10 SC, premium 2000 SC/30d. See `docs/ECONOMY.md`. |
+| Economy | `features/economy.ts`, `features/stocks.ts`, `features/stocks-ui.ts`, economy/stocks commands | Siela Coins wallet, 50 SC starting balance, voice income, Tambola rewards, a six-stock bot market maker with a 1% fee, gambling sinks, shop, premium 2000 SC/30d. See `docs/ECONOMY.md`. |
 | TTS | `features/tts.ts`, `/tts on\|off` | Standalone TTS via local KittenTTS Nano ONNX (Bruno), Edge TTS fallback. See `docs/TTS.md`. |
 | Scheduled events | `features/scheduledEvents.ts`, `commands/utility/test.ts` | Aladhan Delhi prayer, three phases, admin-supplied audio. |
 | Privacy/audit | `features/privacy.ts`, `features/audit.ts`, `commands/utility/privacy.ts` | Data deletion, audit log. |

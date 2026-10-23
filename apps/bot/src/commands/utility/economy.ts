@@ -2,11 +2,21 @@ import { SlashCommandBuilder } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { isAdmin } from "../../framework/permissions.js";
 import { UserError } from "../../lib/errors.js";
-import { card, success } from "../../features/ui.js";
+import {
+  attachPagination,
+  card,
+  empty,
+  fetchMemberNames,
+  pagedCard,
+  rankLabel,
+  success,
+} from "../../features/ui.js";
+
+const MAX_BET = 10_000;
 
 const GLOBAL_SHOP = [
-  { key: "delulu", name: "Delulu", price: 5, category: "AI", purchasable: false, description: "Per use. Generate a delulu scenario." },
-  { key: "delulu_nsfw", name: "Delulu NSFW", price: 15, category: "AI", purchasable: false, description: "Per use. NSFW-focused scenario." },
+  { key: "delulu", name: "Delulu", price: 5, category: "AI", purchasable: false, description: "Per use, doubling each day: 5, 10, 20, 40 SC." },
+  { key: "delulu_nsfw", name: "Delulu NSFW", price: 15, category: "AI", purchasable: false, description: "Per use, doubling each day: 15, 30 SC." },
   { key: "tambola_ticket", name: "Tambola ticket", price: 25, category: "Tambola", purchasable: true, description: "Buy an extra ticket in the current Tambola lobby." },
   { key: "tambola_automark", name: "Tambola auto-mark", price: 10, category: "Tambola", purchasable: true, description: "Enable auto-marking for all of your tickets." },
   { key: "premium_30d", name: "Premium (30 days)", price: 2000, category: "Premium", purchasable: true, description: "Grant 30 days of premium perks." },
@@ -20,8 +30,8 @@ export const economyCommand: Command = {
   name: "economy",
   aliases: ["eco", "coins", "balance"],
   category: "utility",
-  description: "Siela economy: balance, daily rewards, transfers, and leaderboard.",
-  usage: "<balance|daily|work|transfer|top|premium|grant|adjust> ...",
+  description: "Siela economy: balance, daily rewards, transfers, games, and leaderboard.",
+  usage: "<balance|daily|work|transfer|top|shop|stocks|premium|grant|adjust|stats> ...",
   examples: ["economy daily", "economy work", "economy balance", "economy transfer @user 100", "economy top"],
   cooldownMs: 3_000,
   slash: new SlashCommandBuilder()
@@ -41,6 +51,7 @@ export const economyCommand: Command = {
     .addSubcommand((sub) => sub.setName("shopremove").setDescription("Remove a shop item (admin)").addStringOption((o) => o.setName("key").setDescription("Item key").setRequired(true)))
     .addSubcommand((sub) => sub.setName("premium").setDescription("Show premium status"))
     .addSubcommand((sub) => sub.setName("grant").setDescription("Grant premium (admin)").addUserOption((o) => o.setName("user").setDescription("Member").setRequired(true)).addIntegerOption((o) => o.setName("days").setDescription("Days").setRequired(true).setMinValue(1)))
+    .addSubcommand((sub) => sub.setName("stats").setDescription("Show faucet and sink totals for the last 7 days (admin)"))
     .addSubcommand((sub) => sub.setName("adjust").setDescription("Adjust a balance (admin)").addUserOption((o) => o.setName("user").setDescription("Member").setRequired(true)).addIntegerOption((o) => o.setName("amount").setDescription("Amount, can be negative").setRequired(true)).addStringOption((o) => o.setName("reason").setDescription("Reason").setRequired(true))),
   async execute(ctx) {
     const economy = ctx.services.economy;
@@ -60,7 +71,7 @@ export const economyCommand: Command = {
           body: [
             `**Balance** · ${formatCoins(data.balance)}`,
             `**Daily streak** · ${data.dailyStreak} day${data.dailyStreak === 1 ? "" : "s"}`,
-            `**Last daily** · ${data.lastDailyAt ? data.lastDailyAt.toISOString().slice(0, 10) : "never"}`,
+            `**Last daily** · ${data.lastDailyAt ? `<t:${Math.floor(data.lastDailyAt.getTime() / 1000)}:R>` : "never"}`,
           ].join("\n"),
         }),
       );
@@ -120,17 +131,34 @@ export const economyCommand: Command = {
     }
 
     if (action === "top" || action === "baltop" || action === "leaderboard") {
-      const rows = await economy.leaderboard(ctx.guild.id, 10);
+      const rows = await economy.leaderboard(ctx.guild.id, 100);
       if (!rows.length) {
-        await ctx.reply({ content: "No economy accounts yet.", ephemeral: true });
+        await ctx.reply(empty("No economy accounts yet."));
         return;
       }
-      const names = await Promise.all(rows.map(async (row) => {
-        const member = await ctx.guild.members.fetch(row.userId).catch(() => null);
-        return member?.displayName ?? row.userId;
-      }));
-      const body = rows.map((row, index) => `${index + 1}. ${names[index]} — ${formatCoins(row.balance)}`).join("\n");
-      await ctx.reply(card({ title: "Coin leaderboard", body }));
+      const names = await fetchMemberNames(ctx.guild, rows.map((row) => row.userId));
+      const pageSize = 10;
+      const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+      const buildPage = (page: number, disabled = false) => {
+        const start = (page - 1) * pageSize;
+        const body = rows
+          .slice(start, start + pageSize)
+          .map((row, index) => {
+            const rank = start + index + 1;
+            return `${rankLabel(rank)} **${names.get(row.userId) ?? row.userId}** — ${formatCoins(row.balance)}`;
+          })
+          .join("\n");
+        return pagedCard({
+          title: "Coin leaderboard",
+          subtitle: "Top 100 by Siela Coins",
+          body,
+          page,
+          totalPages,
+          disabled,
+        });
+      };
+      const message = await ctx.reply(buildPage(1));
+      if (message) attachPagination(message, ctx.author.id, 1, buildPage);
       return;
     }
 
@@ -281,6 +309,7 @@ export const economyCommand: Command = {
       const amount = Number(ctx.args[1]);
       const side = String(ctx.args[2] ?? "heads").toLowerCase();
       if (!Number.isInteger(amount) || amount <= 0) throw new UserError("Usage: `economy coinflip <amount> <heads|tails>`.");
+      if (amount > MAX_BET) throw new UserError(`The maximum bet is ${MAX_BET.toLocaleString()} SC.`);
       if (side !== "heads" && side !== "tails") throw new UserError("Choose heads or tails.");
       try {
         await economy.spend(ctx.guild.id, ctx.author.id, amount, "coinflip", `${ctx.guild.id}:${ctx.author.id}:coinflip:${Date.now()}`);
@@ -288,7 +317,7 @@ export const economyCommand: Command = {
         if (error instanceof Error && error.message === "INSUFFICIENT_FUNDS") throw new UserError("You do not have enough coins.");
         throw new UserError(error instanceof Error ? error.message : "Bet failed.");
       }
-      const win = Math.random() < 0.45;
+      const win = Math.random() < 0.48;
       if (win) {
         await economy.award(ctx.guild.id, ctx.author.id, amount * 2, "coinflip_win", `${ctx.guild.id}:${ctx.author.id}:coinflipwin:${Date.now()}`);
         await ctx.reply(success(`Coin: **${side}**. You win ${formatCoins(amount * 2)}!`));
@@ -302,6 +331,7 @@ export const economyCommand: Command = {
     if (action === "slots" || action === "slot") {
       const amount = Number(ctx.args[1]);
       if (!Number.isInteger(amount) || amount <= 0) throw new UserError("Usage: `economy slots <amount>`.");
+      if (amount > MAX_BET) throw new UserError(`The maximum bet is ${MAX_BET.toLocaleString()} SC.`);
       try {
         await economy.spend(ctx.guild.id, ctx.author.id, amount, "slots", `${ctx.guild.id}:${ctx.author.id}:slots:${Date.now()}`);
       } catch (error) {
@@ -312,17 +342,19 @@ export const economyCommand: Command = {
       const reels = [symbols[Math.floor(Math.random() * symbols.length)]!, symbols[Math.floor(Math.random() * symbols.length)]!, symbols[Math.floor(Math.random() * symbols.length)]!];
       let payout = 0;
       if (reels[0] === reels[1] && reels[1] === reels[2]) payout = 5;
-      else if (reels[0] === reels[1] || reels[1] === reels[2] || reels[0] === reels[2]) payout = 2;
-      if (payout > 0) {
-        await economy.award(ctx.guild.id, ctx.author.id, amount * payout, "slots_win", `${ctx.guild.id}:${ctx.author.id}:slots:${Date.now()}`);
+      else if (reels[0] === reels[1] || reels[1] === reels[2] || reels[0] === reels[2]) payout = 1.6;
+      const winAmount = Math.floor(amount * payout);
+      if (winAmount > 0) {
+        await economy.award(ctx.guild.id, ctx.author.id, winAmount, "slots_win", `${ctx.guild.id}:${ctx.author.id}:slots:${Date.now()}`);
       }
-      await ctx.reply(card({ title: "Slots", body: `${reels.join("  ")}\n\n${payout > 0 ? `You win ${formatCoins(amount * payout)}!` : `You lose ${formatCoins(amount)}.`}` }));
+      await ctx.reply(card({ title: "Slots", body: `${reels.join("  ")}\n\n${winAmount > 0 ? `You win ${formatCoins(winAmount)}!` : `You lose ${formatCoins(amount)}.`}` }));
       return;
     }
 
     if (action === "blackjack" || action === "bj") {
       const amount = Number(ctx.args[1]);
       if (!Number.isInteger(amount) || amount <= 0) throw new UserError("Usage: `economy blackjack <amount>`.");
+      if (amount > MAX_BET) throw new UserError(`The maximum bet is ${MAX_BET.toLocaleString()} SC.`);
       try {
         const result = await economy.blackjackStart(ctx.guild.id, ctx.author.id, amount);
         await ctx.reply(economy.blackjackPayload(result));
@@ -358,6 +390,22 @@ export const economyCommand: Command = {
       return;
     }
 
+    if (action === "stats") {
+      if (!isAdmin(ctx.member, ctx.services.config, ctx.guild)) {
+        throw new UserError("You need admin permissions for that.");
+      }
+      const rows = await economy.stats(ctx.guild.id, 7);
+      if (!rows.length) {
+        await ctx.reply(empty("No economy transactions in the last 7 days."));
+        return;
+      }
+      const body = rows
+        .map((row) => `- \`${row.kind}\` · ${formatCoins(row.total)} · ${row.count} tx`)
+        .join("\n");
+      await ctx.reply(card({ title: "Economy activity · 7 days", body }));
+      return;
+    }
+
     if (action === "adjust") {
       if (!isAdmin(ctx.member, ctx.services.config, ctx.guild)) {
         throw new UserError("You need admin permissions for that.");
@@ -382,6 +430,6 @@ export const economyCommand: Command = {
       return;
     }
 
-    throw new UserError("Use `economy balance`, `daily`, `work`, `coinflip`, `slots`, `blackjack`, `transfer`, `top`, `shop`, `buy`, `premium`, `grant`, `adjust`, `shopadd`, or `shopremove`.");
+    throw new UserError("Use `economy balance`, `daily`, `work`, `coinflip`, `slots`, `blackjack`, `transfer`, `top`, `shop`, `buy`, `premium`, `grant`, `stats`, `adjust`, `shopadd`, or `shopremove`. Use `stocks` for the exchange.");
   },
 };

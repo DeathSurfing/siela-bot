@@ -70,6 +70,7 @@ import { buildLyricsPayload } from "./features/lyrics-ui.js";
 import { TambolaService } from "./features/tambola/service.js";
 import { TtsService } from "./features/tts.js";
 import { EconomyService } from "./features/economy.js";
+import { handleStockButton, handleStockModal } from "./features/stocks-ui.js";
 import { EMOJI, card, confirmCard } from "./features/ui.js";
 import { PrivacyService } from "./features/privacy.js";
 import { buildHelpPayload } from "./features/help.js";
@@ -144,7 +145,7 @@ export class SielaBot {
       this.config.EVENT_PRAYER,
       isVoiceBusy,
     );
-    const activity = new ActivityService(this.dbHandle.db, friendship, tempVc, music, this.logger);
+    const activity = new ActivityService(this.dbHandle.db, friendship, tempVc, music, this.logger, economy);
     const leveling = new LevelingService(this.dbHandle.db, settings, this.client, this.logger);
     activity.leveling = leveling;
     this.services = {
@@ -378,6 +379,14 @@ export class SielaBot {
       }
       if (interaction.isButton() && interaction.customId.startsWith("economy:bj:")) {
         await this.services.economy.handleBlackjackInteraction(interaction);
+        return;
+      }
+      if (interaction.isButton() && interaction.customId.startsWith("stocks:")) {
+        await handleStockButton(this.services.economy, interaction);
+        return;
+      }
+      if (interaction.isModalSubmit() && interaction.customId.startsWith("stocks:")) {
+        await handleStockModal(this.services.economy, interaction);
         return;
       }
       if (interaction.isButton() && interaction.customId.startsWith("music:")) {
