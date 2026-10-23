@@ -101,11 +101,9 @@ export const socialStatsCommand: Command = {
       if (row.actorId === member.id) given.set(row.kind, (given.get(row.kind) ?? 0) + row.count);
       if (row.targetId === member.id) received.set(row.kind, (received.get(row.kind) ?? 0) + row.count);
     }
-    const lines = INTERACTION_KINDS.map((kind) => {
-      const meta = INTERACTION_META[kind];
-      return `${meta.emoji} **${meta.label}** — given **${given.get(kind) ?? 0}**, received **${received.get(kind) ?? 0}**`;
-    });
-    await ctx.reply(card({ title: "Interaction stats", subtitle: member.displayName, body: lines.join("\n") }));
+    const givenLine = `**Given**: ${INTERACTION_KINDS.map((kind) => `${INTERACTION_META[kind].label} ${given.get(kind) ?? 0}`).join(" · ")}`;
+    const receivedLine = `**Received**: ${INTERACTION_KINDS.map((kind) => `${INTERACTION_META[kind].label} ${received.get(kind) ?? 0}`).join(" · ")}`;
+    await ctx.reply(card({ title: "Interaction stats", subtitle: member.displayName, body: [givenLine, receivedLine].join("\n") }));
   },
 };
 

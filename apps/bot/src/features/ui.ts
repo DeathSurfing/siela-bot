@@ -213,9 +213,12 @@ export function attachPagination(
   const collector = message.createMessageComponentCollector({
     componentType: ComponentType.Button,
     time: 120_000,
-    filter: (interaction) => interaction.user.id === userId,
   });
   collector.on("collect", async (interaction) => {
+    if (interaction.user.id !== userId) {
+      await interaction.reply({ content: "Only the original user can change pages.", ephemeral: true }).catch(() => undefined);
+      return;
+    }
     const page = Number(interaction.customId.split(":").pop()) || 1;
     currentPage = page;
     await interaction.update(render(page, false)).catch(() => undefined);
