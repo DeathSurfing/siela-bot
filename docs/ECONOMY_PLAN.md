@@ -1,3 +1,6 @@
+> Design history, not implemented truth. See docs/ECONOMY.md for what is actually implemented.
+> Key differences: daily is 10 SC base up to 7x (not 50 SC); work is 1-4 SC with 2h cooldown; only delulu (5/15 SC) and Tambola extra ticket (25 SC) / auto-mark (10 SC) are actually charged; premium/admin bypass is not wired (premium is status-only, everyone still pays).
+
 # Economy Plan
 
 Single-guild virtual currency for Siela Bot: **Siela Coins (SC)**. The economy exists to gate premium interactions (`delulu`, `delulu nsfw`, TTS voices, and Tambola extras) behind earned or purchased access, while giving members fun ways to earn coins.

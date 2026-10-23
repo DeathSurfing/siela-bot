@@ -1,3 +1,6 @@
+> Design history, not implemented truth. See docs/ECONOMY.md for what is actually implemented.
+> Key differences: daily is 10 SC base up to 7x (not 50 SC / 20h); work is 1-4 SC with 2h cooldown; only delulu (5/15 SC) and Tambola extra ticket (25 SC) / auto-mark (10 SC) are actually charged; premium/admin bypass is not wired (premium is status-only, everyone still pays).
+
 # Currency Gating Design (Single Guild)
 
 ## Currency

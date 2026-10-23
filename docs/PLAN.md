@@ -1,5 +1,11 @@
 # Siela Bot — Architecture & Delivery Plan
 
+> HISTORICAL — Draft v0.2 planning doc, not current architecture.
+> Translator service described here was never built. Runtime is now Bun (not pnpm/node).
+> LLM is now vLLM (`Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3`), not llama.cpp.
+> TTS is now KittenTTS Nano ONNX (Bruno) with Edge TTS fallback.
+> Economy (Siela Coins) and standalone `/tts` were added after this plan.
+
 > **Status:** Draft v0.2 — major decisions confirmed; remaining smaller decisions in §14  
 > **Scope:** One Discord guild, one bot instance, fully deployable with rootless Podman  
 > **Last updated:** 2026-10-21

@@ -1,6 +1,6 @@
 ---
 name: siela-bot
-description: Use when working in, extending, debugging, testing, or deploying the siela-nogseuui-seobeo-bot repository. Covers the pnpm/TypeScript monorepo, single-guild discord.js bot, hybrid command framework, music/lyrics/Tambola voice features, PostgreSQL/Drizzle schema, Valkey, control API, MCP server, Podman deployment, and runbook gotchas.
+description: Use when working in, extending, debugging, testing, or deploying the siela-nogseuui-seobeo-bot repository. Covers the Bun/TypeScript monorepo, single-guild discord.js bot, hybrid command framework, music/lyrics/Tambola voice features, PostgreSQL/Drizzle schema, Valkey, control API, MCP server, Podman deployment, and runbook gotchas.
 ---
 
 # Siela Bot
@@ -29,8 +29,9 @@ apps/bot (discord.js)
   ├─ Fastify control API :3001
   ├─ Fastify health/metrics :3002
   ├─ PostgreSQL via Drizzle
-  ├─ Valkey via ioredis
-  └─ optional local llama.cpp (delulu)
+  ├─ Valkey via Bun Redis client
+  ├─ optional local vLLM (delulu)
+  └─ optional local KittenTTS (tts)
         ▲
 apps/mcp (optional, no Discord/DB credentials)
   └─ typed MCP tools → Bearer MCP_TOKEN → control API
@@ -83,7 +84,7 @@ Categories: `music`, `social`, `voice`, `utility`, `admin`.
 |---|---|---|
 | Music | `features/music.ts`, `features/music-ui.ts`, `commands/music/music.ts` | yt-dlp + mpv (ffmpeg fallback), queue, filters, Spotify, cache, now-playing V2 card. |
 | Lyrics | `features/lyrics.ts`, `features/lyrics-ui.ts` | LRCLIB, `/lyrics` and now-playing button, in-memory cache, long lyrics attach `.txt`. |
-| Tambola | `features/tambola/*`, `features/tambola-ui.ts`, `commands/social/tambola.ts` | 90-ball game, DM tickets, auto/manual marking, claims, runtime Edge TTS, lobby settings. |
+| Tambola | `features/tambola/*`, `features/tambola-ui.ts`, `commands/social/tambola.ts` | 90-ball game, DM tickets, auto/manual marking, claims, KittenTTS calls with Edge TTS fallback, lobby settings. Ticket 25 SC, automark 10 SC. |
 | Welcome | `features/welcome.ts`, `features/welcomeCard.ts`, `commands/admin/welcome.ts` | Join/goodbye messages, optional image card/DM. |
 | Auto-role | `features/autorole.ts`, `commands/admin/autorole.ts` | Safe role validation, hierarchy, sync preview/apply. |
 | Temp VC | `features/tempvc.ts`, `commands/voice/vc.ts`, `commands/admin/tempvc.ts`, `commands/admin/jointocreate.ts` | Join-to-create, owner panel, lock/rename/limit/kick/transfer/delete, reconcile. |
@@ -94,8 +95,10 @@ Categories: `music`, `social`, `voice`, `utility`, `admin`.
 | Confessions | `features/confession.ts`, `commands/social/confess.ts`, `commands/admin/confession.ts` | Anonymous wall, moderation. |
 | Birthdays | `features/birthday.ts`, `commands/utility/birthday.ts` | Daily scheduler, optional wishes. |
 | Activity | `features/activity.ts`, `commands/utility/activity.ts` | Message/command/reaction/voice stats, retention. |
-| Delulu | `features/delulu.ts`, `commands/social/delulu.ts` | Optional local llama.cpp; no HF token required when LLM is available. |
+| Delulu | `features/delulu.ts`, `commands/social/delulu.ts` | Local vLLM (`Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3`); 5 SC, 15 SC for NSFW. No HF token required. |
 | Random VC | `features/randomVc.ts` | Rare 2–6h drop, synthetic SFX, skips when voice is busy. |
+| Economy | `features/economy.ts`, economy commands | Siela Coins wallet; delulu 5/15 SC, tambola ticket 25 / automark 10 SC, premium 2000 SC/30d. See `docs/ECONOMY.md`. |
+| TTS | `features/tts.ts`, `/tts on\|off` | Standalone TTS via local KittenTTS Nano ONNX (Bruno), Edge TTS fallback. See `docs/TTS.md`. |
 | Scheduled events | `features/scheduledEvents.ts`, `commands/utility/test.ts` | Aladhan Delhi prayer, three phases, admin-supplied audio. |
 | Privacy/audit | `features/privacy.ts`, `features/audit.ts`, `commands/utility/privacy.ts` | Data deletion, audit log. |
 | Control API | `control/server.ts` | Bearer `MCP_TOKEN`, typed routes, audit for mutations. |
@@ -133,7 +136,7 @@ Categories: `music`, `social`, `voice`, `utility`, `admin`.
   - Default 12s; host can choose fast 8s or slow 15s.
   - Host can call manually (2s throttle), pause/resume, end.
 - TTS:
-  - Runtime Edge TTS, voice `en-IN-NeerjaNeural`, rate `-5%`.
+  - Primary: local KittenTTS Nano ONNX service (`tts`, voice Bruno); Edge TTS (`en-IN-NeerjaNeural`, rate `-5%`) is the fallback.
   - `edge-tts==7.3.1` is installed in the bot image.
   - MP3s cached in `/tmp/siela-tambola-tts`, played via `@discordjs/voice` + ffmpeg.
   - Bingo classics + generic hype flavours; text-only fallback on failure.
@@ -160,8 +163,8 @@ Tables:
 Migration commands:
 
 ```bash
-corepack pnpm db:generate   # generate a migration after schema changes
-corepack pnpm db:migrate    # run migrations with DATABASE_URL
+bun run db:generate   # generate a migration after schema changes
+bun run db:migrate    # run migrations with DATABASE_URL
 ```
 
 The compose stack also runs a one-shot `migrate` service before the bot starts.
@@ -190,21 +193,21 @@ Current deployed server uses `EVENT_SCHEDULE_ENABLED=true` and `EVENT_PRAYER=Dhu
 
 ## Development workflow
 
-Node.js 24+ and pnpm 12 via corepack.
+Bun 1.x (`packageManager bun@1.4.2`).
 
 ```bash
-corepack pnpm install
-corepack pnpm typecheck
-corepack pnpm test
-corepack pnpm build
+bun install
+bun run typecheck
+bun run test
+bun run build
 ```
 
 Useful:
 
 ```bash
-corepack pnpm --filter @siela/bot test
-corepack pnpm --filter @siela/bot dev
-corepack pnpm --filter @siela/mcp dev
+bun run --filter @siela/bot test
+bun run --cwd apps/bot dev
+bun run --cwd apps/mcp dev
 ```
 
 Conventions:
@@ -241,7 +244,8 @@ The init script prints the invite URL. MCP is off by default; set `MCP_ENABLED=t
 
 - `postgres` — Postgres 17, `pgdata` volume.
 - `valkey` — Valkey 8, `valkeydata` volume.
-- `llm` — llama.cpp server for delulu, `llmcache` volume.
+- `llm` — vLLM server (`Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3`) for delulu, `llmcache` volume.
+- `tts` — KittenTTS Nano ONNX service (voice Bruno), Edge TTS fallback in bot.
 - `migrate` — one-shot `node dist/scripts/migrate.js`.
 - `bot` — Discord bot + control API + health/metrics.
 
@@ -348,8 +352,8 @@ podman exec siela-postgres pg_dump -U siela -Fc siela \
 - **Tambola TTS silent**:
   - Check the lobby card `TTS` line.
   - Ensure the bot has `Connect` and `Speak` in the selected voice channel.
-  - Ensure outbound network access for Edge TTS.
-  - Test: `podman exec siela-bot python3 -m edge_tts --voice en-IN-NeerjaNeural --text "test" --write-media /tmp/tambola-test.mp3`.
+  - Check the KittenTTS service first: `podman ps | grep siela-tts`, `podman logs --tail 20 siela-tts`, verify `TTS_SERVICE_URL` (default `http://tts:8000`).
+  - Edge TTS fallback needs outbound network access. Test: `podman exec siela-bot python3 -m edge_tts --voice en-IN-NeerjaNeural --text "test" --write-media /tmp/tambola-test.mp3`.
   - Grep logs for `tambola`.
 - **Tambola TTS and music conflict**: a Tambola game stops and locks music. Finish/end the game or use Text only in lobby settings.
 - **Random VC or prayer event skipped**: expected while Tambola is active or music voice is locked.
@@ -372,7 +376,10 @@ podman exec siela-postgres pg_dump -U siela -Fc siela \
 
 ## Key docs
 
-- `docs/PLAN.md` — full architecture, security, delivery plan, command reference.
+- `docs/PLAN.md` — historical planning doc (Draft v0.2), not current architecture.
+- `docs/ECONOMY.md` — Siela Coins, pricing, premium.
+- `docs/TTS.md` — KittenTTS service, voices, fallback, `/tts`.
+- `docs/DELULU.md` — vLLM delulu generation and costs.
 - `docs/RUNBOOK.md` — deploy, updates, backups, remote Podman, troubleshooting.
 - `docs/MCP.md` — MCP transports, clients, tool groups.
 - `docs/THREAT-MODEL.md` — security boundaries.

@@ -4,14 +4,14 @@
 
 | Decision | Choice |
 |---|---|
-| Marking | Auto-marking is on by default; the host can turn it off in settings |
+| Marking | Auto-marking is on by default and host-toggleable in lobby settings; players can also buy per-player auto-mark (applies to all of their tickets), which re-enables it for them individually |
 | Active games | One per guild |
 | Winning patterns | Top Line, Middle Line, Bottom Line, Full House |
 | Stats/leaderboard | Deferred to a later phase |
 | Host | Can play too |
 | Calls | Auto-call every 12 seconds by default; fast 8s and slow 15s options; manual host calls |
 | Tickets | Sent by DM, with an ephemeral fallback |
-| TTS | Runtime Edge TTS, Indian English female voice, bingo classics |
+| TTS | KittenTTS service primary (KittenML/kitten-tts-nano-0.8, Bruno), Edge TTS local fallback, bingo classics |
 | Players | 2–20 per game |
 | Mid-game joins/leaves | Not allowed |
 
@@ -80,13 +80,14 @@ Add a 90-ball Tambola/Housie game mode that runs inside Discord:
 
 - Auto-marking is on by default. When enabled, called numbers are automatically marked on every ticket and players only need to claim.
 - The host can turn auto-marking off in the lobby settings.
+- Separately, a player can buy per-player auto-mark (10 SC, applies to all of that player's tickets), which re-enables auto-marking for them even when the global setting is off. Both mechanisms coexist.
 - When auto-marking is off, players mark their own numbers.
 - A player may only mark a number that:
   - Exists on their ticket.
   - Has already been called.
   - Has not already been marked.
 - Marking an uncalled number returns a private error.
-- Marking does not happen automatically, even if the number is called.
+- Marking does not happen automatically when auto-marking is off, even if the number is called.
 - Players can mark numbers while the game is paused.
 - Marks are permanent for the game.
 - Late marking is allowed; a player can mark a called number at any time before claiming.
@@ -217,15 +218,15 @@ Details:
 
 ### Approach
 
-Use **runtime TTS** powered by Edge TTS.
+Use **runtime TTS** with the KittenTTS service as primary and Edge TTS as local fallback.
 
-- Voice: `en-IN-NeerjaNeural` (Indian English, female).
-- Engine: the `edge-tts` Python package/CLI.
+- Primary: KittenTTS Nano ONNX (`KittenML/kitten-tts-nano-0.8`), voice `Bruno`, speed `1.0`, served by `deploy/podman/tts` (FastAPI: `/healthz`, `/synthesize`, `/synthesize-stream`). Bot env: `TTS_SERVICE_URL=http://tts:8000`, `TTS_STREAM=true`. TambolaVoice prefers remote streaming, then remote buffered, then the local backend.
+- Local fallback: `TTS_BACKEND=edge` default (`edge-tts` CLI, voice `en-IN-NeerjaNeural`, rate `-5%`); `kitten`/`kitten-mini` daemon scripts via `TTS_PYTHON` + `KITTEN_TTS_SCRIPT`.
 - No API key or paid account required.
-- The bot container already has Python 3 and pip; add `edge-tts` to the runtime image.
-- Generated MP3 clips are cached on disk by phrase hash.
+- The bot container already has Python 3 and pip; add `edge-tts` to the runtime image for the fallback path.
+- Generated clips are cached on disk by phrase hash (`/tmp/siela-tambola-tts`, SHA-1 keyed, max 300 files).
 - The bot uses `ffmpeg` to play the cached MP3 through a dedicated Tambola audio player.
-- If Edge TTS is unavailable, the game continues text-only.
+- If the KittenTTS service and the local fallback are unavailable, the game continues text-only.
 
 ### Runtime flow
 
@@ -233,11 +234,11 @@ For each number call:
 
 1. Build the phrase: `Number 42. Answer to everything.`
 2. Check the cache for that exact voice + phrase.
-3. If missing, run Edge TTS and write an MP3 to the cache.
-4. Play the MP3 in the Tambola voice channel.
+3. If missing, synthesize via the KittenTTS service (or the local fallback) and write the clip to the cache.
+4. Play the clip in the Tambola voice channel.
 5. Delete or evict old cache files when the cache grows too large.
 
-One request per call is enough; Edge TTS takes roughly 1–2 seconds for a short phrase, well inside the 12-second interval.
+One request per call is enough; remote synthesis takes roughly 1–2 seconds for a short phrase, well inside the 12-second interval.
 
 ### TTS service
 
@@ -245,7 +246,7 @@ One request per call is enough; Edge TTS takes roughly 1–2 seconds for a short
 
 - Join/leave the selected voice channel.
 - Own a dedicated `AudioPlayer`.
-- Synthesize phrases with Edge TTS.
+- Synthesize phrases via the KittenTTS service (streaming preferred), falling back to remote buffered synthesis, then the local backend (Edge TTS default).
 - Cache generated audio.
 - Queue/play intro, call, claim, pause, resume, and Full House cues.
 - Enforce a synthesis timeout and fall back to text-only.
@@ -379,13 +380,13 @@ Avoid repeating the same generic line twice in a row.
 
 - The bot joins the selected voice channel when the lobby opens.
 - If music is connected, TTS is disabled for that game because the bot can only have one voice connection and one active audio player per guild. The game runs text-only and the card says so.
-- If Edge TTS fails, times out, or the voice connection fails, TTS is disabled and the game continues text-only.
+- If the KittenTTS service and the local fallback fail, time out, or the voice connection fails, TTS is disabled (soft-fail after 3 synthesis failures) and the game continues text-only.
 - The bot leaves voice when the game ends or is cancelled.
 - TTS is supplementary; the game card and ticket are always the source of truth.
 
 ### Runtime dependencies
 
-- Add `edge-tts` to `deploy/podman/Containerfile.bot`:
+- Add `edge-tts` to `deploy/podman/Containerfile.bot` (local fallback):
   ```dockerfile
   pip install --no-cache-dir --break-system-packages yt-dlp edge-tts
   ```
@@ -479,8 +480,8 @@ lobby ──start──> active ──pause──> paused
 `apps/bot/src/features/tambola/voice.ts`
 
 - Joins the selected voice channel.
-- Synthesizes phrases with Edge TTS at runtime.
-- Caches generated MP3 files.
+- Synthesizes phrases via the KittenTTS service at runtime (Edge TTS local fallback).
+- Caches generated audio files.
 - Plays number, flavour, and cue clips.
 - Leaves on end/cancel.
 - Fails soft to text-only.
@@ -511,7 +512,7 @@ lobby ──start──> active ──pause──> paused
 - Add `tambola` to `commands/index.ts`.
 - Add channel/delete and member/remove cleanup.
 - Add `docs/TAMBOLA.md` usage notes.
-- Add `edge-tts` to the bot runtime image.
+- Add `edge-tts` to the bot runtime image (local fallback).
 
 ## Persistence
 
@@ -604,7 +605,7 @@ The bot can only have one voice connection and one active audio player per guild
 - Host leaves after start.
 - Channel deletion.
 - Music-active text-only fallback.
-- Edge TTS failure/timeout fallback.
+- TTS failure/timeout fallback.
 - TTS cache hit and cache growth limits.
 - Restart with a stale card.
 - `/tambola ticket` and **My ticket**.
@@ -614,7 +615,7 @@ The bot can only have one voice connection and one active audio player per guild
 1. **Engine + tests** — ticket generator, deck, marking, claims, state machine.
 2. **Service + commands** — lobby, join/leave/start, DM tickets, timers, one-game-per-guild guard.
 3. **Live UI + interactions** — game card, called board, DM ticket buttons, claim select, host controls.
-4. **TTS** — Edge TTS runtime synthesis, cache, voice service, intro/call/claim cues, text-only fallback.
+4. **TTS** — KittenTTS service synthesis (streaming preferred), Edge local fallback, cache, voice service, intro/call/claim cues, text-only fallback.
 5. **Playtest + polish** — edge cases, docs, deployment.
 
 Stats and leaderboards are a later phase.
@@ -624,12 +625,12 @@ Stats and leaderboards are a later phase.
 - Max players: 20
 - Min players: 2
 - Auto-call interval: 12 seconds; fast 8s and slow 15s options
-- Auto-marking: paid per-player feature; a player can buy it for all of their tickets
+- Auto-marking: on by default and host-toggleable in lobby settings; players can additionally buy per-player auto-mark (10 SC, all of their tickets), which re-enables it for them individually
 - Lobby timeout: 5 minutes
 - Game timeout: 45 minutes
 - Manual call throttle: 2 seconds
-- TTS voice: `en-IN-NeerjaNeural` (Indian English, female), slightly slowed
-- TTS engine: Edge TTS at runtime
+- TTS voice: KittenTTS service primary (`KittenML/kitten-tts-nano-0.8`, Bruno); Edge TTS local fallback (`en-IN-NeerjaNeural`, slightly slowed)
+- TTS engine: KittenTTS service at runtime (streaming preferred), Edge TTS local fallback
 - TTS cache: `/tmp/siela-tambola-tts/`
 - Generic flavour pool: 15–20 lines
 - Number-specific classic calls for 1–90 where available
