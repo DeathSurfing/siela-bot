@@ -2,23 +2,26 @@
 # Build from the repository root:
 #   podman build -f deploy/podman/Containerfile.mcp -t siela-mcp .
 
-FROM node:24-alpine AS build
-RUN npm install -g pnpm@12.14.0
+FROM oven/bun:1 AS build
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc tsconfig.base.json ./
+COPY package.json bun.lock bunfig.toml tsconfig.base.json ./
 COPY apps/bot/package.json apps/bot/package.json
 COPY apps/mcp/package.json apps/mcp/package.json
 COPY packages/config/package.json packages/config/package.json
 COPY packages/db/package.json packages/db/package.json
 COPY packages/shared/package.json packages/shared/package.json
-RUN pnpm install --frozen-lockfile
-COPY . .
-RUN pnpm --filter @siela/mcp build
-RUN pnpm --filter @siela/mcp deploy --prod /out
+RUN bun install --frozen-lockfile
+COPY apps/mcp apps/mcp
+COPY packages/config packages/config
+COPY packages/shared packages/shared
+RUN bun run --cwd apps/mcp build
 
-FROM node:24-alpine AS runtime
+FROM oven/bun:1 AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
-COPY --from=build /out/ ./
-USER node
-CMD ["node", "dist/index.js"]
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/apps/mcp/dist ./dist
+COPY --from=build /app/apps/mcp/package.json ./package.json
+USER 1000:1000
+EXPOSE 8080
+CMD ["bun", "dist/index.js"]

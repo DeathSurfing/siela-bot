@@ -30,7 +30,7 @@ The control API runs inside the bot process. The MCP server reaches it through t
 
 | Mode | Endpoint | Auth |
 |---|---|---|
-| stdio | `node apps/mcp/dist/index.js --stdio` | Process isolation plus `MCP_TOKEN` for the control API |
+| stdio | `bun apps/mcp/dist/index.js --stdio` | Process isolation plus `MCP_TOKEN` for the control API |
 | HTTP on the Podman network | `http://mcp:8080/mcp` | `Authorization: Bearer <MCP_TOKEN>` |
 | HTTP on the host | `http://127.0.0.1:8080/mcp` | Same token. Use `compose.host.yaml` |
 
