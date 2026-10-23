@@ -26,6 +26,8 @@ flowchart TD
 | [README.md](../README.md) | Project overview, features, technology, and contribution links |
 | [GET_STARTED.md](../GET_STARTED.md) | First-run setup, Discord configuration, verification, local development |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Process model, command lifecycle, boot sequence, persistence, deployment topology |
+| [DEVELOPMENT.md](DEVELOPMENT.md) | Repository layout, command flow, extension recipes, tests, debugging |
+| [RELEASE.md](RELEASE.md) | Branch and pull request expectations, pre-merge checks, deployment, verification, rollback |
 | [RUNBOOK.md](RUNBOOK.md) | Deployment, updates, backups, health checks, troubleshooting |
 | [MCP.md](MCP.md) | MCP transports, clients, tool groups, and trust boundary |
 | [ECONOMY.md](ECONOMY.md) | Siela Coins, earning, spending, shop, premium, admin operations |
