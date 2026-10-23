@@ -6,7 +6,7 @@ This document explains how the bot is assembled and where state lives. It is the
 
 Siela Bot runs as one long-lived Bun process. `apps/bot/src/bot.ts` is the composition root. It creates the Discord client, the command registry, the feature services, the Fastify control API, and the health server.
 
-The MCP server is the only separate application process. It has no Discord token and no database credentials. It calls the control API over the internal `control` network with a bearer token.
+The MCP server is the only separate application process. It has no Discord client and no database client. It calls the control API over the internal `control` network with a bearer token. The compose service currently receives the shared deployment env file, so treat the MCP container as secret-bearing. See [MCP.md](MCP.md).
 
 ```mermaid
 flowchart LR
@@ -28,7 +28,7 @@ flowchart LR
   REG --> TTS[KittenTTS :8000]
   REG --> EXT[YouTube, SoundCloud,<br/>Spotify, LRCLIB, Aladhan]
   REG --> MEM[In-memory state]
-  REG --> TMP[/tmp cache and sockets]
+  REG --> TMP["/tmp cache and sockets"]
 
   MCP[Optional MCP server] -->|Bearer token| API
   CLIENT[MCP client] --> MCP
@@ -99,7 +99,7 @@ flowchart LR
   BOT[Bot process] --> PG[(PostgreSQL)]
   BOT --> VK[(Valkey)]
   BOT --> MEM[Process memory]
-  BOT --> TMP[/tmp]
+  BOT --> TMP["/tmp"]
 
   PG --> P1[Guild settings and feature configuration]
   PG --> P2[Social counters, friendship, family, birthdays]

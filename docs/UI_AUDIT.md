@@ -99,7 +99,7 @@ Issues:
   timestamp is the classic "marketing bot" look.
 - **P1 — Close is a whole row for one secondary action.** It adds vertical
   space and makes the select feel like a form.
-- **P1 — No search.** With 59 commands, category browsing plus
+- **P1 — No search.** With 61 commands, category browsing plus
   `help <command>` is slow on mobile.
 - **P2 — Version and timestamp on every help view are not useful.**
 - **P2 — Command names are shown with both slash and usage; the list becomes
