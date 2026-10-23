@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import {
   and,
   asc,
@@ -166,6 +169,11 @@ export class RelicService {
   private ticking = false;
   private starting = false;
   private readonly artCache = new Map<number, Buffer>();
+  private readonly artDir: string = (() => {
+    if (process.env.RELIC_ART_DIR) return process.env.RELIC_ART_DIR;
+    if (existsSync("/data/relic-art")) return "/data/relic-art";
+    return path.join(process.cwd(), "data", "relic-art");
+  })();
   private readonly warnedDates = new Set<string>();
   private readonly announcing = new Set<number>();
 
@@ -500,6 +508,19 @@ export class RelicService {
       this.artCache.set(card.id, cached);
       return cached;
     }
+    const file = path.join(this.artDir, `relic-${card.id}.png`);
+    try {
+      const buf = await fs.readFile(file);
+      this.artCache.set(card.id, buf);
+      while (this.artCache.size > ART_CACHE_SIZE) {
+        const oldest = this.artCache.keys().next().value;
+        if (oldest === undefined) break;
+        this.artCache.delete(oldest);
+      }
+      return buf;
+    } catch {
+      // fall through to render
+    }
     const subject = RELIC_SUBJECTS.find((entry) => entry.key === card.subjectKey);
     const art = await renderRelicCard({
       serial: card.id,
@@ -522,6 +543,8 @@ export class RelicService {
       ownerName: null,
       isGenesis: card.isGenesis,
     });
+    await fs.mkdir(this.artDir, { recursive: true }).catch(() => undefined);
+    await fs.writeFile(file, art).catch(() => undefined);
     this.artCache.set(card.id, art);
     while (this.artCache.size > ART_CACHE_SIZE) {
       const oldest = this.artCache.keys().next().value;
@@ -757,6 +780,11 @@ export class RelicService {
       return row ?? null;
     });
 
+    if (settled && settled.winnerId) {
+      await this.cardArt(await this.getCard(settled.guildId, settled.cardId)).catch((error) =>
+        this.logger.warn({ err: error, cardId: settled.cardId }, "failed to render relic art at mint"),
+      );
+    }
     if (settled) {
       await this.announceSettlement(settled.id).catch((error) =>
         this.logger.warn({ err: error, auctionId: settled.id }, "failed to announce relic settlement"),
@@ -1879,6 +1907,7 @@ export class RelicService {
       targetId: userId,
       after: { cardId: cardRow.id, rarity: cardRow.rarity },
     });
+    await this.cardArt(await this.getCard(guildId, cardRow.id)).catch(() => undefined);
     return { ...cardRow, ownerId: userId, mintedAt: now, mintedPrice: 0, acquiredVia: "grant" };
   }
 
