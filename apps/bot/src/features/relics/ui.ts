@@ -183,7 +183,7 @@ export function buildAuctionResultPayload(input: {
             `**${card.emoji} ${card.name}**`,
             `Nobody placed a bid, so ${relicSerialLabel(card.id)} stays unminted in the vault forever.`,
             "",
-            "-# The next relic drops tomorrow at 4:00 PM IST.",
+            "-# The next relic drop appears in the auction channel.",
           ].join("\n"),
     ),
   );
@@ -261,10 +261,9 @@ export function buildInventoryPayload(input: {
     container.addTextDisplayComponents(
       text(
         [
-          "Your vault is empty.",
+          "This vault is empty.",
           "",
           "Win a daily relic auction, trade with another collector, or ask an admin for a grant.",
-          "-# Auctions run every day from 4:00 PM to 5:00 PM IST.",
         ].join("\n"),
       ),
     );
@@ -289,7 +288,7 @@ export function buildInventoryPayload(input: {
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(page <= 0),
       new ButtonBuilder()
-        .setCustomId(`relics:inv:${input.userId}:${Math.min(pages - 1, page + 1)}`)
+        .setCustomId(`relics:inv:${input.userId}:${page}`)
         .setLabel(`Page ${page + 1}/${pages}`)
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(true),
@@ -300,9 +299,11 @@ export function buildInventoryPayload(input: {
         .setDisabled(page >= pages - 1),
     );
   }
+  if (nav.length) {
+    container.addActionRowComponents(row(...nav));
+  }
   container.addActionRowComponents(
     row(
-      ...nav,
       new ButtonBuilder()
         .setCustomId(`relics:profile:${input.userId}`)
         .setLabel("Profile")
@@ -541,7 +542,7 @@ export function buildRulesPayload(): ReplyPayload {
       [
         "**One card. One owner. One hour.**",
         "",
-        "Every day at **4:00 PM IST**, one procedurally generated, one-of-one relic is revealed in the auction channel. Bidding closes at **5:00 PM IST**. Highest bid wins and the card is permanently minted to that collector.",
+        "During the configured daily auction window, one procedurally generated, one-of-one relic is revealed in the auction channel. Highest bid wins and the card is permanently minted to that collector.",
         "",
         "**Bidding**",
         "• Bids are paid in Siela Coins (SC) and held in escrow the moment you bid.",

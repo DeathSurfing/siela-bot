@@ -150,7 +150,7 @@ export const economyCommand: Command = {
           .join("\n");
         return pagedCard({
           title: "Coin leaderboard",
-          subtitle: "Top 100 by Siela Coins",
+          subtitle: `Top ${rows.length} by Siela Coins`,
           body,
           page,
           totalPages,
@@ -169,7 +169,8 @@ export const economyCommand: Command = {
       for (const category of categories) {
         lines.push(`**${category}**`);
         for (const item of GLOBAL_SHOP.filter((entry) => entry.category === category)) {
-          lines.push(`- ${item.name} (\`${item.key}\`) — ${formatCoins(item.price)}${item.purchasable ? "" : " / use"}\n  -# ${item.description}`);
+          lines.push(item.purchasable ? `**${item.name}** · ${formatCoins(item.price)} · \`${item.key}\`` : `**${item.name}** · ${formatCoins(item.price)} · per use`);
+          lines.push(`-# ${item.description}`);
         }
         lines.push("");
       }
@@ -178,7 +179,8 @@ export const economyCommand: Command = {
         lines.push("**Server shop**");
         for (const item of dbItems) {
           const stock = item.stock === null ? "unlimited" : `${item.stock} left`;
-          lines.push(`- ${item.name} (\`${item.key}\`) — ${formatCoins(item.price)} · ${stock}${item.description ? `\n  -# ${item.description}` : ""}`);
+          lines.push(`**${item.name}** · ${formatCoins(item.price)} · \`${item.key}\` · ${stock}`);
+          if (item.description) lines.push(`-# ${item.description}`);
         }
       }
       await ctx.reply(card({ title: "Economy shop", body: lines.join("\n").trim() }));
@@ -224,7 +226,7 @@ export const economyCommand: Command = {
           spent = true;
           const expiresAt = await economy.grantPremium(ctx.guild.id, ctx.author.id, 30, ctx.author.id);
           await ctx.services.audit.log({ guildId: ctx.guild.id, actorId: ctx.author.id, source: "discord", action: "economy.premium.purchase", targetType: "user", targetId: ctx.author.id, after: { days: 30 } });
-          await ctx.reply(success(`Premium granted until ${expiresAt.toISOString().slice(0, 10)}.`));
+          await ctx.reply(success(`Premium granted until <t:${Math.floor(expiresAt.getTime() / 1000)}:D>.`));
         } catch (error) {
           const message = error instanceof Error ? error.message : "Purchase failed.";
           if (spent && message !== "INSUFFICIENT_FUNDS") {
@@ -323,7 +325,7 @@ export const economyCommand: Command = {
         await ctx.reply(success(`Coin: **${side}**. You win ${formatCoins(amount * 2)}!`));
       } else {
         const other = side === "heads" ? "tails" : "heads";
-        await ctx.reply(success(`Coin: **${other}**. You lose ${formatCoins(amount)}.`));
+        await ctx.reply({ content: `Coin: **${other}**. You lose ${formatCoins(amount)}.`, ephemeral: true });
       }
       return;
     }
@@ -386,7 +388,7 @@ export const economyCommand: Command = {
       if (!target) throw new UserError("Choose a valid member.");
       const expiresAt = await economy.grantPremium(ctx.guild.id, target.id, days, ctx.author.id);
       await ctx.services.audit.log({ guildId: ctx.guild.id, actorId: ctx.author.id, source: "discord", action: "economy.premium.grant", targetType: "user", targetId: target.id, after: { days } });
-      await ctx.reply(success(`Granted ${days} premium days to ${target.displayName} until ${expiresAt.toISOString().slice(0, 10)}.`));
+      await ctx.reply(success(`Granted ${days} premium days to ${target.displayName} until <t:${Math.floor(expiresAt.getTime() / 1000)}:D>.`));
       return;
     }
 
@@ -426,7 +428,7 @@ export const economyCommand: Command = {
         throw new UserError(message);
       }
       await ctx.services.audit.log({ guildId: ctx.guild.id, actorId: ctx.author.id, source: "discord", action: "economy.adjust", targetType: "user", targetId: target.id, after: { amount, reason } });
-      await ctx.reply(success(`Adjusted ${target.displayName}'s balance by ${amount > 0 ? "+" : ""}${amount} SC.`));
+      await ctx.reply(success(`Adjusted ${target.displayName}'s balance by ${amount > 0 ? "+" : ""}${formatCoins(amount)}.`));
       return;
     }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MessageFlags } from "discord.js";
-import { marketPayload, portfolioPayload } from "./stocks-ui.js";
-import type { MarketStockView, MarketView, PortfolioView } from "./stocks.js";
+import { marketPayload, portfolioPayload, tradeResultMessage } from "./stocks-ui.js";
+import type { MarketStockView, MarketView, PortfolioView, StockBuyResult, StockSellResult } from "./stocks.js";
 
 const stock: MarketStockView = {
   symbol: "DELULU",
@@ -66,5 +66,33 @@ describe("stock UI payloads", () => {
     const payload = portfolioPayload({ ...portfolio, holdings: [], holdingsValue: 0, unrealized: 0, netWorth: 50 });
     const json = JSON.stringify(payload.components);
     expect(json).toContain("No positions yet");
+  });
+
+  it("discloses the minimum market fee", () => {
+    const payload = marketPayload(market);
+    const json = JSON.stringify(payload.components);
+    expect(json).toContain("1% fee, minimum 1 SC");
+  });
+
+  it("formats buy and sell trade results identically", () => {
+    const buy: StockBuyResult = {
+      symbol: "DELULU",
+      shares: 10,
+      price: 62,
+      fee: 6,
+      total: 626,
+      balance: 100,
+    };
+    const sell: StockSellResult = {
+      symbol: "DELULU",
+      shares: 10,
+      price: 62,
+      fee: 6,
+      proceeds: 614,
+      pnl: 20,
+      balance: 714,
+    };
+    expect(tradeResultMessage(buy)).toContain("Bought 10 DELULU");
+    expect(tradeResultMessage(sell)).toContain("P/L +20.0 SC");
   });
 });
