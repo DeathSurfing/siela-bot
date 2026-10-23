@@ -92,7 +92,7 @@ Guild initialization ensures settings rows, registers slash commands, reconciles
 
 ## Persistence map
 
-PostgreSQL is the source of truth for durable state. Valkey is an optional cache and buffer. Active games and cooldown state live in process memory and disappear on restart.
+PostgreSQL is the source of truth for durable state. Valkey is an optional cache and buffer. Active games and cooldown state live in process memory and disappear on restart. Relic auctions and trades are durable: the scheduler resumes and settles them after a restart.
 
 ```mermaid
 flowchart LR
@@ -105,6 +105,7 @@ flowchart LR
   PG --> P2[Social counters, friendship, family, birthdays]
   PG --> P3[Activity, confessions, audit log]
   PG --> P4[Economy accounts, ledger, inventory, premium passes]
+  PG --> P5[Relic cards, auctions, bids, vaults, trades]
 
   VK --> V1[Music queue by guild]
   VK --> V2[Friendship delta buffer]

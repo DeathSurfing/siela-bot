@@ -1,0 +1,2 @@
+ALTER TABLE "relic_auctions" ADD COLUMN "announced_at" timestamp with time zone;--> statement-breakpoint
+CREATE UNIQUE INDEX "relic_bid_active_uq" ON "relic_bids" USING btree ("auction_id") WHERE "relic_bids"."status" = 'active';

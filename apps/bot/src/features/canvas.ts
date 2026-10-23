@@ -3,6 +3,14 @@ import { GlobalFonts } from "@napi-rs/canvas";
 
 const FONT_CANDIDATES = [
   {
+    regular: "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    bold: "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+  },
+  {
+    regular: "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    bold: "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+  },
+  {
     regular: "/usr/share/fonts/noto/NotoSansCJK-Regular.ttc",
     bold: "/usr/share/fonts/noto/NotoSansCJK-Bold.ttc",
   },

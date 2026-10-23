@@ -446,3 +446,205 @@ export const economyHoldings = pgTable(
     check("economy_holding_shares_nonneg", sql`${t.shares} >= 0`),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// Siela Relics: one-of-one trading cards, daily auctions, trades, and profiles
+// ---------------------------------------------------------------------------
+
+export const relicSettings = pgTable(
+  "relic_settings",
+  {
+    guildId: text("guild_id")
+      .primaryKey()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    channelId: text("channel_id"),
+    enabled: boolean("enabled").notNull().default(false),
+    startHourIst: integer("start_hour_ist").notNull().default(16),
+    durationMinutes: integer("duration_minutes").notNull().default(60),
+    startingBid: integer("starting_bid").notNull().default(25),
+    minIncrement: integer("min_increment").notNull().default(10),
+    pingRoleId: text("ping_role_id"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by"),
+  },
+  (t) => [check("relic_settings_hour_ck", sql`${t.startHourIst} >= 0 AND ${t.startHourIst} <= 23`)],
+);
+
+export const relicCards = pgTable(
+  "relic_cards",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    subjectKey: varchar("subject_key", { length: 64 }).notNull(),
+    name: text("name").notNull(),
+    variantKey: varchar("variant_key", { length: 32 }).notNull(),
+    rarity: varchar("rarity", { length: 16 }).notNull(),
+    seed: bigint("seed", { mode: "number" }).notNull(),
+    power: integer("power").notNull(),
+    chaos: integer("chaos").notNull(),
+    luck: integer("luck").notNull(),
+    aura: integer("aura").notNull(),
+    rating: integer("rating").notNull(),
+    lore: text("lore").notNull(),
+    emoji: varchar("emoji", { length: 16 }).notNull(),
+    palette: jsonb("palette").$type<string[]>().notNull().default([]),
+    sigil: varchar("sigil", { length: 16 }).notNull(),
+    foil: varchar("foil", { length: 16 }).notNull(),
+    isGenesis: boolean("is_genesis").notNull().default(false),
+    auctionId: bigint("auction_id", { mode: "number" }),
+    ownerId: text("owner_id"),
+    mintedAt: timestamp("minted_at", { withTimezone: true }),
+    mintedPrice: bigint("minted_price", { mode: "number" }),
+    acquiredVia: varchar("acquired_via", { length: 16 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("relic_card_seed_uq").on(t.guildId, t.seed),
+    index("relic_card_owner_idx").on(t.guildId, t.ownerId),
+    index("relic_card_rarity_idx").on(t.guildId, t.rarity),
+    check(
+      "relic_card_rarity_ck",
+      sql`${t.rarity} IN ('common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic')`,
+    ),
+    check("relic_card_stats_ck", sql`${t.power} BETWEEN 1 AND 99 AND ${t.chaos} BETWEEN 1 AND 99 AND ${t.luck} BETWEEN 1 AND 99 AND ${t.aura} BETWEEN 1 AND 99`),
+  ],
+);
+
+export const relicAuctions = pgTable(
+  "relic_auctions",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    cardId: bigint("card_id", { mode: "number" })
+      .notNull()
+      .references(() => relicCards.id, { onDelete: "cascade" }),
+    channelId: text("channel_id").notNull(),
+    messageId: text("message_id"),
+    slot: varchar("slot", { length: 48 }).notNull(),
+    dropDate: varchar("drop_date", { length: 10 }).notNull(),
+    status: varchar("status", { length: 16 }).notNull().default("live"),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    startingBid: integer("starting_bid").notNull(),
+    minIncrement: integer("min_increment").notNull(),
+    highestBid: bigint("highest_bid", { mode: "number" }).notNull().default(0),
+    highestBidderId: text("highest_bidder_id"),
+    bidCount: integer("bid_count").notNull().default(0),
+    winnerId: text("winner_id"),
+    winningBid: bigint("winning_bid", { mode: "number" }),
+    winningBidId: bigint("winning_bid_id", { mode: "number" }),
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+    announcedAt: timestamp("announced_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("relic_auction_slot_uq").on(t.guildId, t.slot),
+    uniqueIndex("relic_auction_live_uq").on(t.guildId).where(sql`${t.status} = 'live'`),
+    index("relic_auction_status_idx").on(t.status, t.endsAt),
+    index("relic_auction_message_idx").on(t.messageId),
+    check("relic_auction_status_ck", sql`${t.status} IN ('live', 'settled', 'cancelled')`),
+    check("relic_auction_bid_ck", sql`${t.highestBid} >= 0 AND ${t.bidCount} >= 0`),
+  ],
+);
+
+export const relicBids = pgTable(
+  "relic_bids",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    auctionId: bigint("auction_id", { mode: "number" })
+      .notNull()
+      .references(() => relicAuctions.id, { onDelete: "cascade" }),
+    guildId: text("guild_id").notNull(),
+    userId: text("user_id").notNull(),
+    amount: bigint("amount", { mode: "number" }).notNull(),
+    status: varchar("status", { length: 16 }).notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("relic_bid_auction_idx").on(t.auctionId, t.status),
+    uniqueIndex("relic_bid_active_uq").on(t.auctionId).where(sql`${t.status} = 'active'`),
+    index("relic_bid_user_idx").on(t.guildId, t.userId, t.createdAt),
+    check("relic_bid_amount_ck", sql`${t.amount} > 0`),
+    check("relic_bid_status_ck", sql`${t.status} IN ('active', 'outbid', 'won', 'refunded', 'cancelled')`),
+  ],
+);
+
+export const relicInventory = pgTable(
+  "relic_inventory",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    cardId: bigint("card_id", { mode: "number" })
+      .notNull()
+      .references(() => relicCards.id, { onDelete: "cascade" }),
+    acquiredVia: varchar("acquired_via", { length: 16 }).notNull().default("auction"),
+    acquiredPrice: bigint("acquired_price", { mode: "number" }).notNull().default(0),
+    lastYieldAt: timestamp("last_yield_at", { withTimezone: true }).notNull().defaultNow(),
+    lockedTradeId: bigint("locked_trade_id", { mode: "number" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("relic_inventory_card_uq").on(t.cardId),
+    index("relic_inventory_user_idx").on(t.guildId, t.userId, t.createdAt),
+    index("relic_inventory_trade_idx").on(t.lockedTradeId),
+  ],
+);
+
+export const relicProfiles = pgTable(
+  "relic_profiles",
+  {
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    featuredCardId: bigint("featured_card_id", { mode: "number" }),
+    totalYieldClaimed: bigint("total_yield_claimed", { mode: "number" }).notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.guildId, t.userId] })],
+);
+
+export const relicTrades = pgTable(
+  "relic_trades",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    proposerId: text("proposer_id").notNull(),
+    partnerId: text("partner_id").notNull(),
+    offerCardId: bigint("offer_card_id", { mode: "number" }).notNull(),
+    requestCardId: bigint("request_card_id", { mode: "number" }),
+    coins: bigint("coins", { mode: "number" }).notNull().default(0),
+    status: varchar("status", { length: 16 }).notNull().default("pending"),
+    channelId: text("channel_id"),
+    messageId: text("message_id"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("relic_trade_status_idx").on(t.status, t.expiresAt),
+    index("relic_trade_user_idx").on(t.guildId, t.proposerId),
+    index("relic_trade_partner_idx").on(t.guildId, t.partnerId),
+    check("relic_trade_coins_ck", sql`${t.coins} >= 0`),
+    check("relic_trade_status_ck", sql`${t.status} IN ('pending', 'accepted', 'declined', 'expired', 'cancelled')`),
+  ],
+);
+
+export type RelicSettingsRow = typeof relicSettings.$inferSelect;
+export type RelicCardRow = typeof relicCards.$inferSelect;
+export type RelicAuctionRow = typeof relicAuctions.$inferSelect;
+export type RelicBidRow = typeof relicBids.$inferSelect;
+export type RelicInventoryRow = typeof relicInventory.$inferSelect;
+export type RelicProfileRow = typeof relicProfiles.$inferSelect;
+export type RelicTradeRow = typeof relicTrades.$inferSelect;

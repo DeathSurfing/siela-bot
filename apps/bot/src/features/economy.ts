@@ -124,7 +124,7 @@ export class EconomyService {
     return result;
   }
 
-  private async invalidateBalance(guildId: string, userId: string): Promise<void> {
+  async invalidateBalance(guildId: string, userId: string): Promise<void> {
     const redis = this.redis;
     if (!redis) return;
     await redis.del(`siela:economy:bal:${guildId}:${userId}`).catch(() => undefined);

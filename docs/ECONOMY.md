@@ -41,6 +41,21 @@ Commands: `economy balance|daily|work|transfer|top|shop|buy|coinflip|slots|black
 - All gambling commands cap a single bet at 10,000 SC.
 - Actually charged features: delulu starts at 5 SC SFW / 15 SC NSFW and doubles with each use that day (SFW 5, 10, 20, 40; NSFW 15, 30). SFW is capped at 4 uses/day and NSFW at 2 uses/day. Failed generations are refunded.
 - Tambola extra ticket 25 SC; Tambola per-player auto-mark 10 SC; `premium_30d` 2000 SC for 30 days.
+- Relic auctions: bids are escrowed immediately and the winning bid is consumed; outbid bids are refunded. See [RELICS.md](RELICS.md).
+
+## Relics
+
+Siela Relics is the largest coin sink and a long-term coin source:
+
+- **Auction bids** are deducted when placed and held in escrow. Outbid members are refunded in the same transaction. The winning bid leaves circulation.
+- **Starting bid** is 25 SC and the minimum raise is 10 SC by default; both are configurable per guild in `relic_settings`.
+- **Passive yield** returns 1 SC/day (Common) up to 25 SC/day (Mythic) while a card is held. Claim with `/relics collect`. Accrual caps at 30 days.
+- **Genesis cards** (`#0001`–`#0010`) earn double yield.
+- **Trades** can include up to 1,000,000 SC. Coins are escrowed when the offer is created and refunded if it is declined or expires.
+
+The ledger records `relic_bid`, `relic_outbid_refund`, `relic_yield`, `relic_trade_escrow`, `relic_trade_payout`, `relic_trade_refund`, and `relic_auction_cancelled_refund` entries. The auction and trade writes happen in the same database transaction as the balance change.
+
+Full mechanics and setup: [RELICS.md](RELICS.md).
 
 ## Shop
 

@@ -15,12 +15,13 @@ export const configCommand: Command = {
     .setDescription("Overview of all server settings")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   async execute(ctx: CommandContext) {
-    const [prefix, welcome, autorole, tempvc, music] = await Promise.all([
+    const [prefix, welcome, autorole, tempvc, music, relics] = await Promise.all([
       ctx.services.settings.getPrefix(ctx.guild.id),
       ctx.services.settings.getWelcome(ctx.guild.id),
       ctx.services.settings.getAutoRole(ctx.guild.id),
       ctx.services.settings.getTempVc(ctx.guild.id),
       ctx.services.settings.getMusic(ctx.guild.id),
+      ctx.services.relics.getSettings(ctx.guild.id),
     ]);
     await ctx.reply(
       card({
@@ -31,6 +32,7 @@ export const configCommand: Command = {
           `**Auto-role** · ${autorole.enabled ? autorole.roleIds.map((id) => `<@&${id}>`).join(", ") || "enabled, no roles" : "disabled"}`,
           `**Temp VC** · ${tempvc.enabled ? `hub <#${tempvc.hubChannelId}>` : "disabled"}`,
           `**Music** · volume ${music.defaultVolume} · queue ${music.maxQueueSize}`,
+          `**Relics** · ${relics.enabled ? `auctions in ${relics.channelId ? `<#${relics.channelId}>` : "no channel"}` : "disabled"}`,
           "",
           "-# Use the feature commands to change these values.",
         ].join("\n"),

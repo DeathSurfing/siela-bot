@@ -98,6 +98,7 @@ Categories: `music`, `social`, `voice`, `utility`, `admin`.
 | Delulu | `features/delulu.ts`, `commands/social/delulu.ts` | Local vLLM (`Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3`); surge-priced 5/15 SC base, doubling per daily use. SFW capped at 4/day, NSFW at 2/day. No HF token required. |
 | Random VC | `features/randomVc.ts` | Rare 2–6h drop, synthetic SFX, skips when voice is busy. |
 | Economy | `features/economy.ts`, `features/stocks.ts`, `features/stocks-ui.ts`, economy/stocks commands | Siela Coins wallet, 50 SC starting balance, voice income, Tambola rewards, a six-stock bot market maker with a 1% fee, gambling sinks, shop, premium 2000 SC/30d. See `docs/ECONOMY.md`. |
+| Relics | `features/relics/*`, `commands/social/relics.ts` | Daily 4–5 PM IST one-of-one card auction, escrowed SC bids, weekend rarity boost, vaults, yield, showcases, trades. See `docs/RELICS.md`. |
 | TTS | `features/tts.ts`, `/tts on\|off` | Standalone TTS via local KittenTTS Nano ONNX (Bruno), Edge TTS fallback. See `docs/TTS.md`. |
 | Scheduled events | `features/scheduledEvents.ts`, `commands/utility/test.ts` | Aladhan Delhi prayer, three phases, admin-supplied audio. |
 | Privacy/audit | `features/privacy.ts`, `features/audit.ts`, `commands/utility/privacy.ts` | Data deletion, audit log. |
@@ -380,6 +381,7 @@ podman exec siela-postgres pg_dump -U siela -Fc siela \
 - `docs/ARCHITECTURE.md` — process model, command lifecycle, boot order, persistence, deployment diagrams.
 - `docs/PLAN.md` — historical planning doc (Draft v0.2), not current architecture.
 - `docs/ECONOMY.md` — Siela Coins, pricing, premium.
+- `docs/RELICS.md` — relic cards, daily auction, bidding, vaults, yield, trades.
 - `docs/TTS.md` — KittenTTS service, voices, fallback, `/tts`.
 - `docs/DELULU.md` — vLLM delulu generation and costs.
 - `docs/RUNBOOK.md` — deploy, updates, backups, remote Podman, troubleshooting.

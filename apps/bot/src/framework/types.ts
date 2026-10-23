@@ -41,6 +41,7 @@ import type { TtsService } from "../features/tts.js";
 import type { EconomyService } from "../features/economy.js";
 import type { ScheduledEventService } from "../features/scheduledEvents.js";
 import type { PrivacyService } from "../features/privacy.js";
+import type { RelicService } from "../features/relics/service.js";
 import type { CommandRegistry } from "./registry.js";
 
 export interface Services {
@@ -65,6 +66,7 @@ export interface Services {
   lyrics: LyricsService;
   tambola: TambolaService;
   economy: EconomyService;
+  relics: RelicService;
   tts: TtsService;
   scheduledEvents: ScheduledEventService;
 }

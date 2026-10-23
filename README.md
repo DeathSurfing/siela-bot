@@ -5,7 +5,7 @@
 [![Runtime: Bun](https://img.shields.io/badge/runtime-Bun%201.4-f9f1e1)](https://bun.sh)
 [![Deploy: Podman](https://img.shields.io/badge/deploy-Podman%205%2B-892ca0)](https://podman.io)
 
-Siela Bot is a self-hosted Discord bot for a single community server. It combines music, a coin economy, Tambola, social features, text-to-speech, temporary voice channels, welcome automation, and an optional MCP control server.
+Siela Bot is a self-hosted Discord bot for a single community server. It combines music, a coin economy, daily trading-card auctions, Tambola, social features, text-to-speech, temporary voice channels, welcome automation, and an optional MCP control server.
 
 The project is open source under the MIT license. Contributions, bug reports, and documentation fixes are welcome.
 
@@ -13,11 +13,12 @@ The project is open source under the MIT license. Contributions, bug reports, an
 
 - **Music.** Streams from SoundCloud, YouTube, and Spotify links through `yt-dlp` and `mpv`. Includes a persistent queue, live filters, lyrics from LRCLIB, and interactive controls.
 - **Economy.** Tracks Siela Coins in a PostgreSQL ledger. Supports daily rewards, work, voice and Tambola income, transfers, gambling, a shop, premium passes, a six-stock exchange, and surge-priced Delulu with daily AI caps.
+- **Siela Relics.** Auctions one procedurally generated, one-of-one meme card every day from 4:00 PM to 5:00 PM IST. Escrowed SC bidding, weekend rarity boosts, permanent vaults, passive yield, showcase profiles, and player trades.
 - **Tambola.** Runs 90-ball games with private DM tickets, line and full-house claims, paid extra tickets, paid auto-marking, and spoken number calls.
 - **Delulu.** Generates short bias scenarios through a local vLLM service. Falls back to Hugging Face, Pollinations, and built-in scenarios when the local service is unavailable.
 - **TTS.** Reads enabled voice-channel chat with KittenTTS Nano ONNX and the Bruno voice. Edge TTS remains available as a fallback.
 - **Community features.** Welcome cards, auto-role, temporary voice channels, confessions, birthdays, friendship levels, family trees, activity tracking, and scheduled prayer-time voice events.
-- **Operations.** Runs as a rootless Podman stack with PostgreSQL, Valkey, vLLM, KittenTTS, health endpoints, and an optional MCP server. The bot registers 61 commands and exposes 51 MCP tools.
+- **Operations.** Runs as a rootless Podman stack with PostgreSQL, Valkey, vLLM, KittenTTS, health endpoints, and an optional MCP server. The bot registers 63 commands and exposes 51 MCP tools.
 
 ## Architecture
 
@@ -108,6 +109,7 @@ For local development, use a PostgreSQL container and a `.env` file inside `apps
 - [docs/MCP.md](docs/MCP.md) covers MCP transports, clients, and the 51-tool catalog.
 - [docs/ECONOMY.md](docs/ECONOMY.md) explains Siela Coins and pricing.
 - [docs/ECONOMY_V2.md](docs/ECONOMY_V2.md) explains the earning, AI-gating, and exchange design choices.
+- [docs/RELICS.md](docs/RELICS.md) explains relic cards, the daily auction, vaults, yield, and trades.
 - [docs/TTS.md](docs/TTS.md) explains voice playback and the TTS service.
 - [docs/DELULU.md](docs/DELULU.md) explains the LLM fallback chain.
 - [docs/TAMBOLA_PLAN.md](docs/TAMBOLA_PLAN.md) documents Tambola rules and state.
