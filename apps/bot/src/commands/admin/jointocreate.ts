@@ -18,13 +18,14 @@ function configCard(settings: Awaited<ReturnType<CommandContext["services"]["set
   return card({
     title: "Join to create",
     body: [
-      `**Enabled** · ${settings.enabled ? "yes" : "no"}`,
-      `**Hub** · ${settings.hubChannelId ? `<#${settings.hubChannelId}>` : "not set"}`,
+      `**Enabled** · ${settings.enabled ? "On" : "Off"}`,
+      `**Hub** · ${settings.hubChannelId ? `<#${settings.hubChannelId}>` : "Not set"}`,
       `**Category** · ${settings.categoryId ? `<#${settings.categoryId}>` : "auto-created on setup"}`,
       `**Name template** · \`${settings.nameTemplate}\``,
-      `**Default locked** · ${settings.defaultLocked ? "yes" : "no"}`,
+      `**Default locked** · ${settings.defaultLocked ? "On" : "Off"}`,
       `**Grace** · ${settings.graceSeconds}s`,
     ].join("\n"),
+    ephemeral: true,
   });
 }
 

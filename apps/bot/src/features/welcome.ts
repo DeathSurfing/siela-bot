@@ -138,8 +138,7 @@ export class WelcomeService {
     const content = renderTemplate(template, this.values(member));
     const embed = new EmbedBuilder()
       .setColor(COLORS.primary)
-      .setDescription(content)
-      .setFooter({ text: "Welcome preview" });
+      .setDescription(content);
     if (settings.card) {
       try {
         const card = await generateWelcomeCard({

@@ -16,12 +16,13 @@ function configCard(settings: Awaited<ReturnType<CommandContext["services"]["set
   return card({
     title: "Auto-role",
     body: [
-      `**Enabled** · ${settings.enabled ? "yes" : "no"}`,
-      `**Include bots** · ${settings.includeBots ? "yes" : "no"}`,
+      `**Enabled** · ${settings.enabled ? "On" : "Off"}`,
+      `**Include bots** · ${settings.includeBots ? "On" : "Off"}`,
       `**Minimum account age** · ${settings.minAccountAgeDays} days`,
       `**Delay** · ${settings.delayMs}ms`,
       `**Roles** · ${settings.roleIds.length ? settings.roleIds.map((id) => `<@&${id}>`).join(", ") : "none"}`,
     ].join("\n"),
+    ephemeral: true,
   });
 }
 

@@ -2,7 +2,7 @@ import { ChannelType, PermissionFlagsBits, SlashCommandBuilder, type VoiceChanne
 import type { Command, CommandContext } from "../../framework/types.js";
 import { isAdmin } from "../../framework/permissions.js";
 import { UserError } from "../../lib/errors.js";
-import { ICONS, card, error as uiError, success } from "../../features/ui.js";
+import { card, error as uiError, success } from "../../features/ui.js";
 
 function normalizeId(value: string | undefined): string | undefined {
   return value?.replace(/^<#|>$/g, "");
@@ -73,11 +73,16 @@ export const moveallCommand: Command = {
         }
       }
 
-      await ctx.reply(
-        success(
-          `Moved ${moved} member(s) to <#${target.id}>.${failed.length ? ` Failed: ${failed.join(", ")}` : ""}`,
-        ),
-      );
+      const memberWord = moved === 1 ? "member" : "members";
+      if (moved === 0) {
+        await ctx.reply(uiError(`Could not move any members to <#${target.id}>. Could not move: ${failed.join(", ")}`));
+      } else {
+        await ctx.reply(
+          success(
+            `Moved ${moved} ${memberWord} to <#${target.id}>.${failed.length ? ` Could not move: ${failed.join(", ")}` : ""}`,
+          ),
+        );
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "That action failed.";
       await ctx.reply(uiError(message));

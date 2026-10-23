@@ -17,16 +17,17 @@ function configCard(prefix: string, settings: Awaited<ReturnType<CommandContext[
   return card({
     title: "Welcome",
     body: [
-      `**Enabled** · ${settings.enabled ? "yes" : "no"}`,
-      `**Channel** · ${settings.channelId ? `<#${settings.channelId}>` : "not set"}`,
-      `**Embed** · ${settings.embed ? "yes" : "no"}`,
-      `**Card** · ${settings.card ? "yes" : "no"}`,
-      `**Ping user** · ${settings.pingUser ? "yes" : "no"}`,
-      `**DM** · ${settings.dmEnabled ? "yes" : "no"}`,
-      `**Goodbye** · ${settings.goodbyeEnabled ? `enabled${settings.goodbyeChannelId ? ` in <#${settings.goodbyeChannelId}>` : ""}` : "disabled"}`,
+      `**Enabled** · ${settings.enabled ? "On" : "Off"}`,
+      `**Channel** · ${settings.channelId ? `<#${settings.channelId}>` : "Not set"}`,
+      `**Embed** · ${settings.embed ? "On" : "Off"}`,
+      `**Card** · ${settings.card ? "On" : "Off"}`,
+      `**Ping user** · ${settings.pingUser ? "On" : "Off"}`,
+      `**DM** · ${settings.dmEnabled ? "On" : "Off"}`,
+      `**Goodbye** · ${settings.goodbyeEnabled ? (settings.goodbyeChannelId ? `On · <#${settings.goodbyeChannelId}>` : "On") : "Off"}`,
       `**Message**\n\`\`\`${settings.message.slice(0, 900)}\`\`\``,
       `-# \`${prefix}welcome <channel|message|embed|ping|dm|test|disable|goodbye>\``,
     ].join("\n"),
+    ephemeral: true,
   });
 }
 
