@@ -120,8 +120,8 @@ A healthy `/readyz` response reports `gateway`, `guild`, and `database` as true.
 Test the bot in Discord:
 
 - `!ping` reports gateway, database, and music status.
-- `!help` shows the command menu.
-- `/help` confirms that slash commands were registered.
+- `!help` opens the command guide: browse a category, search, or run `!help <command>`.
+- `/help` opens the same guide and confirms that slash commands were registered.
 - Join a voice channel, then run `!join` and `!play <SoundCloud URL>`.
 
 ## 8. First-run configuration

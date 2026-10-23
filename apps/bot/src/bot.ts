@@ -74,7 +74,12 @@ import { handleStockButton, handleStockModal } from "./features/stocks-ui.js";
 import { EMOJI, card, confirmCard } from "./features/ui.js";
 import { PrivacyService } from "./features/privacy.js";
 import { RelicService } from "./features/relics/service.js";
-import { buildHelpPayload } from "./features/help.js";
+import {
+  buildHelpPayload,
+  buildHelpSearchModal,
+  HELP_SEARCH_INPUT_ID,
+  HELP_SEARCH_MODAL_ID,
+} from "./features/help.js";
 import { ControlServer } from "./control/server.js";
 import { HealthServer } from "./control/health.js";
 import type { Logger } from "./lib/logger.js";
@@ -432,12 +437,16 @@ export class SielaBot {
         await this.onTempVcModal(interaction);
         return;
       }
-      if (interaction.isStringSelectMenu() && interaction.customId === "help:category") {
-        await this.onHelpSelect(interaction);
+      if (interaction.isModalSubmit() && interaction.customId === HELP_SEARCH_MODAL_ID) {
+        await this.onHelpSearch(interaction);
         return;
       }
-      if (interaction.isButton() && interaction.customId === "help:close") {
-        await interaction.update({ content: "Help closed.", embeds: [], components: [] }).catch(() => undefined);
+      if (
+        (interaction.isButton() || interaction.isStringSelectMenu()) &&
+        interaction.customId.startsWith("help:")
+      ) {
+        await this.onHelpComponent(interaction);
+        return;
       }
     } catch (error) {
       this.logger.error({ err: error }, "interaction error");
@@ -483,18 +492,75 @@ export class SielaBot {
     })();
   }
 
-  private async onHelpSelect(interaction: StringSelectMenuInteraction): Promise<void> {
+  private async onHelpComponent(
+    interaction: ButtonInteraction | StringSelectMenuInteraction,
+  ): Promise<void> {
+    if (interaction.customId === "help:close") {
+      await interaction.deferUpdate().catch(() => undefined);
+      const deleted = await interaction.deleteReply().then(() => true).catch(() => false);
+      if (!deleted) await interaction.message.delete().catch(() => undefined);
+      return;
+    }
+
+    if (interaction.customId === "help:search") {
+      await interaction.showModal(buildHelpSearchModal());
+      return;
+    }
+
     const guild = interaction.guild;
     if (!guild) return;
     const member = await guild.members.fetch(interaction.user.id).catch(() => null);
     if (!member) return;
     const prefix = await this.services.settings.getPrefix(guild.id);
+
+    let category: string | undefined;
+    let query: string | undefined;
+    if (interaction.isStringSelectMenu()) {
+      if (interaction.customId === "help:category") category = interaction.values[0];
+      else if (interaction.customId === "help:pick") query = interaction.values[0];
+      else if (interaction.customId.startsWith("help:command:")) query = interaction.values[0];
+      else return;
+    } else if (interaction.customId.startsWith("help:nav:")) {
+      category = interaction.customId.slice("help:nav:".length);
+    } else if (interaction.customId.startsWith("help:pick:")) {
+      query = interaction.customId.slice("help:pick:".length);
+    } else if (interaction.customId !== "help:home") {
+      return;
+    }
+
     const payload = await buildHelpPayload({
       registry: this.registry,
       member,
       config: this.config,
       prefix,
-      category: interaction.values[0],
+      category,
+      query,
+    });
+    await interaction.update({
+      components: payload.components,
+      flags: payload.flags,
+    });
+  }
+
+  private async onHelpSearch(interaction: ModalSubmitInteraction): Promise<void> {
+    if (!interaction.isFromMessage()) {
+      await interaction
+        .reply({ content: "Open help with `/help` or `!help` first.", ephemeral: true })
+        .catch(() => undefined);
+      return;
+    }
+    const guild = interaction.guild;
+    if (!guild) return;
+    const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+    if (!member) return;
+    const prefix = await this.services.settings.getPrefix(guild.id);
+    const query = interaction.fields.getTextInputValue(HELP_SEARCH_INPUT_ID).trim() || undefined;
+    const payload = await buildHelpPayload({
+      registry: this.registry,
+      member,
+      config: this.config,
+      prefix,
+      query,
     });
     await interaction.update({
       components: payload.components,
