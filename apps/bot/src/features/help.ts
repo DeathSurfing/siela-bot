@@ -407,11 +407,13 @@ function buildCommand(command: CommandMetadata, prefix: string): ReplyPayload {
     lines.push("", "**Example**", `\`${prefix}${example}\``);
   }
 
-  const also = [
-    ...(command.slash ? [`\`/${command.name}\``] : []),
-    ...command.aliases.slice(0, 5).map((alias) => `\`${alias}\``),
+  const alsoParts = [
+    ...(command.slash ? [`slash \`/${command.name}\``] : []),
+    ...(command.aliases.length
+      ? [`prefix ${command.aliases.slice(0, 5).map((alias) => `\`${alias}\``).join(" · ")}`]
+      : []),
   ];
-  if (also.length) lines.push("", `**Also** · ${also.join(" · ")}`);
+  if (alsoParts.length) lines.push("", `**Also** · ${alsoParts.join(" · ")}`);
   if (command.cooldownMs > 0) {
     lines.push("", `**Cooldown** · ${command.cooldownMs / 1000}s`);
   }
@@ -442,13 +444,17 @@ function buildSearch(
   prefix: string,
 ): ReplyPayload {
   const picker = commandPicker("help:pick", matches, "Open a match…");
+  const bodyLines: string[] = [];
+  if (!picker) {
+    bodyLines.push(`**Matches** · ${matches.map((command) => `\`${command.name}\``).join(" · ")}`);
+    bodyLines.push(`-# Use \`${prefix}help <command>\` for a direct answer.`);
+  } else {
+    bodyLines.push(`-# Pick one below, or use \`${prefix}help <command>\` for a direct answer.`);
+  }
   return card({
     title: `${EMOJI.search} Search`,
     subtitle: `${matches.length} match${matches.length === 1 ? "" : "es"} for \`${truncate(query, 40)}\``,
-    body: [
-      `**Matches** · ${matches.map((command) => `\`${command.name}\``).join(" · ")}`,
-      `-# Pick one below, or use \`${prefix}help <command>\` for a direct answer.`,
-    ].join("\n"),
+    body: bodyLines.join("\n"),
     rows: [...(picker ? [picker] : []), actionRow(searchButton(), homeButton(), closeButton())],
     ephemeral: true,
   });
@@ -460,18 +466,18 @@ function buildNoMatch(
   prefix: string,
 ): ReplyPayload {
   const picker = commandPicker("help:pick", suggestions, "Did you mean…");
-  const body = [
-    `Nothing matched \`${truncate(query, 50)}\`.`,
-    suggestions.length
-      ? `\n**Did you mean**\n${suggestions.map((command) => `\`${command.name}\``).join(" · ")}`
-      : `\nTry a command name like \`play\`, or browse a category below.`,
-    `-# You can also use \`${prefix}help <command>\`.`,
-  ].join("\n");
+  const bodyLines: string[] = [`Nothing matched \`${truncate(query, 50)}\`.`];
+  if (!suggestions.length) {
+    bodyLines.push(`Try a command name like \`play\`, or browse a category below.`);
+  } else if (!picker) {
+    bodyLines.push(`**Did you mean**\n${suggestions.map((command) => `\`${command.name}\``).join(" · ")}`);
+  }
+  bodyLines.push(`-# You can also use \`${prefix}help <command>\`.`);
 
   return card({
     title: `${EMOJI.search} No match`,
     subtitle: "Search",
-    body,
+    body: bodyLines.join("\n"),
     rows: [...(picker ? [picker] : []), actionRow(searchButton(), homeButton(), closeButton())],
     ephemeral: true,
   });

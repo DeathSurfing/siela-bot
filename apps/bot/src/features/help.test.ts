@@ -57,6 +57,25 @@ const commands: CommandMetadata[] = [
 const registry = { metadata: () => commands } as unknown as CommandRegistry;
 const config = { botOwnerId: null, adminRoleIds: [] } as unknown as BotConfig;
 
+function textDisplays(payload: { components?: readonly unknown[] }): string[] {
+  const container = payload.components?.[0] as { toJSON(): { components: { type: number; content?: string }[] } };
+  return container.toJSON().components.filter((component) => component.type === 10).map((component) => component.content ?? "");
+}
+
+function selectOptions(payload: { components?: readonly unknown[] }): { label: string; value: string }[] {
+  const container = payload.components?.[0] as {
+    toJSON(): { components: { type: number; components?: { type: number; options?: { label: string; value: string }[] }[] }[] };
+  };
+  const options: { label: string; value: string }[] = [];
+  for (const row of container.toJSON().components) {
+    if (row.type !== 1) continue;
+    for (const component of row.components ?? []) {
+      if (component.type === 3) options.push(...(component.options ?? []));
+    }
+  }
+  return options;
+}
+
 function member(admin = false): GuildMember {
   return {
     id: "user",
@@ -259,5 +278,62 @@ describe("help payloads", () => {
     const json = JSON.stringify(payload.components);
     expect(json).toContain("Restricted category");
     expect(json).not.toContain("config");
+  });
+
+  it("removes the duplicate Matches list while keeping picker results", async () => {
+    const payload = await buildHelpPayload({
+      registry,
+      member: member(),
+      config,
+      prefix: "!",
+      query: "a",
+    });
+    const texts = textDisplays(payload);
+    expect(texts.join("\n")).not.toContain("**Matches");
+    expect(texts.join("\n")).toContain("Pick one below");
+    const labels = selectOptions(payload).map((option) => option.label);
+    expect(labels.length).toBeGreaterThan(1);
+    expect(labels).toContain("tambola");
+  });
+
+  it("keeps no-match suggestions as picker options without a duplicate body list", async () => {
+    const payload = await buildHelpPayload({
+      registry,
+      member: member(),
+      config,
+      prefix: "!",
+      query: "tambla",
+    });
+    const texts = textDisplays(payload);
+    expect(texts.join("\n")).toContain("Nothing matched");
+    expect(texts.join("\n")).not.toContain("**Did you mean");
+    expect(selectOptions(payload).map((option) => option.label)).toContain("tambola");
+    expect(texts.join("\n")).toContain("You can also use");
+  });
+
+  it("keeps the zero-suggestion fallback", async () => {
+    const payload = await buildHelpPayload({
+      registry,
+      member: member(),
+      config,
+      prefix: "!",
+      query: "zzzzz",
+    });
+    const texts = textDisplays(payload);
+    expect(texts.join("\n")).toContain("Nothing matched");
+    expect(texts.join("\n")).toContain("Try a command name like");
+    expect(selectOptions(payload)).toHaveLength(0);
+  });
+
+  it("labels slash and prefix aliases for play", async () => {
+    const payload = await buildHelpPayload({
+      registry,
+      member: member(),
+      config,
+      prefix: "!",
+      query: "play",
+    });
+    const texts = textDisplays(payload);
+    expect(texts.join("\n")).toContain("**Also** · slash `/play` · prefix `p`");
   });
 });
