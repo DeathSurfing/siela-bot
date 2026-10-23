@@ -86,6 +86,10 @@ Severity: **P0** = blocks clarity or safe use; **P1** = visible friction;
 
 ### 3.1 Help
 
+> Status update (2026-10-23): help now uses grouped category views, a
+> per-category command picker, and a search modal. The findings below
+> describe the previous implementation.
+
 Current:
 
 - Legacy embed with author (`Siela Bot • version`), footer (`Prefix ! • hybrid

@@ -44,6 +44,11 @@ export const EMOJI = {
   rename: "✏️",
   limit: "👥",
   lyrics: "📜",
+  help: "🧭",
+  search: "🔎",
+  home: "↩",
+  close: "✕",
+  nsfw: "🔞",
 } as const;
 
 export const ICONS = {
