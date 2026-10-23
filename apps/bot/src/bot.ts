@@ -73,6 +73,7 @@ import { EconomyService } from "./features/economy.js";
 import { handleStockButton, handleStockModal } from "./features/stocks-ui.js";
 import { EMOJI, card, confirmCard } from "./features/ui.js";
 import { PrivacyService } from "./features/privacy.js";
+import { RelicService } from "./features/relics/service.js";
 import { buildHelpPayload } from "./features/help.js";
 import { ControlServer } from "./control/server.js";
 import { HealthServer } from "./control/health.js";
@@ -105,10 +106,11 @@ export class SielaBot {
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildVoiceStates,
       ],
-      partials: [Partials.Channel, Partials.GuildMember, Partials.Message, Partials.User],
+      partials: [Partials.Channel, Partials.GuildMember, Partials.Message, Partials.Reaction, Partials.User],
       allowedMentions: { parse: [], repliedUser: false },
     });
     this.registry = new CommandRegistry().register(...commands);
@@ -116,6 +118,8 @@ export class SielaBot {
     const counters = new CounterService(this.dbHandle.db);
     this.valkey = new ValkeyService(this.config.VALKEY_URL ?? null, this.logger);
     const economy = new EconomyService(this.dbHandle.db, this.valkey, this.logger);
+    const audit = new AuditService(this.dbHandle.db, this.logger);
+    const relics = new RelicService(this.dbHandle.db, this.client, economy, audit, this.logger);
     const friendship = new FriendshipService(this.dbHandle.db, this.logger, this.valkey);
     const lyrics = new LyricsService(this.logger);
     const confession = new ConfessionService(this.dbHandle.db, settings, this.client, this.logger);
@@ -152,7 +156,7 @@ export class SielaBot {
       config: this.config,
       registry: this.registry,
       settings,
-      audit: new AuditService(this.dbHandle.db, this.logger),
+      audit,
       activity,
       leveling,
       counters,
@@ -171,6 +175,7 @@ export class SielaBot {
       tambola,
       tts,
       economy,
+      relics,
       scheduledEvents: this.scheduledEvents,
     };
     this.controlServer = new ControlServer({
@@ -280,6 +285,7 @@ export class SielaBot {
     this.randomVc.start(guild);
     this.scheduledEvents.start(guild);
     this.services.birthday.start();
+    this.services.relics.start(guild);
     await this.client.user?.setPresence({
       activities: [{ name: `${guild.name} • ${DEFAULTS.prefix}help`, type: ActivityType.Watching }],
       status: "online",
@@ -350,13 +356,23 @@ export class SielaBot {
       if (user?.bot) return;
       let guildId: string | null = null;
       if (reaction.message?.guildId) guildId = reaction.message.guildId;
-      else if (reaction.partial) {
+      if (!guildId && reaction.partial) {
         const fetched = await reaction.fetch().catch(() => null);
         guildId = fetched?.message?.guildId ?? null;
+      }
+      if (!guildId && reaction.message?.partial) {
+        const message = await reaction.message.fetch().catch(() => null);
+        guildId = message?.guildId ?? null;
       }
       if (!guildId || guildId !== this.guildId) return;
       this.services.activity.recordReaction(guildId, user.id);
       void this.services.leveling.awardReaction(guildId, user.id).catch(() => undefined);
+      if (reaction.emoji?.name === "💰") {
+        await this.services.relics.handleReaction(reaction, user).catch((error) => {
+          this.logger.warn({ err: error }, "relic reaction bid failed");
+        });
+        return;
+      }
     } catch {
       // ignore reaction tracking failures
     }
@@ -379,6 +395,13 @@ export class SielaBot {
       }
       if (interaction.isButton() && interaction.customId.startsWith("economy:bj:")) {
         await this.services.economy.handleBlackjackInteraction(interaction);
+        return;
+      }
+      if (
+        (interaction.isButton() || interaction.isModalSubmit()) &&
+        interaction.customId.startsWith("relics:")
+      ) {
+        await this.services.relics.handleInteraction(interaction);
         return;
       }
       if (interaction.isButton() && interaction.customId.startsWith("stocks:")) {
@@ -1001,6 +1024,7 @@ export class SielaBot {
     await this.services.friendship.stop();
     await this.valkey.stop();
     this.services.birthday.stop();
+    this.services.relics.stop();
     this.client.destroy();
     await this.dbHandle.close();
   }

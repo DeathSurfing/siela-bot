@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "relic_auction_live_uq" ON "relic_auctions" USING btree ("guild_id") WHERE "relic_auctions"."status" = 'live';

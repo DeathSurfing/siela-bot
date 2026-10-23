@@ -10,6 +10,7 @@ flowchart TD
   ARCH --> RUN[docs/RUNBOOK]
   ARCH --> MCP[docs/MCP]
   ARCH --> ECON[docs/ECONOMY]
+  ARCH --> RELICS[docs/RELICS]
   ARCH --> TTS[docs/TTS]
   ARCH --> DELULU[docs/DELULU]
   ARCH --> TAMBOLA[docs/TAMBOLA_PLAN]
@@ -29,6 +30,7 @@ flowchart TD
 | [MCP.md](MCP.md) | MCP transports, clients, tool groups, and trust boundary |
 | [ECONOMY.md](ECONOMY.md) | Siela Coins, earning, spending, shop, premium, admin operations |
 | [ECONOMY_V2.md](ECONOMY_V2.md) | Earning and AI-gating rationale, exchange model, balance targets |
+| [RELICS.md](RELICS.md) | Relic card catalog, daily auctions, bidding, vaults, yield, trades |
 | [TTS.md](TTS.md) | Standalone TTS, Tambola voice, synthesis backends, voice locks |
 | [DELULU.md](DELULU.md) | LLM backend chain, model names, costs, refunds, fallbacks |
 | [TAMBOLA_PLAN.md](TAMBOLA_PLAN.md) | Tambola rules, state, UI, and economy integration |
