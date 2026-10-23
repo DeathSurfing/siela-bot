@@ -1,10 +1,10 @@
-import { ComponentType, SlashCommandBuilder } from "discord.js";
+import { SlashCommandBuilder } from "discord.js";
 import { formatDuration, parseDuration } from "@siela/shared";
 import type { Command, CommandContext } from "../../framework/types.js";
 import type { MusicService } from "../../features/music.js";
 import { buildMusicPayload, buildQueuePayload } from "../../features/music-ui.js";
 import { buildLyricsPayload } from "../../features/lyrics-ui.js";
-import { attachConfirmation, card, confirmCard, success } from "../../features/ui.js";
+import { attachConfirmation, attachPagination, card, confirmCard, success } from "../../features/ui.js";
 import { canManageMusic } from "../../framework/permissions.js";
 import { UserError } from "../../lib/errors.js";
 
@@ -58,12 +58,21 @@ const playCommand: Command = {
     }
     try {
       const service = music(ctx);
+      const wasPlaying = Boolean(service.state(ctx.guild.id)?.current);
       const result = await service.play(ctx.member, query, ctx.args[1]);
-      const notice = result.added > 1 ? `Added ${result.added} tracks to the queue.` : "Added to the queue.";
-      const message = await ctx.edit(buildMusicPayload(ctx.guild.id, service.state(ctx.guild.id), notice));
+      const state = service.state(ctx.guild.id);
+      let notice: string;
+      if (!wasPlaying) {
+        notice = result.added > 1 ? `Playing now · ${result.added - 1} more queued` : "Playing now";
+      } else if (result.added > 1) {
+        notice = `Added ${result.added} tracks to the queue`;
+      } else {
+        notice = `Queued at #${state?.upcoming.length ?? 1}`;
+      }
+      const message = await ctx.edit(buildMusicPayload(ctx.guild.id, state, notice));
       if (message) service.setNowPlayingMessage(ctx.guild.id, message);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "That play request failed.";
+      const message = error instanceof UserError ? error.message : "Could not play that request. Try another link or search.";
       await ctx.edit(card({ title: "Could not play", body: message })).catch(() => undefined);
     }
   },
@@ -196,22 +205,9 @@ const queueCommand: Command = {
     const requested = Number(ctx.args[0] ?? 1) || 1;
     const message = await ctx.reply(buildQueuePayload(ctx.guild.id, state, requested));
     if (!message) return;
-    let currentPage = requested;
-
-    const collector = message.createMessageComponentCollector({
-      componentType: ComponentType.Button,
-      time: 120_000,
-      filter: (interaction) => interaction.user.id === ctx.author.id,
-    });
-    collector.on("collect", async (interaction) => {
-      const [, , , pageRaw] = interaction.customId.split(":");
-      const page = Number(pageRaw) || 1;
-      currentPage = page;
-      await interaction.update(buildQueuePayload(ctx.guild.id, service.state(ctx.guild.id), page, false)).catch(() => undefined);
-    });
-    collector.on("end", () => {
-      message.edit(buildQueuePayload(ctx.guild.id, service.state(ctx.guild.id), currentPage, true)).catch(() => undefined);
-    });
+    attachPagination(message, ctx.author.id, requested, (page, disabled) =>
+      buildQueuePayload(ctx.guild.id, service.state(ctx.guild.id), page, disabled ?? false),
+    );
   },
 };
 
