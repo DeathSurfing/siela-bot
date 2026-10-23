@@ -23,7 +23,6 @@ volumes:
   pgdata:
   llmcache:
   valkeydata:
-  relicart:
 
 services:
   postgres:
@@ -140,8 +139,6 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-    volumes:
-      - relicart:/data/relic-art
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]
