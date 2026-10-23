@@ -46,8 +46,8 @@ export const EMOJI = {
   lyrics: "📜",
   help: "🧭",
   search: "🔎",
-  home: "↩",
-  close: "✕",
+  home: "↩️",
+  close: "❌",
   nsfw: "🔞",
 } as const;
 
