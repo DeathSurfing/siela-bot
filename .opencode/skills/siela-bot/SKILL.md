@@ -11,7 +11,7 @@ Single-guild Discord bot with music, social features, temporary voice channels, 
 
 - **One guild only.** The bot binds to `GUILD_ID` or auto-detects the only guild it is in and leaves others.
 - **Only `DISCORD_TOKEN` is human-required.** `scripts/podman-init.sh` derives the client ID and generates the Postgres/MCP secrets.
-- **Hybrid commands.** Most commands work as prefix, slash, and mention-prefix. Context menus exist where registered.
+- **Hybrid commands.** Most commands work as prefix, slash, and mention-prefix. Context-menu commands are not implemented.
 - **Runtime authorization.** Admin checks use `Manage Guild`, server owner, `BOT_OWNER_ID`, or `ADMIN_ROLE_IDS`; never rely only on slash-command permissions.
 - **Optional features degrade gracefully.** Missing Valkey, LLM, MCP, music binaries, TTS, or event audio must not take down the bot.
 - **No secrets in the repo.** `deploy/podman/.env` is generated and must stay untracked.
@@ -20,7 +20,7 @@ Single-guild Discord bot with music, social features, temporary voice channels, 
 
 ```text
 Discord users
-  │ prefix / slash / mention / context menu
+  │ prefix / slash / mention
   ▼
 apps/bot (discord.js)
   ├─ command registry + prefix/slash contexts + cooldowns
@@ -376,6 +376,8 @@ podman exec siela-postgres pg_dump -U siela -Fc siela \
 
 ## Key docs
 
+- `README.md` and `GET_STARTED.md` — project overview and first-run setup.
+- `docs/ARCHITECTURE.md` — process model, command lifecycle, boot order, persistence, deployment diagrams.
 - `docs/PLAN.md` — historical planning doc (Draft v0.2), not current architecture.
 - `docs/ECONOMY.md` — Siela Coins, pricing, premium.
 - `docs/TTS.md` — KittenTTS service, voices, fallback, `/tts`.

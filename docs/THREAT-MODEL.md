@@ -1,26 +1,51 @@
-# Siela Bot — Threat model (summary)
+# Siela Bot Threat Model
 
-| Threat | Control |
-|---|---|
-| Non-admin config changes | Runtime `assertAdmin` on every admin command; audit log |
-| Auto-role privilege escalation | Reject `Administrator`, managed, `@everyone`, and above-bot roles |
-| Temp VC abuse | Channel-scoped owner permissions only; no guild Kick/Ban; bot overwrite guard |
-| Private VC bypass | Dedicated category; `tempvc setup` warns about role-level `Connect` allows |
-| MCP token leak | One generated `MCP_TOKEN`; MCP only on the internal `mcp` network by default; destructive tools require `confirm`; audit |
-| Prompt injection via delulu/LLM | User input goes to a local vLLM model, never to SQL/shell; bounded JSON outputs; per-use economy charge caps volume |
-| Delulu NSFW misuse | NSFW variant costs 15 SC vs 5 SC; prompts constrain output to consensual adult fanfiction (no minors, coercion, or explicit acts); enforcement is prompt-level only, not a channel age-gate |
-| Economy ledger abuse | Daily (24h, streak-capped) and work (2h) cooldowns enforced with atomic compare-and-set; transfers/spends validated for insufficient funds; every grant/spend/transfer writes a ledger row plus audit entry |
-| vLLM exposure | OpenAI-compatible endpoint with no auth, reachable only on the compose `edge`/`control` networks; not published to the host |
-| KittenTTS exposure | Unauthenticated `/synthesize` and `/synthesize-stream` on the internal `data` network only; not published to the host |
-| GPU device exposure | `/dev/nvidia*` nodes are passed into the `llm` and `bot` containers; a container escape there reaches the host GPU; mitigated by read-only roots, dropped capabilities, and `no-new-privileges` |
-| Avatar-fetch SSRF | Welcome cards fetch the member's avatar URL with a 4s timeout; in practice only Discord CDN URLs are passed, but there is no private-IP/loopback block on that fetch path |
-| SSRF from music URLs | http(s)-only URLs; private-IP/loopback/link-local blocking; yt-dlp runs inside the bot container |
-| Mention spam | `allowedMentions` is empty unless a welcome explicitly enables user pings |
-| Secret leakage | Generated `.env` (600); Podman secrets optional; Pino redaction |
-| Data loss | Postgres volume plus `pg_dump` backups; stop-first restore drill in the runbook |
-| Container compromise | Rootless Podman; non-root users; read-only root filesystems; dropped capabilities |
+This document summarizes the main trust boundaries and residual risks. It describes the current implementation, not the historical plan in `docs/PLAN.md`.
 
-Residual risks: third-party music availability and terms, role-level Discord
-permission bypass for “private” VCs, MCP token compromise on the private
-network when MCP is enabled, prompt-level-only NSFW enforcement on delulu,
-and host GPU exposure if a GPU-attached container is escaped.
+## Trust boundaries
+
+```mermaid
+flowchart LR
+  U[Discord users] -->|commands and components| BOT[Bot process]
+  M[MCP client] -->|bearer token| MCP[MCP server]
+  MCP -->|internal HTTP| API[Control API]
+  API --> BOT
+  BOT --> DB[(PostgreSQL)]
+  BOT --> VK[(Valkey)]
+  BOT --> LLM[vLLM]
+  BOT --> TTS[KittenTTS]
+  BOT --> EXT[External HTTP services]
+```
+
+The host, the Podman daemon, and the deployment `.env` are trusted. Discord users, MCP clients, model output, and external HTTP responses are untrusted.
+
+| Threat | Control | Residual risk |
+|---|---|---|
+| Non-admin configuration changes | `adminOnly` command guard plus inline `isAdmin` checks. Admin means guild owner, `Manage Guild`, `BOT_OWNER_ID`, or `ADMIN_ROLE_IDS`. | Admin actions are not all audited. The `test` command uses a hardcoded user ID. |
+| Auto-role privilege escalation | Reject `Administrator`, managed roles, `@everyone`, and roles above the bot. | A misconfigured role hierarchy can still grant more access than intended. |
+| Temporary voice abuse | Channel-scoped owner permissions, no guild Kick or Ban, bot overwrite guard. | Role-level `Connect` allows can bypass the private-channel intent. |
+| MCP token leak | One generated `MCP_TOKEN`. MCP is client-facing on the internal `mcp` network and reaches the control API on `control`. Destructive tools require `confirm: true`. | A token holder can call every MCP tool. Audit coverage is partial. The compose service also receives the shared deployment env file, so a compromised MCP container can read the Discord token and database URL. |
+| Prompt injection through Delulu | User input goes to an LLM, never to SQL or a shell. Output is bounded JSON. | A model can produce unwanted text. The bot has no channel-level NSFW gate for `/delulu nsfw`. |
+| Delulu NSFW misuse | NSFW costs 15 SC instead of 5 SC. Prompts constrain output. | Enforcement is prompt-level only. The command is not marked NSFW, so Discord does not enforce an age gate. |
+| Economy ledger abuse | Daily and work cooldowns use atomic updates. Transfers and spends reject insufficient funds. Every balance change writes an immutable ledger row. | Only admin adjustments, premium purchases, and shop mutations write an audit row. Game and transfer activity does not. |
+| vLLM exposure | OpenAI-compatible endpoint with no authentication, reachable only on the internal `edge` and `control` networks. | Any container on those networks can call the model. |
+| KittenTTS exposure | Unauthenticated synthesis endpoints on the internal `data` network. | Any container on `data` can generate audio. |
+| GPU device exposure | NVIDIA devices are passed only to the `llm` container. | A container escape in `llm` reaches the host GPU driver. |
+| Avatar fetch SSRF | Welcome cards fetch the member avatar with a four-second timeout. | There is no private-IP or loopback block on that fetch path. Discord CDN URLs are expected, but the code does not enforce the host. |
+| Music URL SSRF | Only `http` and `https` URLs are accepted. yt-dlp runs inside the bot container. | There is no verified private-IP or loopback block before yt-dlp runs. Treat untrusted music URLs as a residual risk. |
+| Mention spam | `allowedMentions` is empty unless a welcome message explicitly enables user pings. | A misconfigured welcome template can still ping users. |
+| Secret leakage | Generated `.env` has mode 600 and is ignored by Git. Pino redaction is enabled. | A secret committed to Git history remains in forks and clones after removal. |
+| Data loss | PostgreSQL volume plus `pg_dump` backups. The runbook documents a restore drill. | There is no automated backup or point-in-time recovery. |
+| Container compromise | Rootless Podman, non-root users, read-only root filesystems where configured, dropped capabilities, and `no-new-privileges`. | PostgreSQL, Valkey, vLLM, KittenTTS, and the migration container are not fully hardened. |
+
+## Security assumptions
+
+- The control API and MCP server are not exposed directly to the public internet.
+- The host is patched and access to the Podman socket is restricted.
+- Discord tokens and MCP tokens are rotated after exposure.
+- The deployment uses a dedicated bot token and a dedicated PostgreSQL password.
+- Event audio and other media are supplied by the operator and have appropriate rights.
+
+## Reporting
+
+See [SECURITY.md](../SECURITY.md) for the private reporting process.

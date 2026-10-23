@@ -426,7 +426,7 @@ interface TambolaGameState {
   calledSet: Set<number>;
   deck: number[];
   claims: Map<ClaimPattern, { userId: string; atCall: number }>;
-  intervalSeconds: 8;
+  intervalSeconds: 12;
   maxPlayers: number;
   startedAt: number | null;
   endedAt: number | null;
@@ -444,8 +444,11 @@ lobby ──start──> active ──pause──> paused
   │                │  └──resume──────┘
   │                ├──full house──> finished
   │                └──90 calls────> finished
-  ├──host leaves──> cancelled
+  ├──host leaves (lobby)──> cancelled
   └──timeout──────> cancelled
+
+active ──host leaves──> active (host transfers to first remaining player)
+active ──last player leaves──> cancelled
 ```
 
 ## Architecture
@@ -644,7 +647,7 @@ Stats and leaderboards are a later phase.
 Economy integration:
 - Players can buy multiple tickets in one game.
 - Auto-mark is purchased per player and applies to all of that player's tickets.
-- Extra tickets and auto-mark are charged through the economy service when it ships.
+- Extra tickets and auto-mark are charged through the economy service.
 
 - Tournament brackets.
 - Spectator-only mode.

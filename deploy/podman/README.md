@@ -1,40 +1,82 @@
 # Podman deployment
 
-Production stack for the Siela bot. All services run under one compose
-project (`-p siela`); use `scripts/podman-stack.sh` for every compose
-operation — it selects the MCP overlay. Raw `podman compose` commands bypass
-the overlays.
+Production stack for Siela Bot. All services run under one compose project (`-p siela`). Use `scripts/podman-stack.sh` for compose operations. The wrapper selects the MCP overlay when `MCP_ENABLED=true`.
 
-## Services (`compose.yaml`)
+## Prerequisites
+
+- Linux host with Podman 5 or newer and a compose provider.
+- cgroups v2.
+- NVIDIA GPU with the driver devices available for the local vLLM service.
+- `/opt/nvidia-libs` populated with the driver userspace libraries.
+- About 25 GB of free disk for images and model weights.
+- Outbound access to container registries, Hugging Face, Discord, and the music providers.
+
+The bot container does not require GPU access. Only the `llm` service receives the NVIDIA devices.
+
+## Services
+
+```mermaid
+flowchart LR
+  BOT[bot]
+  LLM[vLLM :8000]
+  PG[(PostgreSQL)]
+  VK[(Valkey)]
+  TTS[KittenTTS]
+  MIG[migrate, one-shot]
+  MCP[MCP server]
+  CADDY[Caddy :8443]
+
+  EDGE((edge, routable))
+  DATA((data, internal))
+  CONTROL((control, internal))
+  MCPNET((mcp, internal))
+
+  BOT --- EDGE
+  BOT --- DATA
+  BOT --- CONTROL
+  LLM --- EDGE
+  LLM --- CONTROL
+  PG --- DATA
+  VK --- DATA
+  TTS --- DATA
+  MIG --- DATA
+  MCP --- CONTROL
+  MCP --- MCPNET
+  CADDY --- EDGE
+  CADDY --- MCPNET
+```
 
 | Service | Image | Notes |
 |---|---|---|
 | `postgres` | `postgres:17-alpine` | Data on `pgdata`; `data` network only |
 | `valkey` | `valkey/valkey:8-alpine` | Append-only cache; `VALKEY_URL=redis://valkey:6379` |
-| `llm` | `vllm/vllm-openai:v0.6.3` | GPU; model `Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3`; weights cached in `llmcache`; `/opt/nvidia-libs` bind |
-| `tts` | `localhost/siela-tts:latest` | CPU; KittenTTS model baked at build; `:8000` `/healthz`, `/synthesize`, `/synthesize-stream` |
-| `migrate` | `localhost/siela-bot:latest` | One-shot; migrations `0000`–`0010`; exits on success |
-| `bot` | `localhost/siela-bot:latest` | `oven/bun` image; yt-dlp + mpv + ffmpeg; GPU devices passed through |
+| `llm` | `vllm/vllm-openai:v0.6.3` | GPU; model `Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3`; weights cached in `llmcache` |
+| `tts` | `localhost/siela-tts:latest` | CPU; KittenTTS model baked at build; `/healthz`, `/synthesize`, `/synthesize-stream` |
+| `migrate` | `localhost/siela-bot:latest` | One-shot migration runner; exits after the schema is current |
+| `bot` | `localhost/siela-bot:latest` | `oven/bun` image with yt-dlp, mpv, and ffmpeg |
 
-Health: bot listens on `127.0.0.1:3002` (`/healthz`, `/readyz`, `/metrics`,
-not published to the host); control API on `:3001` (Bearer `MCP_TOKEN`,
-`control` network only); TTS on `:8000`.
+Health endpoints:
+
+- Bot health and metrics: `127.0.0.1:3002` (`/healthz`, `/readyz`, `/metrics`). The port is not published to the host.
+- Control API: `:3001` with Bearer `MCP_TOKEN`, on the internal `control` network.
+- TTS: `:8000` with `/healthz`, `/synthesize`, and `/synthesize-stream`.
 
 ## Quickstart
 
+Run these commands from the repository root:
+
 ```bash
-# 1. Generate deploy/podman/.env (only DISCORD_TOKEN is required from you)
 export DISCORD_TOKEN="..."
-../../scripts/podman-stack.sh  # from deploy/podman, or:
-./scripts/podman-init.sh       # from the repo root
+export GUILD_ID="..."
 
-# 2. Validate the compose config
-./scripts/podman-compose-smoke.sh
-
-# 3. Build and start
+./scripts/podman-init.sh
 ./scripts/podman-stack.sh up -d --build
 ./scripts/podman-stack.sh logs -f bot
 ```
+
+`DISCORD_TOKEN` is the only secret you must provide. The init script generates the database and MCP secrets, writes `deploy/podman/.env` with mode 600, and prints an invite URL with the recommended permissions.
+
+See [GET_STARTED.md](../../GET_STARTED.md) for the full first-run checklist.
 
 ## Wrapper
 
@@ -45,48 +87,48 @@ export DISCORD_TOKEN="..."
 ./scripts/podman-stack.sh down
 ```
 
-`MCP_ENABLED` is read from the environment first, then from
-`deploy/podman/.env`. `up`/`down` with the flag off also removes a leftover
-`siela-mcp` container.
+`MCP_ENABLED` is read from the environment first, then from `deploy/podman/.env`. When the flag is off, `up` and `down` remove a leftover `siela-mcp` container.
 
 ## Overlays
 
 | File | Purpose |
 |---|---|
 | `compose.mcp.yaml` | Optional MCP server. Enabled with `MCP_ENABLED=true` |
-| `compose.host.yaml` | Optional: publish MCP on `127.0.0.1:8080` for host-local clients (requires MCP overlay) |
+| `compose.host.yaml` | Optional: publish MCP on `127.0.0.1:8080` for host-local clients. Requires the MCP overlay |
 | `compose.proxy.yaml` | Optional: Caddy TLS front door for external MCP clients |
-| `compose.fast.yaml` | Fast code-only deploy: bind-mounts local `apps/bot/dist` over `/app/dist` (see `scripts/deploy-fast.sh`) |
-| `Caddyfile` | TLS proxy config for the Caddy override |
-| `.env.example` | Full config surface; prefer `scripts/podman-init.sh` |
+| `compose.fast.yaml` | Fast code-only deploy. Bind-mounts `apps/bot/dist` over `/app/dist` |
+| `Caddyfile` | TLS proxy configuration |
+| `.env.example` | Configuration reference. Prefer `scripts/podman-init.sh` |
+
+Enable MCP and publish it to host loopback:
 
 ```bash
-# MCP on, published to host loopback:
 MCP_ENABLED=true ./scripts/podman-stack.sh \
-  -f deploy/podman/compose.yaml \
-  -f deploy/podman/compose.mcp.yaml \
   -f deploy/podman/compose.host.yaml up -d
 ```
 
+The wrapper already includes `compose.yaml` and `compose.mcp.yaml`. Add only the override you need.
+
 ## MCP flag
 
-MCP is **off by default**. Set in `.env`:
+MCP is off by default. Set this in `.env`:
 
 ```env
 MCP_ENABLED=false
 ```
 
-To enable: `MCP_ENABLED=true ./scripts/podman-stack.sh up -d`.
-When enabled, MCP is exposed on the Podman `mcp` network at
-`MCP_URL=http://mcp:8080/mcp`; it is not published to the host by default.
+Enable it for one command:
+
+```bash
+MCP_ENABLED=true ./scripts/podman-stack.sh up -d
+```
+
+When enabled, the MCP server is reachable on the internal `mcp` network at `MCP_URL=http://mcp:8080/mcp`. It is not published to the host unless you add `compose.host.yaml` or the Caddy overlay.
 
 ## Notes
 
-- Networks: `edge`, `data` (internal), `control` (internal), plus `mcp`
-  (internal) when MCP is enabled.
-- Migrations run as a one-shot compose service (`migrate`) and are
-  idempotent; the bot also depends on `migrate`.
-- The compose files avoid `profiles`, `secrets`, `build.target`, and
-  `depends_on.condition` so they work with both `podman compose` providers.
-- Updates: `git pull --ff-only`, rebuild, re-run `migrate`, then `up -d`
-  (see `docs/RUNBOOK.md`).
+- Networks: `edge`, `data` (internal), `control` (internal), and `mcp` (internal) when MCP is enabled.
+- The `migrate` service is one-shot and idempotent. The bot is ordered after the container starts, not after it exits.
+- The compose files avoid `profiles`, `secrets`, `build.target`, and `depends_on.condition` so they work with both `podman compose` providers.
+- Updates: `git pull --ff-only`, rebuild, run `migrate`, then start the stack. See [docs/RUNBOOK.md](../../docs/RUNBOOK.md).
+- The production compose stack targets a GPU host because it runs vLLM. For a no-GPU environment, use local development and the Delulu fallback chain.

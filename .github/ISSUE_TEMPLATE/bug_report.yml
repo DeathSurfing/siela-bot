@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a reproducible problem with the bot or its deployment.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include tokens, database URLs, `.env` contents, or personal data.
+        For security problems, use the private process in SECURITY.md instead.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the command, channel type, and any relevant buttons or configuration.
+      placeholder: |
+        1. Run ...
+        2. Click ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Output of `git rev-parse --short HEAD`.
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      options:
+        - Podman compose stack
+        - Local Bun development
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Remove secrets and personal data before pasting.
+      render: shell
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context

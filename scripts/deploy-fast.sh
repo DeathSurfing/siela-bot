@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-REMOTE="${REMOTE:-root@192.168.1.3}"
+REMOTE="${REMOTE:?set REMOTE=user@host}"
 REMOTE_REPO="${REMOTE_REPO:-/root/siela-nogseuui-seobeo-bot}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/siela_podman_ed25519}"
 

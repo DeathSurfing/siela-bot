@@ -4,6 +4,20 @@ Siela Coins (SC). One balance per user per guild. All balance changes write an i
 
 Storage: `economy_accounts`, `economy_transactions` (immutable ledger), `premium_passes`, `economy_shop_items`, `economy_inventory`. Valkey caches balance for 60s (`apps/bot/src/features/economy.ts:85`) and leaderboard for 30s (`apps/bot/src/features/economy.ts:385`); DB is the source of truth when Valkey is unavailable.
 
+```mermaid
+flowchart LR
+  C[Economy command or feature] --> Q{Spend or award}
+  Q -->|spend| CHECK[Check balance and cooldown]
+  Q -->|award| TX[Atomic account update]
+  CHECK --> TX
+  TX --> LEDGER[(Immutable ledger row)]
+  TX --> CACHE[Invalidate Valkey cache]
+  CACHE --> REPLY[Reply to user]
+```
+
+Every balance change writes the account update and the ledger row in one database transaction. A failed spend leaves both untouched.
+
+
 Commands: `economy balance|daily|work|transfer|top|shop|buy|coinflip|slots|blackjack|premium|grant|adjust|shopadd|shopremove` (`apps/bot/src/commands/utility/economy.ts:45`). Aliases: `eco`, `coins`, `balance`. Framework cooldown 3s on economy commands.
 
 ## Earning

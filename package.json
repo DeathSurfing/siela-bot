@@ -2,6 +2,16 @@
   "name": "siela-bot",
   "version": "0.1.0",
   "private": true,
+  "description": "Self-hosted single-guild Discord bot with music, economy, Tambola, TTS, social features, and an optional MCP control server.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot.git"
+  },
+  "homepage": "https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot#readme",
+  "bugs": {
+    "url": "https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot/issues"
+  },
   "type": "module",
   "packageManager": "bun@1.4.2",
   "engines": {

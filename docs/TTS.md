@@ -6,9 +6,31 @@ Standalone `/tts` channel narration and the Tambola voice stack share one engine
 
 - `/tts on` joins the caller's voice channel (needs Connect + Speak). `/tts off` leaves.
 - `TtsService` (`apps/bot/src/features/tts.ts`) keeps one session per guild.
-- While enabled, plain messages in the linked text channel are spoken; messages starting with `/` or `!` are skipped (`apps/bot/src/bot.ts`).
+- While enabled, plain messages in the voice channel's own text chat are spoken. Messages starting with `/` or `!` are skipped (`apps/bot/src/bot.ts`).
 - Each message is trimmed to 200 characters.
 - Cooldown: 3s on the command. No economy charge for TTS.
+
+## Voice ownership
+
+Only one feature can own the guild voice connection at a time. Music, Tambola, standalone TTS, random voice drops, and scheduled events coordinate through the music voice lock.
+
+```mermaid
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Music: play or join
+  Music --> Idle: stop, disconnect, or queue end
+  Idle --> Tambola: host starts a game
+  Tambola --> Tambola: pause, resume, calls
+  Tambola --> Idle: end or cancel
+  Idle --> TTS: /tts on
+  TTS --> Idle: /tts off
+  Idle --> Random: rare drop
+  Random --> Idle: clip ends
+  Idle --> Event: prayer phase
+  Event --> Idle: audio ends
+```
+
+Tambola and standalone TTS stop music, preserve the queue, and lock the voice channel for the session. Music commands are rejected while the lock is active. Random voice drops and scheduled events skip the channel while music, Tambola, or TTS is using voice.
 
 ## Tambola voice
 

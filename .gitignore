@@ -16,6 +16,9 @@ __pycache__/
 deploy/podman/.env
 deploy/podman/.env.*
 !deploy/podman/.env.example
+apps/bot/.env
+apps/bot/.env.*
+!apps/bot/.env.example
 secrets/
 
 # Local data and dumps

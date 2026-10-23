@@ -84,10 +84,15 @@ EOF
 
 chmod 600 "${ENV_FILE}"
 
+INVITE_URL="https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&scope=bot%20applications.commands&permissions=322292816"
+if [[ -n "${GUILD_ID:-}" ]]; then
+  INVITE_URL="${INVITE_URL}&guild_id=${GUILD_ID}&disable_guild_select=true"
+fi
+
 echo "wrote ${ENV_FILE} (mode 600)"
 echo "client id: ${CLIENT_ID}"
 echo "guild id: ${GUILD_ID:-auto-detect}"
 echo "generated: POSTGRES_PASSWORD, MCP_TOKEN"
 echo "MCP: ${MCP_ENABLED:-false} (set MCP_ENABLED=true in deploy/podman/.env to enable)"
-echo "invite: https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&scope=bot%20applications.commands"
+echo "invite: ${INVITE_URL}"
 echo "next: scripts/podman-stack.sh up -d --build"

@@ -158,17 +158,15 @@ podman run -d --name siela-dev-valkey \
   docker.io/valkey/valkey:8-alpine
 ```
 
-Create `apps/bot/.env` with mode 600. The bot loads `.env` from its working directory, not from the repository root:
+Create `apps/bot/.env` from the example and set the token and guild ID. The bot loads `.env` from its working directory, not from the repository root:
 
-```env
-DISCORD_TOKEN=your-token
-DATABASE_URL=postgres://siela:siela@127.0.0.1:5432/siela
-MCP_TOKEN=dev-token-at-least-16
-GUILD_ID=your-guild-id
-VALKEY_URL=redis://127.0.0.1:6379
-CONTROL_API_HOST=127.0.0.1
-LOG_LEVEL=debug
+```bash
+cp apps/bot/.env.example apps/bot/.env
+chmod 600 apps/bot/.env
+$EDITOR apps/bot/.env
 ```
+
+The example uses local PostgreSQL and Valkey addresses. A repository-root `.env` is not loaded by `bun run dev:bot`.
 
 Run the migrations and start the bot:
 
