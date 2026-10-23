@@ -127,6 +127,8 @@ const realCommandNames: Record<CommandCategory, string[]> = {
     "socialtop",
     "optout",
     "optin",
+    "inventory",
+    "showcase",
   ],
   voice: ["vc", "moveall"],
   utility: ["economy", "stocks", "level", "activity", "activetop", "birthday", "ping", "privacy", "tts", "help"],

@@ -564,3 +564,66 @@ export const relicsCommand: Command = {
     }
   },
 };
+
+export const inventoryCommand: Command = {
+  name: "inventory",
+  aliases: ["inv"],
+  category: "social",
+  description: "Browse a Siela Relics vault.",
+  usage: "[@user] [page]",
+  examples: ["inventory", "inventory @friend", "inventory @friend 2"],
+  cooldownMs: 2_500,
+  slash: new SlashCommandBuilder()
+    .setName("inventory")
+    .setDescription("Browse a Siela Relics vault")
+    .addUserOption((option) => option.setName("user").setDescription("Member").setRequired(false))
+    .addIntegerOption((option) => option.setName("page").setDescription("Page").setRequired(false).setMinValue(1)),
+  async execute(ctx: CommandContext) {
+    try {
+      let member = ctx.member;
+      const rawTarget = ctx.args[0];
+      if (rawTarget) {
+        const resolved = await resolveMember(ctx, rawTarget);
+        if (!resolved) throw new UserError("Choose a valid member.");
+        if (resolved.user.bot) throw new UserError("Bots do not collect relics.");
+        member = resolved;
+      }
+      const page = parsePage(ctx.args[1]);
+      await ctx.defer();
+      const payload = await ctx.services.relics.inventoryPayload(ctx.guild.id, member.id, page);
+      await ctx.reply(payload);
+    } catch (error) {
+      const message = error instanceof RelicError ? relicErrorMessage(error) : error instanceof Error ? error.message : "That action failed.";
+      await ctx.reply({ content: message, ephemeral: true });
+    }
+  },
+};
+
+export const showcaseCommand: Command = {
+  name: "showcase",
+  aliases: ["feature"],
+  category: "social",
+  description: "Showcase one of your relics in the channel.",
+  usage: "<serial>",
+  examples: ["showcase 42"],
+  cooldownMs: 2_500,
+  slash: new SlashCommandBuilder()
+    .setName("showcase")
+    .setDescription("Showcase one of your relics")
+    .addIntegerOption((option) =>
+      option.setName("serial").setDescription("Serial number").setRequired(true).setMinValue(1),
+    ),
+  async execute(ctx: CommandContext) {
+    try {
+      const serial = parseSerial(ctx.args[0]);
+      if (!serial) throw new UserError("Usage: `/showcase serial:42`.");
+      await ctx.services.relics.setFeatured(ctx.guild.id, ctx.author.id, serial);
+      await ctx.defer();
+      const payload = await ctx.services.relics.cardPayload(ctx.guild.id, serial, ctx.author.id);
+      await ctx.reply(payload);
+    } catch (error) {
+      const message = error instanceof RelicError ? relicErrorMessage(error) : error instanceof Error ? error.message : "That action failed.";
+      await ctx.reply({ content: message, ephemeral: true });
+    }
+  },
+};
