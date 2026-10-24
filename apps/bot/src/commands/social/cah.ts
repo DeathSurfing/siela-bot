@@ -10,7 +10,7 @@ function privateReply(ctx: CommandContext, payload: Parameters<CommandContext["r
 
 export const cahCommand: Command = {
   name: "cah",
-  aliases: ["cards"],
+  aliases: ["cahgame"],
   category: "social",
   description: "Play Cards Against Humanity.",
   usage: "<host|join|leave|start|hand|reveal|pick|next|scores|status|end|rules>",
