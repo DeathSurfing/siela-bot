@@ -76,9 +76,13 @@ services:
       - "--port"
       - "8000"
       - "--gpu-memory-utilization"
-      - "0.8"
+      - "0.45"
       - "--max-model-len"
       - "2048"
+      - "--max-num-seqs"
+      - "4"
+      - "--swap-space"
+      - "1"
       - "--enforce-eager"
     restart: unless-stopped
     shm_size: 2gb
