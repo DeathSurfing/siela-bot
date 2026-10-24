@@ -73,7 +73,7 @@ import { TambolaService } from "./features/tambola/service.js";
 import { TtsService } from "./features/tts.js";
 import { EconomyService } from "./features/economy.js";
 import { handleStockButton, handleStockModal } from "./features/stocks-ui.js";
-import { EMOJI, card, confirmCard } from "./features/ui.js";
+import { EMOJI, attachConfirmation, card, confirmCard } from "./features/ui.js";
 import { PrivacyService } from "./features/privacy.js";
 import { RelicService } from "./features/relics/service.js";
 import {
@@ -471,7 +471,7 @@ export class SielaBot {
     } catch (error) {
       this.logger.error({ err: error }, "interaction error");
       if (interaction.isRepliable() && !interaction.replied) {
-        await interaction.reply({ content: "Something went wrong.", ephemeral: true }).catch(() => undefined);
+        await interaction.reply({ content: "Something went wrong. Try again, and ask an admin to check the logs if it persists.", ephemeral: true }).catch(() => undefined);
       }
     }
   }
@@ -698,10 +698,31 @@ export class SielaBot {
         return;
       }
       if (action === "stop") {
-        await interaction.deferUpdate();
-        await music.stop(guild.id);
-        await music.disconnect(guild.id);
-        await interaction.editReply(card({ title: "Stopped", body: "The player has been disconnected." }));
+        const confirmId = "music:stop:confirm";
+        const cancelId = "music:stop:cancel";
+        const confirmationMessage = await interaction.reply({
+          ...confirmCard({
+            title: "Stop playback?",
+            body: "This stops the current track and clears the queue.",
+            confirmId,
+            cancelId,
+            confirmLabel: "Stop",
+          }),
+          fetchReply: true,
+        });
+        attachConfirmation({
+          message: confirmationMessage,
+          userId: interaction.user.id,
+          confirmId,
+          cancelId,
+          onConfirm: async () => {
+            await music.stop(guild.id);
+            await music.disconnect(guild.id);
+            await interaction.message?.edit(card({ title: "Stopped", body: "The player has been disconnected." })).catch(() => undefined);
+            return card({ title: "Stopped", body: "The player has been disconnected." });
+          },
+          onCancel: () => card({ title: "Cancelled", body: "Playback continues." }),
+        });
         return;
       }
       await replyError("Unknown music control.");

@@ -10,7 +10,7 @@ import {
   TextDisplayBuilder,
   ThumbnailBuilder,
 } from "discord.js";
-import { formatDuration, truncate, type MusicQueueState } from "@siela/shared";
+import { escapeMarkdown, formatDuration, truncate, type MusicQueueState } from "@siela/shared";
 import type { ReplyPayload } from "../framework/types.js";
 import { EMOJI, ICONS, UI_ACCENT, actionRow, progressBar, text } from "./ui.js";
 
@@ -50,8 +50,8 @@ export function buildMusicPayload(
     );
   }
 
-  const titleText = text(`### ${ICONS.music} ${truncate(track.title, 80)}`);
-  const artistText = text(`-# ${truncate(track.author, 48)}${track.isStream ? ` · ${ICONS.live} LIVE` : ""}`);
+  const titleText = text(`### ${ICONS.music} ${escapeMarkdown(truncate(track.title, 80))}`);
+  const artistText = text(`-# ${escapeMarkdown(truncate(track.author, 48))}${track.isStream ? ` · ${ICONS.live} LIVE` : ""}`);
   if (track.artworkUrl) {
     container.addSectionComponents(
       new SectionBuilder()
@@ -69,7 +69,7 @@ export function buildMusicPayload(
   );
   if (next) {
     container.addTextDisplayComponents(
-      text(`**Next** · ${truncate(next.title, 70)} — ${truncate(next.author, 32)}`),
+      text(`**Next** · ${escapeMarkdown(truncate(next.title, 70))} — ${escapeMarkdown(truncate(next.author, 32))}`),
     );
   }
 
@@ -100,7 +100,7 @@ export function buildMusicPayload(
       { label: "Rewind 10s", value: "rewind", emoji: EMOJI.rewind },
       { label: "Forward 10s", value: "forward", emoji: EMOJI.forward },
       { label: "Shuffle queue", value: "shuffle", emoji: EMOJI.shuffle },
-      { label: "Cycle loop mode", value: "loop", emoji: EMOJI.loop },
+      { label: "Cycle loop mode", value: "loop", emoji: EMOJI.loop, description: `Currently ${state.loop}` },
       { label: "Filter preset", value: "filter", emoji: EMOJI.filter },
       { label: "Stop and disconnect", value: "stop", emoji: EMOJI.stop },
     );
@@ -139,7 +139,7 @@ export function buildQueuePayload(
   const totalMs = state.upcoming.reduce((sum, track) => sum + (track.isStream ? 0 : track.length), 0);
   const lines = slice.map((track, index) => {
     const duration = track.isStream ? "LIVE" : formatDuration(track.length);
-    return `**${start + index + 1}.** ${truncate(track.title, 56)} — ${truncate(track.author, 28)} \`${duration}\``;
+    return `**${start + index + 1}.** ${escapeMarkdown(truncate(track.title, 56))} — ${escapeMarkdown(truncate(track.author, 28))} \`${duration}\``;
   });
 
   const container = new ContainerBuilder()
@@ -156,7 +156,7 @@ export function buildQueuePayload(
     .addTextDisplayComponents(
       text(
         state.current
-          ? `**Now** · ${truncate(state.current.title, 64)} — ${truncate(state.current.author, 32)}`
+          ? `**Now** · ${escapeMarkdown(truncate(state.current.title, 64))} — ${escapeMarkdown(truncate(state.current.author, 32))}`
           : "**Now** · Nothing playing",
       ),
     );

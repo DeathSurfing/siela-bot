@@ -1,5 +1,5 @@
 import { AttachmentBuilder, ContainerBuilder, MessageFlags, SeparatorBuilder, SeparatorSpacingSize } from "discord.js";
-import { truncate, type MusicTrackInfo } from "@siela/shared";
+import { escapeMarkdown, truncate, type MusicTrackInfo } from "@siela/shared";
 import type { ReplyPayload } from "../framework/types.js";
 import { ICONS, UI_ACCENT, text } from "./ui.js";
 import { lyricsBody, type LyricsResult } from "./lyrics.js";
@@ -30,7 +30,7 @@ export function buildLyricsPayload(track: MusicTrackInfo, result: LyricsResult):
   const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
   container.addTextDisplayComponents(text(`## ${ICONS.lyrics} Lyrics`));
   container.addTextDisplayComponents(
-    text(`**${truncate(track.title, 80)}** · ${truncate(track.author, 48)}`),
+    text(`**${escapeMarkdown(truncate(track.title, 80))}** · ${escapeMarkdown(truncate(track.author, 48))}`),
   );
   container.addSeparatorComponents(
     new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
@@ -57,7 +57,7 @@ export function buildLyricsPayload(track: MusicTrackInfo, result: LyricsResult):
     }
   }
 
-  container.addTextDisplayComponents(text("-# Lyrics · LRCLIB"));
+  container.addTextDisplayComponents(text("-# Source · LRCLIB"));
   return {
     components: [container],
     flags: MessageFlags.IsComponentsV2,

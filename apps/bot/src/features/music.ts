@@ -654,7 +654,6 @@ export class MusicService extends EventEmitter {
       this.nowPlayingMessages.delete(guildId);
       return;
     }
-    if (state.paused) return;
     this.nowPlayingUpdating.add(guildId);
     try {
       await message.edit(buildMusicPayload(guildId, state));
