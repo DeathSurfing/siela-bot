@@ -2,7 +2,7 @@ import { SlashCommandBuilder } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { UserError } from "../../lib/errors.js";
 import { loveBar, loveResult } from "../../features/love.js";
-import { ICONS, card } from "../../features/ui.js";
+import { card } from "../../features/ui.js";
 
 function normalizeId(value: string | undefined): string | undefined {
   return value?.replace(/^<@!?|>$/g, "");
@@ -49,7 +49,7 @@ export const loveCalcCommand: Command = {
     await ctx.services.friendship.addXp(ctx.guild.id, first.id, second.id, 1).catch(() => undefined);
     await ctx.reply(
       card({
-        title: `${ICONS.social} Love calculator`,
+        title: "Love calculator",
         subtitle: `${result.score}% · ${result.title}`,
         body: [
           `**${first.displayName}** + **${second.displayName}**`,
