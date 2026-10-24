@@ -61,17 +61,38 @@ async function buildImage(
   return { ok: true, detail: `built ${tag}` };
 }
 
+const DEPENDENCIES = [
+  { service: "postgres", container: "siela-postgres" },
+  { service: "valkey", container: "siela-valkey" },
+  { service: "llm", container: "siela-llm" },
+  { service: "tts", container: "siela-tts" },
+] as const;
+
+/** Start only dependencies that are not already running; healthy ones stay put. */
 async function ensureDependencies(deps: DeployDeps): Promise<DeployResult> {
-  deps.logger.info("ensuring stack dependencies");
-  const result = await runWrapper(
-    deps,
-    ["up", "-d", "postgres", "valkey", "llm", "tts"],
-    LONG_TIMEOUT,
-  );
+  const missing: string[] = [];
+  for (const dependency of DEPENDENCIES) {
+    const result = await runCommand(
+      "podman",
+      ["ps", "--filter", `name=^${dependency.container}$`, "--format", "{{.Status}}"],
+      { timeoutMs: 30_000 },
+    );
+    if (result.code !== 0 || !/^up /i.test(result.stdout.trim())) {
+      missing.push(dependency.service);
+    }
+  }
+
+  if (missing.length === 0) {
+    deps.logger.info("stack dependencies are running");
+    return { ok: true, detail: "dependencies running" };
+  }
+
+  deps.logger.warn({ missing }, "starting missing stack dependencies");
+  const result = await runWrapper(deps, ["up", "-d", ...missing], LONG_TIMEOUT);
   if (result.code !== 0) {
     return { ok: false, detail: `dependency start failed: ${failureDetail(result)}` };
   }
-  return { ok: true, detail: "dependencies running" };
+  return { ok: true, detail: `started ${missing.join(", ")}` };
 }
 
 async function composeUp(
