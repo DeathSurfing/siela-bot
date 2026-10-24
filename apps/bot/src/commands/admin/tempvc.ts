@@ -16,16 +16,17 @@ function configCard(settings: Awaited<ReturnType<CommandContext["services"]["set
   return card({
     title: "Temporary VC",
     body: [
-      `**Enabled** · ${settings.enabled ? "yes" : "no"}`,
-      `**Hub** · ${settings.hubChannelId ? `<#${settings.hubChannelId}>` : "not set"}`,
-      `**Category** · ${settings.categoryId ? `<#${settings.categoryId}>` : "not set"}`,
+      `**Enabled** · ${settings.enabled ? "On" : "Off"}`,
+      `**Hub** · ${settings.hubChannelId ? `<#${settings.hubChannelId}>` : "Not set"}`,
+      `**Category** · ${settings.categoryId ? `<#${settings.categoryId}>` : "Not set"}`,
       `**Name template** · \`${settings.nameTemplate}\``,
-      `**Default locked** · ${settings.defaultLocked ? "yes" : "no"}`,
+      `**Default locked** · ${settings.defaultLocked ? "On" : "Off"}`,
       `**Default limit** · ${settings.defaultUserLimit}`,
       `**Grace** · ${settings.graceSeconds}s`,
       `**Max channels** · ${settings.maxChannels}`,
       `**Max per user** · ${settings.maxPerUser}`,
     ].join("\n"),
+    ephemeral: true,
   });
 }
 

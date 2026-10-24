@@ -16,6 +16,7 @@ function configCard(settings: Awaited<ReturnType<CommandContext["services"]["set
       `**Alone timeout** · ${settings.aloneTimeoutSeconds}s`,
       `**Music channel** · ${settings.musicChannelId ? `<#${settings.musicChannelId}>` : "any"}`,
     ].join("\n"),
+    ephemeral: true,
   });
 }
 

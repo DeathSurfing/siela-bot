@@ -145,7 +145,13 @@ export const vcCommand: Command = {
           await ctx.services.tempVc.delete(channel.id, "Owner deleted temporary VC");
         }
         await audit(ctx, `vc.${action}`, channel.id, { args: ctx.args.slice(1) });
-        await ctx.reply(success(`Temporary VC ${action} complete.`));
+        const message =
+          action === "lock" ? "Locked the channel."
+          : action === "unlock" ? "Unlocked the channel."
+          : action === "rename" ? "Renamed the channel."
+          : action === "limit" ? (Number(ctx.args[1]) === 0 ? "Removed the user limit." : `Set the user limit to ${Number(ctx.args[1])}.`)
+          : "Deleted the channel.";
+        await ctx.reply(success(message));
         return;
       }
 
@@ -162,7 +168,12 @@ export const vcCommand: Command = {
           await ctx.services.tempVc.transfer(channel.id, target.id);
         }
         await audit(ctx, `vc.${action}`, channel.id, { targetId: target.id });
-        await ctx.reply(success(`Temporary VC ${action} applied to ${target.displayName}.`));
+        const message =
+          action === "permit" ? `Allowed ${target.displayName}.`
+          : action === "deny" ? `Removed ${target.displayName}'s access.`
+          : action === "disconnect" ? `Disconnected ${target.displayName}.`
+          : `Transferred ownership to ${target.displayName}.`;
+        await ctx.reply(success(message));
         return;
       }
 
