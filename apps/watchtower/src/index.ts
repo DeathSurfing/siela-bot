@@ -256,6 +256,7 @@ async function main(): Promise<void> {
     logger,
     state: () => state,
     repoDir,
+    isBusy: () => running,
     trigger: (force) => {
       void tick(force);
     },

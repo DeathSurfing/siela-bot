@@ -9,6 +9,7 @@ export interface StatusServerOptions {
   logger: Logger;
   state: () => WatchtowerState;
   repoDir: string;
+  isBusy: () => boolean;
   trigger: (force: boolean) => void;
 }
 
@@ -59,7 +60,7 @@ async function readForce(request: Request): Promise<boolean> {
 }
 
 export function startStatusServer(options: StatusServerOptions): StatusServer {
-  const { config, logger, state, repoDir, trigger } = options;
+  const { config, logger, state, repoDir, isBusy, trigger } = options;
 
   const server = Bun.serve({
     hostname: config.WATCHTOWER_HTTP_HOST,
@@ -84,6 +85,7 @@ export function startStatusServer(options: StatusServerOptions): StatusServer {
           branch: config.WATCHTOWER_BRANCH,
           repoDir,
           head,
+          busy: isBusy(),
           intervalSec: config.WATCHTOWER_INTERVAL_SEC,
           ciGate: config.WATCHTOWER_CI_GATE,
           dryRun: config.WATCHTOWER_DRY_RUN,
