@@ -733,3 +733,79 @@ Still open:
 
 - Inline admin editing for economy settings and shop items.
 - Mobile screenshot pass for the market board on a real client.
+
+## 12. Current cleanup pass (2026-10-24)
+
+This pass updates the surfaces named in sections 9-11. Earlier dated history stays intact.
+
+### Help
+
+- Search results now render once. Matches use the picker when available; the duplicate Matches list only appears when no picker exists.
+- No-match suggestions use picker options when available; the duplicate Did you mean list only appears as a fallback.
+- Slash and prefix aliases are labeled separately, for example slash `/play` and prefix `p`.
+
+### Music
+
+- Pausing now refreshes the visible now-playing card, so Pause becomes Resume without a stale message.
+- More > Stop opens the existing confirmation card before it stops and disconnects.
+- Track titles and artist names in now-playing and queue cards are markdown-safe.
+- `play` reports "Playing now" when it starts playback and "Queued at #N" when it queues behind existing playback.
+- Public play errors use an actionable message instead of a raw service error.
+
+### Lyrics
+
+- The footer no longer repeats the Lyrics title and now reads "Source · LRCLIB".
+
+### Family
+
+- Divorce requires confirmation before it ends the marriage.
+- Runaway requires confirmation for both targeted and bulk removal.
+- An invalid targeted runaway returns "Member not found." instead of falling through to bulk removal.
+- The family tree caption explains which links are marriages and which are parent-to-child.
+
+### Tambola
+
+- Tickets paginate at 20 unique numbers per page.
+- Measured payloads for 1, 2, 3, 6, and 12 bought tickets stay at or below 36 nested components and 10 top-level container children, and every number remains reachable.
+- The live card hides the full board and player list behind one-tap ephemeral Board and Players views.
+- Rules copy now states the host-selected call interval and default auto-marking; lobby status lines were consolidated.
+
+### Admin configuration
+
+- Admin configuration views are ephemeral.
+- Boolean labels use On and Off.
+- VC confirmations name the result, such as "Locked the channel."
+- moveall pluralizes member counts and reports zero moves as an error without a success checkmark.
+- The welcome preview footer is gone.
+
+### Economy, stock, and relics
+
+- Stock copy states the 1% fee with a 1 SC minimum.
+- Premium expiry dates use Discord timestamps.
+- Coinflip losses are reported as plain text without success styling.
+- Relic schedule text uses the configured window instead of a fixed 4:00 PM to 5:00 PM IST claim.
+- Empty vault copy says "This vault is empty." instead of "Your vault is empty."
+- Relic inventory pagination uses unique custom IDs per page.
+
+### Ping, social, and global errors
+
+- Ping no longer claims an unverified database status. Gateway, response, uptime, and music remain.
+- Social stats use two compact lines: Given and Received.
+- The love calculator drops the decorative title icon.
+- Non-owner pagination clicks get an ephemeral explanation instead of being ignored.
+- Global interaction errors tell the user to retry and ask an admin to check logs if the error persists.
+
+### Verification
+
+- Bot typecheck passed.
+- 113 bot tests passed in 20 files.
+- No real Discord mobile client screenshot was taken, so responsive rendering remains unverified.
+
+### Open UI work
+
+- Real Discord mobile screenshot pass.
+- Inline admin edit controls.
+- Confirmations for VC delete and moveall.
+- Welcome card V2 conversion review.
+- Stop versus disconnect semantics.
+- Mobile review of the economy market board.
