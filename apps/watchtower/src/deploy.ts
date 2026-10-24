@@ -29,7 +29,10 @@ async function runWrapper(
   return runCommand("bash", [script, ...args], {
     cwd: deps.repoDir,
     env: {
-      WATCHTOWER_ENABLED: "false",
+      // Keep the watchtower service in the compose project. `podman compose
+      // run` removes orphan containers, and this container is an orphan when
+      // the overlay is omitted.
+      WATCHTOWER_ENABLED: "true",
       MCP_ENABLED: deps.mcpEnabled ? "true" : "false",
     },
     timeoutMs,
@@ -93,19 +96,48 @@ async function deployFull(deps: DeployDeps): Promise<DeployResult> {
   }
 
   if (deps.config.WATCHTOWER_RUN_MIGRATIONS) {
-    deps.logger.info("running database migrations");
-    const migrate = await runWrapper(deps, ["run", "--rm", "migrate"], SHORT_TIMEOUT);
-    if (migrate.code !== 0) {
-      return { ok: false, detail: `migrations failed: ${failureDetail(migrate)}` };
-    }
+    const migrated = await runMigrations(deps);
+    if (!migrated.ok) return migrated;
   }
 
   const services = deps.mcpEnabled ? ["bot", "mcp"] : ["bot"];
   return composeUp(deps, services);
 }
 
-async function deployFast(deps: DeployDeps): Promise<DeployResult> {
-  await ensureNodeModules(
+/**
+ * Run migrations with plain `podman run`.
+ *
+ * `podman compose run` starts dependencies with orphan removal, which tears
+ * down containers that are not part of that compose invocation. Including the
+ * watchtower overlay fixes the orphan, but the one-off container still adds
+ * pod churn. This path only needs the data network and the env file.
+ *
+ * The network name follows `-p siela` in scripts/podman-stack.sh.
+ */
+async function runMigrations(deps: DeployDeps): Promise<DeployResult> {
+  deps.logger.info("running database migrations");
+  const result = await runCommand(
+    "podman",
+    [
+      "run",
+      "--rm",
+      "--network",
+      "siela_data",
+      "--env-file",
+      join(deps.repoDir, "deploy/podman/.env"),
+      "localhost/siela-bot:latest",
+      "node",
+      "dist/scripts/migrate.js",
+    ],
+    { cwd: deps.repoDir, timeoutMs: SHORT_TIMEOUT },
+  );
+  if (result.code !== 0) {
+    return { ok: false, detail: `migrations failed: ${failureDetail(result)}` };
+  }
+  return { ok: true, detail: "migrations complete" };
+}
+
+async function deployFast(deps: DeployDeps): Promise<DeployResult> {  await ensureNodeModules(
     deps.repoDir,
     async () => {
       const install = await runCommand("bun", ["install", "--frozen-lockfile"], {
