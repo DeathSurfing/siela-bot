@@ -61,6 +61,19 @@ async function buildImage(
   return { ok: true, detail: `built ${tag}` };
 }
 
+async function ensureDependencies(deps: DeployDeps): Promise<DeployResult> {
+  deps.logger.info("ensuring stack dependencies");
+  const result = await runWrapper(
+    deps,
+    ["up", "-d", "postgres", "valkey", "llm", "tts"],
+    LONG_TIMEOUT,
+  );
+  if (result.code !== 0) {
+    return { ok: false, detail: `dependency start failed: ${failureDetail(result)}` };
+  }
+  return { ok: true, detail: "dependencies running" };
+}
+
 async function composeUp(
   deps: DeployDeps,
   services: string[],
@@ -68,7 +81,10 @@ async function composeUp(
 ): Promise<DeployResult> {
   const args: string[] = [];
   if (fastOverlay) args.push("-f", fastOverlay);
-  args.push("up", "-d", "--force-recreate", ...services);
+  // --no-deps avoids podman-compose waiting for the one-shot `migrate`
+  // container to reach "running", which never happens. Dependencies are
+  // started explicitly above, and migrations run separately.
+  args.push("up", "-d", "--no-deps", "--force-recreate", ...services);
 
   deps.logger.info({ services, fast: Boolean(fastOverlay) }, "recreating services");
   const result = await runWrapper(deps, args, LONG_TIMEOUT);
@@ -99,6 +115,9 @@ async function deployFull(deps: DeployDeps): Promise<DeployResult> {
     const migrated = await runMigrations(deps);
     if (!migrated.ok) return migrated;
   }
+
+  const dependencies = await ensureDependencies(deps);
+  if (!dependencies.ok) return dependencies;
 
   const services = deps.mcpEnabled ? ["bot", "mcp"] : ["bot"];
   return composeUp(deps, services);
@@ -159,6 +178,9 @@ async function deployFast(deps: DeployDeps): Promise<DeployResult> {  await ensu
   if (build.code !== 0) {
     return { ok: false, detail: `bot build failed: ${failureDetail(build)}` };
   }
+
+  const dependencies = await ensureDependencies(deps);
+  if (!dependencies.ok) return dependencies;
 
   return composeUp(
     deps,
