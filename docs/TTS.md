@@ -8,6 +8,9 @@ Standalone `/tts` channel narration and the Tambola voice stack share one engine
 - `TtsService` (`apps/bot/src/features/tts.ts`) keeps one session per guild.
 - While enabled, plain messages in the voice channel's own text chat are spoken. Messages starting with `/` or `!` are skipped (`apps/bot/src/bot.ts`).
 - Each message is trimmed to 200 characters.
+- Mentions are resolved before speaking: `<@id>` becomes the member's display name, `<#id>` the channel name, `<@&id>` the role name, custom emoji becomes its name, `@everyone`/`@here` become "everyone" / "everyone here". Unknown mentions fall back to "someone" / "a channel" / "a role".
+- Links become "a link". A message holding only links is spoken as "{User} sent a link". Attachment-only messages become "{User} sent an image/file/...".
+- The speaker's display name is prefixed as "{User} said, ..." only when the speaker changed since the previous spoken message; consecutive messages from the same person skip the name (same rule for "sent a link" / attachments).
 - Cooldown: 3s on the command. No economy charge for TTS.
 
 ## Voice ownership

@@ -328,9 +328,7 @@ export class SielaBot {
       this.services.activity.recordMessage(message.guild.id, message.author.id);
       void this.services.leveling.awardMessage(message.guild.id, message.author.id).catch(() => undefined);
       if (this.services.tts.isEnabledChannel(message.guild.id, message.channel.id)) {
-        if (!message.content.startsWith("/") && !message.content.startsWith("!")) {
-          void this.services.tts.speak(message.guild.id, message.content).catch(() => undefined);
-        }
+        void this.services.tts.speakMessage(message).catch(() => undefined);
       }
       const prefix = await this.services.settings.getPrefix(message.guild.id);
       const parsed = parsePrefixCommand(message.content, prefix, this.client.user?.id ?? "");

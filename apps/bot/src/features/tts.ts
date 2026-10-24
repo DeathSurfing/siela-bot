@@ -1,15 +1,27 @@
 import { ChannelType } from "discord.js";
-import type { GuildBasedChannel, GuildMember } from "discord.js";
+import type { GuildBasedChannel, GuildMember, Message } from "discord.js";
 import type { BotConfig } from "@siela/config";
 import { UserError } from "../lib/errors.js";
 import type { Logger } from "../lib/logger.js";
 import type { MusicService } from "./music.js";
 import { TambolaVoice } from "./tambola/voice.js";
+import {
+  buildAttachmentUtterance,
+  buildLinkUtterance,
+  buildTtsUtterance,
+  formatTtsBody,
+  sanitizeSpeakerName,
+  sanitizeTtsText,
+} from "./tts-format.js";
+
+const MAX_TTS_CHARS = 200;
+const MAX_MENTION_LOOKUPS = 10;
 
 interface TtsSession {
   channelId: string;
   voice: TambolaVoice;
   enabled: boolean;
+  lastSpeakerId: string | null;
 }
 
 export class TtsService {
@@ -55,7 +67,7 @@ export class TtsService {
     if (!joined) throw new UserError("Could not join that voice channel. Check Connect and Speak permissions.");
 
     this.logger.info({ guildId, channelId: channel.id }, "TTS enabled");
-    this.sessions.set(guildId, { channelId: channel.id, voice, enabled: true });
+    this.sessions.set(guildId, { channelId: channel.id, voice, enabled: true, lastSpeakerId: null });
     if (this.music) {
       try { await this.music.disconnect(guildId); } catch { /* ignore */ }
       this.music.lockVoice(guildId);
@@ -71,13 +83,140 @@ export class TtsService {
     this.music?.unlockVoice(guildId);
   }
 
-  async speak(guildId: string, text: string): Promise<void> {
+  async speak(guildId: string, text: string, opts: { speakerId?: string; speakerName?: string } = {}): Promise<void> {
     const session = this.sessions.get(guildId);
     if (!session?.enabled) return;
-    const clean = text.trim().slice(0, 200);
-    if (!clean) return;
-    this.logger.info({ guildId, channelId: session.channelId, text: clean }, "TTS speaking");
-    await session.voice.speak(clean);
+    const { text: body } = sanitizeTtsText(text);
+    if (!body) return;
+    const trimmed = body.slice(0, MAX_TTS_CHARS).trim();
+    if (!trimmed) return;
+    const isNewSpeaker = opts.speakerId ? session.lastSpeakerId !== opts.speakerId : true;
+    const utterance = buildTtsUtterance(trimmed, opts.speakerName ?? null, isNewSpeaker);
+    if (!utterance) return;
+    this.logger.info({ guildId, channelId: session.channelId, text: utterance }, "TTS speaking");
+    await session.voice.speak(utterance);
+    if (opts.speakerId) {
+      session.lastSpeakerId = opts.speakerId;
+    }
+  }
+
+  /**
+   * Speak a Discord message: resolves user/channel/role mentions to names,
+   * turns links into "a link", and prefixes "{User} said, ..." only when the
+   * speaker changed since the previous spoken message.
+   */
+  async speakMessage(message: Message): Promise<void> {
+    if (!message.inGuild() || !message.guild) return;
+    const guildId = message.guild.id;
+    const session = this.sessions.get(guildId);
+    if (!session?.enabled) return;
+    if (message.channel.id !== session.channelId) return;
+    if (message.author.bot || message.webhookId) return;
+    const raw = message.content ?? "";
+    if (raw.startsWith("/") || raw.startsWith("!")) return;
+
+    const speakerId = message.author.id;
+    const rawSpeaker =
+      message.member?.displayName ?? message.author.displayName ?? message.author.username;
+    const speakerName = sanitizeSpeakerName(rawSpeaker);
+    const isNewSpeaker = session.lastSpeakerId !== speakerId;
+
+    const lookups = await this.resolveMentionNames(message);
+    const { text: body, linkOnly } = formatTtsBody(raw, lookups);
+
+    let utterance: string;
+    if (body) {
+      const trimmed = body.slice(0, MAX_TTS_CHARS).trim();
+      if (!trimmed) return;
+      utterance = buildTtsUtterance(trimmed, speakerName, isNewSpeaker);
+    } else if (linkOnly) {
+      utterance = buildLinkUtterance(speakerName, isNewSpeaker);
+    } else {
+      const attachmentKind = this.attachmentKind(message);
+      if (!attachmentKind) return;
+      utterance = buildAttachmentUtterance(speakerName, isNewSpeaker, attachmentKind);
+    }
+
+    if (!utterance) return;
+    this.logger.info({ guildId, channelId: session.channelId, text: utterance }, "TTS speaking");
+    await session.voice.speak(utterance);
+    session.lastSpeakerId = speakerId;
+  }
+
+  private attachmentKind(message: Message): string | null {
+    if (message.stickers.size > 0) return "a sticker";
+    if (message.attachments.size === 0) return null;
+    const first = message.attachments.first();
+    const contentType = first?.contentType ?? "";
+    if (contentType.startsWith("image/")) return "an image";
+    if (contentType.startsWith("video/")) return "a video";
+    if (contentType.startsWith("audio/")) return "an audio clip";
+    return "a file";
+  }
+
+  private async resolveMentionNames(message: Message): Promise<{
+    users: Map<string, string>;
+    channels: Map<string, string>;
+    roles: Map<string, string>;
+  }> {
+    const users = new Map<string, string>();
+    const channels = new Map<string, string>();
+    const roles = new Map<string, string>();
+    if (!message.guild) return { users, channels, roles };
+
+    const content = message.content ?? "";
+    const userIds = new Set<string>();
+    for (const match of content.matchAll(/<@!?(\d+)>/g)) {
+      const id = match[1];
+      if (id) userIds.add(id);
+    }
+    const channelIds = new Set<string>();
+    for (const match of content.matchAll(/<#(\d+)>/g)) {
+      const id = match[1];
+      if (id) channelIds.add(id);
+    }
+    const roleIds = new Set<string>();
+    for (const match of content.matchAll(/<@&(\d+)>/g)) {
+      const id = match[1];
+      if (id) roleIds.add(id);
+    }
+
+    for (const id of [...userIds].slice(0, MAX_MENTION_LOOKUPS)) {
+      const mentionedMember = message.mentions.members?.get(id);
+      const mentionedUser = message.mentions.users?.get(id);
+      const cached = message.guild.members.cache.get(id);
+      const name =
+        mentionedMember?.displayName ??
+        mentionedUser?.displayName ??
+        mentionedUser?.username ??
+        cached?.displayName;
+      if (name) {
+        users.set(id, name);
+        continue;
+      }
+      const fetched = await message.guild.members.fetch(id).catch(() => null);
+      if (fetched?.displayName) users.set(id, fetched.displayName);
+    }
+
+    for (const id of [...channelIds].slice(0, MAX_MENTION_LOOKUPS)) {
+      const cached = message.guild.channels.cache.get(id);
+      if (cached?.name) {
+        channels.set(id, cached.name);
+        continue;
+      }
+      const fetched = await message.guild.channels.fetch(id).catch(() => null);
+      if (fetched && "name" in fetched && typeof fetched.name === "string") {
+        channels.set(id, fetched.name);
+      }
+    }
+
+    for (const id of [...roleIds].slice(0, MAX_MENTION_LOOKUPS)) {
+      const cached = message.guild.roles.cache.get(id);
+      const name = cached?.name ?? (await message.guild.roles.fetch(id).catch(() => null))?.name;
+      if (name) roles.set(id, name);
+    }
+
+    return { users, channels, roles };
   }
 
   stop(): void {
