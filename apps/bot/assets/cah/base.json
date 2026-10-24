@@ -1,0 +1,2107 @@
+{
+  "pack": "siela-base-v1",
+  "black": [
+    {
+      "id": "b001",
+      "text": "The bot went offline because of ____.",
+      "pick": 1
+    },
+    {
+      "id": "b002",
+      "text": "____ is not a valid excuse in #general.",
+      "pick": 1
+    },
+    {
+      "id": "b003",
+      "text": "Our raid wipe was caused by ____.",
+      "pick": 1
+    },
+    {
+      "id": "b004",
+      "text": "The PR got rejected for ____.",
+      "pick": 1
+    },
+    {
+      "id": "b005",
+      "text": "____ is why the deploy failed at 3 AM.",
+      "pick": 1
+    },
+    {
+      "id": "b006",
+      "text": "In this guild, ____ counts as foreplay.",
+      "pick": 1
+    },
+    {
+      "id": "b007",
+      "text": "The new member left after discovering ____.",
+      "pick": 1
+    },
+    {
+      "id": "b008",
+      "text": "We all pretend not to notice ____.",
+      "pick": 1
+    },
+    {
+      "id": "b009",
+      "text": "____ is the real final boss.",
+      "pick": 1
+    },
+    {
+      "id": "b010",
+      "text": "The admin's secret hobby is ____.",
+      "pick": 1
+    },
+    {
+      "id": "b011",
+      "text": "____ keeps the voice channel alive at 4 AM.",
+      "pick": 1
+    },
+    {
+      "id": "b012",
+      "text": "The economy crashed due to ____.",
+      "pick": 1
+    },
+    {
+      "id": "b013",
+      "text": "Nobody talks about ____ in the rules.",
+      "pick": 1
+    },
+    {
+      "id": "b014",
+      "text": "____ is banned in three channels.",
+      "pick": 1
+    },
+    {
+      "id": "b015",
+      "text": "The moderator's weakness is ____.",
+      "pick": 1
+    },
+    {
+      "id": "b016",
+      "text": "We replaced the welcome message with ____.",
+      "pick": 1
+    },
+    {
+      "id": "b017",
+      "text": "____ is the only thing worse than lag.",
+      "pick": 1
+    },
+    {
+      "id": "b018",
+      "text": "The tournament was ruined by ____.",
+      "pick": 1
+    },
+    {
+      "id": "b019",
+      "text": "____ is what the bot actually dreams about.",
+      "pick": 1
+    },
+    {
+      "id": "b020",
+      "text": "The TTS voice said ____ and nobody blinked.",
+      "pick": 1
+    },
+    {
+      "id": "b021",
+      "text": "____ is the guild's worst-kept secret.",
+      "pick": 1
+    },
+    {
+      "id": "b022",
+      "text": "The help channel became ____ overnight.",
+      "pick": 1
+    },
+    {
+      "id": "b023",
+      "text": "____ is why the mic is always muted.",
+      "pick": 1
+    },
+    {
+      "id": "b024",
+      "text": "The stream title changed to ____.",
+      "pick": 1
+    },
+    {
+      "id": "b025",
+      "text": "____ is the reason we have a 21+ server.",
+      "pick": 1
+    },
+    {
+      "id": "b026",
+      "text": "The code review turned into ____.",
+      "pick": 1
+    },
+    {
+      "id": "b027",
+      "text": "____ is the merge conflict nobody expected.",
+      "pick": 1
+    },
+    {
+      "id": "b028",
+      "text": "Our standup devolved into ____.",
+      "pick": 1
+    },
+    {
+      "id": "b029",
+      "text": "The senior dev's dark secret is ____.",
+      "pick": 1
+    },
+    {
+      "id": "b030",
+      "text": "____ is the real root cause.",
+      "pick": 1
+    },
+    {
+      "id": "b031",
+      "text": "The sprint ended with ____.",
+      "pick": 1
+    },
+    {
+      "id": "b032",
+      "text": "We shipped ____ to production.",
+      "pick": 1
+    },
+    {
+      "id": "b033",
+      "text": "The bug report just says ____.",
+      "pick": 1
+    },
+    {
+      "id": "b034",
+      "text": "____ is the technical debt we ignore.",
+      "pick": 1
+    },
+    {
+      "id": "b035",
+      "text": "The refactor turned into ____.",
+      "pick": 1
+    },
+    {
+      "id": "b036",
+      "text": "____ is the only dependency we trust.",
+      "pick": 1
+    },
+    {
+      "id": "b037",
+      "text": "The on-call engineer found ____.",
+      "pick": 1
+    },
+    {
+      "id": "b038",
+      "text": "____ is the reason tests are skipped.",
+      "pick": 1
+    },
+    {
+      "id": "b039",
+      "text": "The CI pipeline rejected ____.",
+      "pick": 1
+    },
+    {
+      "id": "b040",
+      "text": "____ is the commit message we all fear.",
+      "pick": 1
+    },
+    {
+      "id": "b041",
+      "text": "The database migration became ____.",
+      "pick": 1
+    },
+    {
+      "id": "b042",
+      "text": "____ is the feature nobody asked for.",
+      "pick": 1
+    },
+    {
+      "id": "b043",
+      "text": "The hotfix introduced ____.",
+      "pick": 1
+    },
+    {
+      "id": "b044",
+      "text": "____ is the log line that haunts us.",
+      "pick": 1
+    },
+    {
+      "id": "b045",
+      "text": "The linter complained about ____.",
+      "pick": 1
+    },
+    {
+      "id": "b046",
+      "text": "____ is the architecture diagram's missing piece.",
+      "pick": 1
+    },
+    {
+      "id": "b047",
+      "text": "The codebase is held together by ____.",
+      "pick": 1
+    },
+    {
+      "id": "b048",
+      "text": "____ is the production incident we blame on DNS.",
+      "pick": 1
+    },
+    {
+      "id": "b049",
+      "text": "The retrospective concluded with ____.",
+      "pick": 1
+    },
+    {
+      "id": "b050",
+      "text": "____ is the reason we need coffee.",
+      "pick": 1
+    },
+    {
+      "id": "b051",
+      "text": "The anime marathon ended with ____.",
+      "pick": 1
+    },
+    {
+      "id": "b052",
+      "text": "____ is the waifu that broke the group.",
+      "pick": 1
+    },
+    {
+      "id": "b053",
+      "text": "The cosplay contest was won by ____.",
+      "pick": 1
+    },
+    {
+      "id": "b054",
+      "text": "____ is the plot twist nobody saw coming.",
+      "pick": 1
+    },
+    {
+      "id": "b055",
+      "text": "The villain's motivation was ____.",
+      "pick": 1
+    },
+    {
+      "id": "b056",
+      "text": "____ is the filler episode we skip.",
+      "pick": 1
+    },
+    {
+      "id": "b057",
+      "text": "The protagonist's power is ____.",
+      "pick": 1
+    },
+    {
+      "id": "b058",
+      "text": "____ is the reason the harem exists.",
+      "pick": 1
+    },
+    {
+      "id": "b059",
+      "text": "The beach episode featured ____.",
+      "pick": 1
+    },
+    {
+      "id": "b060",
+      "text": "____ is the forbidden technique.",
+      "pick": 1
+    },
+    {
+      "id": "b061",
+      "text": "The final boss was actually ____.",
+      "pick": 1
+    },
+    {
+      "id": "b062",
+      "text": "____ is the tsundere's catchphrase.",
+      "pick": 1
+    },
+    {
+      "id": "b063",
+      "text": "The isekai protagonist became ____.",
+      "pick": 1
+    },
+    {
+      "id": "b064",
+      "text": "____ is the childhood friend's revenge.",
+      "pick": 1
+    },
+    {
+      "id": "b065",
+      "text": "The dub changed it to ____.",
+      "pick": 1
+    },
+    {
+      "id": "b066",
+      "text": "____ is the power of friendship.",
+      "pick": 1
+    },
+    {
+      "id": "b067",
+      "text": "The tournament arc ended with ____.",
+      "pick": 1
+    },
+    {
+      "id": "b068",
+      "text": "____ is the training montage's dark side.",
+      "pick": 1
+    },
+    {
+      "id": "b069",
+      "text": "The magic system is based on ____.",
+      "pick": 1
+    },
+    {
+      "id": "b070",
+      "text": "____ is the reason the sensei drinks.",
+      "pick": 1
+    },
+    {
+      "id": "b071",
+      "text": "The omake revealed ____.",
+      "pick": 1
+    },
+    {
+      "id": "b072",
+      "text": "____ is the ship that sailed.",
+      "pick": 1
+    },
+    {
+      "id": "b073",
+      "text": "The filler villain was ____.",
+      "pick": 1
+    },
+    {
+      "id": "b074",
+      "text": "____ is the reason the hero hesitates.",
+      "pick": 1
+    },
+    {
+      "id": "b075",
+      "text": "The ending was replaced by ____.",
+      "pick": 1
+    },
+    {
+      "id": "b076",
+      "text": "The raid leader's strategy was ____.",
+      "pick": 1
+    },
+    {
+      "id": "b077",
+      "text": "____ is the loot that caused a guild split.",
+      "pick": 1
+    },
+    {
+      "id": "b078",
+      "text": "The speedrun was ruined by ____.",
+      "pick": 1
+    },
+    {
+      "id": "b079",
+      "text": "____ is the meta nobody wants to admit.",
+      "pick": 1
+    },
+    {
+      "id": "b080",
+      "text": "The gacha pull gave us ____.",
+      "pick": 1
+    },
+    {
+      "id": "b081",
+      "text": "____ is the reason we are still bronze.",
+      "pick": 1
+    },
+    {
+      "id": "b082",
+      "text": "The MMO marriage ended because of ____.",
+      "pick": 1
+    },
+    {
+      "id": "b083",
+      "text": "____ is the emote that got banned.",
+      "pick": 1
+    },
+    {
+      "id": "b084",
+      "text": "The streamer's donation read was ____.",
+      "pick": 1
+    },
+    {
+      "id": "b085",
+      "text": "____ is the achievement we pretend not to have.",
+      "pick": 1
+    },
+    {
+      "id": "b086",
+      "text": "The boss fight was trivialized by ____.",
+      "pick": 1
+    },
+    {
+      "id": "b087",
+      "text": "____ is the reason the voice chat is muted.",
+      "pick": 1
+    },
+    {
+      "id": "b088",
+      "text": "The esports team lost to ____.",
+      "pick": 1
+    },
+    {
+      "id": "b089",
+      "text": "____ is the strategy guide's missing chapter.",
+      "pick": 1
+    },
+    {
+      "id": "b090",
+      "text": "The gaming chair couldn't handle ____.",
+      "pick": 1
+    },
+    {
+      "id": "b091",
+      "text": "____ is the reason the console is sticky.",
+      "pick": 1
+    },
+    {
+      "id": "b092",
+      "text": "The LAN party devolved into ____.",
+      "pick": 1
+    },
+    {
+      "id": "b093",
+      "text": "____ is the only thing keeping the clan together.",
+      "pick": 1
+    },
+    {
+      "id": "b094",
+      "text": "The patch notes quietly added ____.",
+      "pick": 1
+    },
+    {
+      "id": "b095",
+      "text": "____ is the reason we play at 2 AM.",
+      "pick": 1
+    },
+    {
+      "id": "b096",
+      "text": "The Discord nitro was spent on ____.",
+      "pick": 1
+    },
+    {
+      "id": "b097",
+      "text": "____ is the profile picture that started it all.",
+      "pick": 1
+    },
+    {
+      "id": "b098",
+      "text": "The server boost was wasted on ____.",
+      "pick": 1
+    },
+    {
+      "id": "b099",
+      "text": "____ is the reason the mod queue is full.",
+      "pick": 1
+    },
+    {
+      "id": "b100",
+      "text": "The 21+ channel exists because of ____.",
+      "pick": 1
+    }
+  ],
+  "white": [
+    {
+      "id": "w001",
+      "text": "A suspiciously sticky keyboard."
+    },
+    {
+      "id": "w002",
+      "text": "Accidentally liking a three-year-old post."
+    },
+    {
+      "id": "w003",
+      "text": "An AI that learned sarcasm."
+    },
+    {
+      "id": "w004",
+      "text": "Asking the bot for relationship advice."
+    },
+    {
+      "id": "w005",
+      "text": "Blaming the lag for your KDA."
+    },
+    {
+      "id": "w006",
+      "text": "Booting the only competent healer."
+    },
+    {
+      "id": "w007",
+      "text": "Buying nitro for the memes."
+    },
+    {
+      "id": "w008",
+      "text": "Calling your waifu your girlfriend."
+    },
+    {
+      "id": "w009",
+      "text": "Crying in the shower about canon."
+    },
+    {
+      "id": "w010",
+      "text": "Deleting the evidence."
+    },
+    {
+      "id": "w011",
+      "text": "Deploying on Friday at 5 PM."
+    },
+    {
+      "id": "w012",
+      "text": "Discord mod power tripping."
+    },
+    {
+      "id": "w013",
+      "text": "Doing it for the achievement."
+    },
+    {
+      "id": "w014",
+      "text": "Dropping the soap in voice chat."
+    },
+    {
+      "id": "w015",
+      "text": "Eating cereal with a fork."
+    },
+    {
+      "id": "w016",
+      "text": "Explaining the plot to a non-weeb."
+    },
+    {
+      "id": "w017",
+      "text": "Faking lag to dodge a raid."
+    },
+    {
+      "id": "w018",
+      "text": "Falling asleep on stream."
+    },
+    {
+      "id": "w019",
+      "text": "Filing a ticket about feelings."
+    },
+    {
+      "id": "w020",
+      "text": "Finding out your main is bottom tier."
+    },
+    {
+      "id": "w021",
+      "text": "Forgetting to mute before yelling."
+    },
+    {
+      "id": "w022",
+      "text": "Getting banned for being too honest."
+    },
+    {
+      "id": "w023",
+      "text": "Getting carried by a twelve-year-old."
+    },
+    {
+      "id": "w024",
+      "text": "Going AFK during the boss."
+    },
+    {
+      "id": "w025",
+      "text": "Having a type and it's a problem."
+    },
+    {
+      "id": "w026",
+      "text": "Hiding the browser history."
+    },
+    {
+      "id": "w027",
+      "text": "Hitting on the raid boss."
+    },
+    {
+      "id": "w028",
+      "text": "Ignoring the tutorial."
+    },
+    {
+      "id": "w029",
+      "text": "Joining a cult via Discord."
+    },
+    {
+      "id": "w030",
+      "text": "Lag switching your way to victory."
+    },
+    {
+      "id": "w031",
+      "text": "Leaking your own DMs."
+    },
+    {
+      "id": "w032",
+      "text": "Losing to a default skin."
+    },
+    {
+      "id": "w033",
+      "text": "Losing your dignity in general."
+    },
+    {
+      "id": "w034",
+      "text": "Marrying an NPC."
+    },
+    {
+      "id": "w035",
+      "text": "Mistaking a bot for a person."
+    },
+    {
+      "id": "w036",
+      "text": "Modding your way to power."
+    },
+    {
+      "id": "w037",
+      "text": "Nerfing the fun out of it."
+    },
+    {
+      "id": "w038",
+      "text": "No-pants Zoom meetings."
+    },
+    {
+      "id": "w039",
+      "text": "Overclocking your feelings."
+    },
+    {
+      "id": "w040",
+      "text": "Paying real money for JPEGs."
+    },
+    {
+      "id": "w041",
+      "text": "Pretending to read the TOS."
+    },
+    {
+      "id": "w042",
+      "text": "Pretending you didn't see that."
+    },
+    {
+      "id": "w043",
+      "text": "Promising to touch grass."
+    },
+    {
+      "id": "w044",
+      "text": "Quitting mid-sentence."
+    },
+    {
+      "id": "w045",
+      "text": "Rage quitting a friendly match."
+    },
+    {
+      "id": "w046",
+      "text": "Reading the wiki instead of playing."
+    },
+    {
+      "id": "w047",
+      "text": "Rejecting a pull request with prejudice."
+    },
+    {
+      "id": "w048",
+      "text": "Reporting your own teammate."
+    },
+    {
+      "id": "w049",
+      "text": "Roleplaying as a catgirl."
+    },
+    {
+      "id": "w050",
+      "text": "Saying \"just one more game\"."
+    },
+    {
+      "id": "w051",
+      "text": "Screenshotting the evidence."
+    },
+    {
+      "id": "w052",
+      "text": "Feeling attacked by a meme."
+    },
+    {
+      "id": "w053",
+      "text": "Flirting with the bot."
+    },
+    {
+      "id": "w054",
+      "text": "Forgetting your own birthday."
+    },
+    {
+      "id": "w055",
+      "text": "Getting banned for honesty."
+    },
+    {
+      "id": "w056",
+      "text": "Getting roasted by a loading tip."
+    },
+    {
+      "id": "w057",
+      "text": "Going AFK during a confession."
+    },
+    {
+      "id": "w058",
+      "text": "Griefing the newcomer."
+    },
+    {
+      "id": "w059",
+      "text": "Hiding your screen from family."
+    },
+    {
+      "id": "w060",
+      "text": "Hitting on the moderator."
+    },
+    {
+      "id": "w061",
+      "text": "Holding a grudge over loot."
+    },
+    {
+      "id": "w062",
+      "text": "Ignoring the patch notes."
+    },
+    {
+      "id": "w063",
+      "text": "Impressing nobody in ranked."
+    },
+    {
+      "id": "w064",
+      "text": "Incest jokes that cross lines."
+    },
+    {
+      "id": "w065",
+      "text": "Joining a VC to lurk."
+    },
+    {
+      "id": "w066",
+      "text": "Karma farming in replies."
+    },
+    {
+      "id": "w067",
+      "text": "Keeping a spreadsheet of crushes."
+    },
+    {
+      "id": "w068",
+      "text": "Kicking the AFK player."
+    },
+    {
+      "id": "w069",
+      "text": "Lagging out on purpose."
+    },
+    {
+      "id": "w070",
+      "text": "Leaving on read forever."
+    },
+    {
+      "id": "w071",
+      "text": "Losing your virginity to a cutscene."
+    },
+    {
+      "id": "w072",
+      "text": "Making it weird in chat."
+    },
+    {
+      "id": "w073",
+      "text": "Marrying a guildmate for buffs."
+    },
+    {
+      "id": "w074",
+      "text": "Masturbating to your own reflection."
+    },
+    {
+      "id": "w075",
+      "text": "Maxing out the wrong stat."
+    },
+    {
+      "id": "w076",
+      "text": "Mod abuse in the wild."
+    },
+    {
+      "id": "w077",
+      "text": "Muting everyone but yourself."
+    },
+    {
+      "id": "w078",
+      "text": "Naked modding at 4 AM."
+    },
+    {
+      "id": "w079",
+      "text": "Naming your pet something cursed."
+    },
+    {
+      "id": "w080",
+      "text": "No-scoping the wrong target."
+    },
+    {
+      "id": "w081",
+      "text": "Not reading the room."
+    },
+    {
+      "id": "w082",
+      "text": "One more episode at 5 AM."
+    },
+    {
+      "id": "w083",
+      "text": "Only communicating in emotes."
+    },
+    {
+      "id": "w084",
+      "text": "Overcommitting to a bit."
+    },
+    {
+      "id": "w085",
+      "text": "Paying for a carry."
+    },
+    {
+      "id": "w086",
+      "text": "Peeing in a bottle during raid."
+    },
+    {
+      "id": "w087",
+      "text": "Pinging everyone for nothing."
+    },
+    {
+      "id": "w088",
+      "text": "Playing support and hating it."
+    },
+    {
+      "id": "w089",
+      "text": "Pretending to be AFK."
+    },
+    {
+      "id": "w090",
+      "text": "Pretending you didn't rage."
+    },
+    {
+      "id": "w091",
+      "text": "Pretending you read the rules."
+    },
+    {
+      "id": "w092",
+      "text": "Promising to be good this time."
+    },
+    {
+      "id": "w093",
+      "text": "Punching your monitor."
+    },
+    {
+      "id": "w094",
+      "text": "Quitting the guild dramatically."
+    },
+    {
+      "id": "w095",
+      "text": "Rage donating to a streamer."
+    },
+    {
+      "id": "w096",
+      "text": "Raiding the wrong server."
+    },
+    {
+      "id": "w097",
+      "text": "Reading smut in public."
+    },
+    {
+      "id": "w098",
+      "text": "Reporting your own smurf."
+    },
+    {
+      "id": "w099",
+      "text": "Roleplaying as a villain."
+    },
+    {
+      "id": "w100",
+      "text": "Rushing the boss and wiping."
+    },
+    {
+      "id": "w101",
+      "text": "Saying \"I'm fine\" in all caps."
+    },
+    {
+      "id": "w102",
+      "text": "Screenshotting your own L."
+    },
+    {
+      "id": "w103",
+      "text": "Selling your account."
+    },
+    {
+      "id": "w104",
+      "text": "A bug that only appears in prod."
+    },
+    {
+      "id": "w105",
+      "text": "A commit that breaks the build."
+    },
+    {
+      "id": "w106",
+      "text": "A deploy with no rollback."
+    },
+    {
+      "id": "w107",
+      "text": "A merge conflict at midnight."
+    },
+    {
+      "id": "w108",
+      "text": "A PR with 4000 lines."
+    },
+    {
+      "id": "w109",
+      "text": "A senior dev's impostor syndrome."
+    },
+    {
+      "id": "w110",
+      "text": "A standup that lasts an hour."
+    },
+    {
+      "id": "w111",
+      "text": "A ticket labeled \"urgent\"."
+    },
+    {
+      "id": "w112",
+      "text": "A typo in production."
+    },
+    {
+      "id": "w113",
+      "text": "Accidentally force pushing main."
+    },
+    {
+      "id": "w114",
+      "text": "An infinite loop of apologies."
+    },
+    {
+      "id": "w115",
+      "text": "An on-call page at 3 AM."
+    },
+    {
+      "id": "w116",
+      "text": "An unhandled promise rejection."
+    },
+    {
+      "id": "w117",
+      "text": "Arguing about tabs vs spaces."
+    },
+    {
+      "id": "w118",
+      "text": "Blaming the cache."
+    },
+    {
+      "id": "w119",
+      "text": "Committing secrets to git."
+    },
+    {
+      "id": "w120",
+      "text": "Deleting the wrong database."
+    },
+    {
+      "id": "w121",
+      "text": "Deploying without tests."
+    },
+    {
+      "id": "w122",
+      "text": "Forgetting to save the file."
+    },
+    {
+      "id": "w123",
+      "text": "Ignoring a security warning."
+    },
+    {
+      "id": "w124",
+      "text": "Leaving a console.log in prod."
+    },
+    {
+      "id": "w125",
+      "text": "Merging without review."
+    },
+    {
+      "id": "w126",
+      "text": "Pushing to main directly."
+    },
+    {
+      "id": "w127",
+      "text": "Rewriting instead of fixing."
+    },
+    {
+      "id": "w128",
+      "text": "Shipping on a Friday."
+    },
+    {
+      "id": "w129",
+      "text": "Skipping code review."
+    },
+    {
+      "id": "w130",
+      "text": "Turning off monitoring."
+    },
+    {
+      "id": "w131",
+      "text": "Using eval in production."
+    },
+    {
+      "id": "w132",
+      "text": "Writing tests after the fact."
+    },
+    {
+      "id": "w133",
+      "text": "A 2D wife collection."
+    },
+    {
+      "id": "w134",
+      "text": "A body pillow in the office."
+    },
+    {
+      "id": "w135",
+      "text": "A doujin with no plot."
+    },
+    {
+      "id": "w136",
+      "text": "A harem ending."
+    },
+    {
+      "id": "w137",
+      "text": "A isekai protagonist's luck."
+    },
+    {
+      "id": "w138",
+      "text": "A loli character design."
+    },
+    {
+      "id": "w139",
+      "text": "A maid cafe visit."
+    },
+    {
+      "id": "w140",
+      "text": "A neko girl in the chat."
+    },
+    {
+      "id": "w141",
+      "text": "A waifu ranked tier list."
+    },
+    {
+      "id": "w142",
+      "text": "A yandere's love letter."
+    },
+    {
+      "id": "w143",
+      "text": "Blushing at a loading screen."
+    },
+    {
+      "id": "w144",
+      "text": "Catching feelings for a villain."
+    },
+    {
+      "id": "w145",
+      "text": "Cosplaying at a funeral."
+    },
+    {
+      "id": "w146",
+      "text": "Drawing fan art at work."
+    },
+    {
+      "id": "w147",
+      "text": "Falling for a trap character."
+    },
+    {
+      "id": "w148",
+      "text": "Hiding manga in textbooks."
+    },
+    {
+      "id": "w149",
+      "text": "Imagining anime scenarios."
+    },
+    {
+      "id": "w150",
+      "text": "Shipping a crack ship."
+    },
+    {
+      "id": "w151",
+      "text": "Simping for a streamer."
+    },
+    {
+      "id": "w152",
+      "text": "Watching anime in class."
+    },
+    {
+      "id": "w153",
+      "text": "A guild bank heist."
+    },
+    {
+      "id": "w154",
+      "text": "A loot council argument."
+    },
+    {
+      "id": "w155",
+      "text": "A raid leader's meltdown."
+    },
+    {
+      "id": "w156",
+      "text": "A server-wide ban wave."
+    },
+    {
+      "id": "w157",
+      "text": "A voice channel mutiny."
+    },
+    {
+      "id": "w158",
+      "text": "An admin's abuse of power."
+    },
+    {
+      "id": "w159",
+      "text": "An economy inflation crisis."
+    },
+    {
+      "id": "w160",
+      "text": "A bot command gone wrong."
+    },
+    {
+      "id": "w161",
+      "text": "A Discord ping storm."
+    },
+    {
+      "id": "w162",
+      "text": "A server boost regret."
+    },
+    {
+      "id": "w163",
+      "text": "Sending a wall of text."
+    },
+    {
+      "id": "w164",
+      "text": "Shipping a bug as a feature."
+    },
+    {
+      "id": "w165",
+      "text": "Showing your browser tabs."
+    },
+    {
+      "id": "w166",
+      "text": "Skipping the cutscene."
+    },
+    {
+      "id": "w167",
+      "text": "Smurfing in ranked."
+    },
+    {
+      "id": "w168",
+      "text": "Speedrunning your life choices."
+    },
+    {
+      "id": "w169",
+      "text": "Spilling tea in the ticket channel."
+    },
+    {
+      "id": "w170",
+      "text": "Stealing memes from Reddit."
+    },
+    {
+      "id": "w171",
+      "text": "Streaming your breakdown."
+    },
+    {
+      "id": "w172",
+      "text": "Subtweeting the raid leader."
+    },
+    {
+      "id": "w173",
+      "text": "Swearing in the family-friendly channel."
+    },
+    {
+      "id": "w174",
+      "text": "Taking the L gracefully."
+    },
+    {
+      "id": "w175",
+      "text": "Teabagging the corpse."
+    },
+    {
+      "id": "w176",
+      "text": "The bot's last known words."
+    },
+    {
+      "id": "w177",
+      "text": "The group chat's worst idea."
+    },
+    {
+      "id": "w178",
+      "text": "The mod's browser history."
+    },
+    {
+      "id": "w179",
+      "text": "The server's open secret."
+    },
+    {
+      "id": "w180",
+      "text": "The TTS voice judging you."
+    },
+    {
+      "id": "w181",
+      "text": "Thinking with your joystick."
+    },
+    {
+      "id": "w182",
+      "text": "Throwing the match for content."
+    },
+    {
+      "id": "w183",
+      "text": "Toxic positivity in ranked."
+    },
+    {
+      "id": "w184",
+      "text": "Trusting a stranger online."
+    },
+    {
+      "id": "w185",
+      "text": "Typing in all caps."
+    },
+    {
+      "id": "w186",
+      "text": "Using a guide for everything."
+    },
+    {
+      "id": "w187",
+      "text": "Using emotes as punctuation."
+    },
+    {
+      "id": "w188",
+      "text": "Voting to kick the healer."
+    },
+    {
+      "id": "w189",
+      "text": "Wasting ult on a minion."
+    },
+    {
+      "id": "w190",
+      "text": "Watching anime at 3 AM."
+    },
+    {
+      "id": "w191",
+      "text": "Whispering sweet nothings to code."
+    },
+    {
+      "id": "w192",
+      "text": "Winning by accident."
+    },
+    {
+      "id": "w193",
+      "text": "Writing fanfiction at work."
+    },
+    {
+      "id": "w194",
+      "text": "Yelling at a loading screen."
+    },
+    {
+      "id": "w195",
+      "text": "Your mom's Discord account."
+    },
+    {
+      "id": "w196",
+      "text": "Zero chill in the lobby."
+    },
+    {
+      "id": "w197",
+      "text": "A backseat gamer with no mic."
+    },
+    {
+      "id": "w198",
+      "text": "A bot that roasts you."
+    },
+    {
+      "id": "w199",
+      "text": "A commit with no message."
+    },
+    {
+      "id": "w200",
+      "text": "A gamer girl voice changer."
+    },
+    {
+      "id": "w201",
+      "text": "A guild drama speedrun."
+    },
+    {
+      "id": "w202",
+      "text": "A hot take in #general."
+    },
+    {
+      "id": "w203",
+      "text": "A loot box with your name on it."
+    },
+    {
+      "id": "w204",
+      "text": "A mod who thinks they're a cop."
+    },
+    {
+      "id": "w205",
+      "text": "A patch that fixes nothing."
+    },
+    {
+      "id": "w206",
+      "text": "A raid that ended in tears."
+    },
+    {
+      "id": "w207",
+      "text": "A server boost for clout."
+    },
+    {
+      "id": "w208",
+      "text": "A teammate who never talks."
+    },
+    {
+      "id": "w209",
+      "text": "A voice crack at the worst time."
+    },
+    {
+      "id": "w210",
+      "text": "A weeb in the wild."
+    },
+    {
+      "id": "w211",
+      "text": "Accidental full-screen share."
+    },
+    {
+      "id": "w212",
+      "text": "Adult content in the wrong channel."
+    },
+    {
+      "id": "w213",
+      "text": "All caps and no chill."
+    },
+    {
+      "id": "w214",
+      "text": "An apology that makes it worse."
+    },
+    {
+      "id": "w215",
+      "text": "An ego the size of a raid."
+    },
+    {
+      "id": "w216",
+      "text": "An empty inventory and full regrets."
+    },
+    {
+      "id": "w217",
+      "text": "Another \"quick\" match."
+    },
+    {
+      "id": "w218",
+      "text": "Arguing with a bot."
+    },
+    {
+      "id": "w219",
+      "text": "Asking for nudes in DMs."
+    },
+    {
+      "id": "w220",
+      "text": "Being carried and complaining."
+    },
+    {
+      "id": "w221",
+      "text": "Being the only sober one."
+    },
+    {
+      "id": "w222",
+      "text": "Blaming the healer again."
+    },
+    {
+      "id": "w223",
+      "text": "Blue-screening mid-climax."
+    },
+    {
+      "id": "w224",
+      "text": "Boasting about a bronze rank."
+    },
+    {
+      "id": "w225",
+      "text": "Buying a skin instead of food."
+    },
+    {
+      "id": "w226",
+      "text": "Calling it a \"strategic retreat\"."
+    },
+    {
+      "id": "w227",
+      "text": "Camping the spawn point."
+    },
+    {
+      "id": "w228",
+      "text": "Catching feelings for a bot."
+    },
+    {
+      "id": "w229",
+      "text": "Cheating with a walkthrough."
+    },
+    {
+      "id": "w230",
+      "text": "Clutching with one health."
+    },
+    {
+      "id": "w231",
+      "text": "Confusing incest with ince."
+    },
+    {
+      "id": "w232",
+      "text": "Connecting on a deeper level."
+    },
+    {
+      "id": "w233",
+      "text": "Crying over fictional characters."
+    },
+    {
+      "id": "w234",
+      "text": "Deleting the guild by accident."
+    },
+    {
+      "id": "w235",
+      "text": "Disrespecting the meta."
+    },
+    {
+      "id": "w236",
+      "text": "Doing your taxes in binary."
+    },
+    {
+      "id": "w237",
+      "text": "Donating to a streamer you hate."
+    },
+    {
+      "id": "w238",
+      "text": "Down bad for pixels."
+    },
+    {
+      "id": "w239",
+      "text": "Dying to the tutorial boss."
+    },
+    {
+      "id": "w240",
+      "text": "Eating instant ramen at 4 AM."
+    },
+    {
+      "id": "w241",
+      "text": "Editing the wiki for clout."
+    },
+    {
+      "id": "w242",
+      "text": "Explaining your kink to HR."
+    },
+    {
+      "id": "w243",
+      "text": "Falling for a scam link."
+    },
+    {
+      "id": "w244",
+      "text": "Fan service and poor decisions."
+    },
+    {
+      "id": "w245",
+      "text": "Flirting in the ticket channel."
+    },
+    {
+      "id": "w246",
+      "text": "Forgetting your own alt's password."
+    },
+    {
+      "id": "w247",
+      "text": "Getting doxxed by your own post."
+    },
+    {
+      "id": "w248",
+      "text": "Going commando in the office."
+    },
+    {
+      "id": "w249",
+      "text": "Griefing the new player."
+    },
+    {
+      "id": "w250",
+      "text": "Hiding your screen from your mom."
+    },
+    {
+      "id": "w251",
+      "text": "Incest jokes that go too far."
+    },
+    {
+      "id": "w252",
+      "text": "Joining a voice channel to lurk."
+    },
+    {
+      "id": "w253",
+      "text": "Karma farming in comments."
+    },
+    {
+      "id": "w254",
+      "text": "Keeping a spreadsheet of exes."
+    },
+    {
+      "id": "w255",
+      "text": "Kicking the AFK guy."
+    },
+    {
+      "id": "w256",
+      "text": "Making it weird in general."
+    },
+    {
+      "id": "w257",
+      "text": "Marrying your guildmate for buffs."
+    },
+    {
+      "id": "w258",
+      "text": "Naked modding at 3 AM."
+    },
+    {
+      "id": "w259",
+      "text": "One more episode at 4 AM."
+    },
+    {
+      "id": "w260",
+      "text": "Sending nudes to the wrong person."
+    },
+    {
+      "id": "w261",
+      "text": "Sharing a bed with a stranger."
+    },
+    {
+      "id": "w262",
+      "text": "Shipping the bug to prod."
+    },
+    {
+      "id": "w263",
+      "text": "Shitposting in the announcements."
+    },
+    {
+      "id": "w264",
+      "text": "Showing up uninvited."
+    },
+    {
+      "id": "w265",
+      "text": "Skipping the safe word."
+    },
+    {
+      "id": "w266",
+      "text": "Smashing the keyboard."
+    },
+    {
+      "id": "w267",
+      "text": "Sneaking out at 3 AM."
+    },
+    {
+      "id": "w268",
+      "text": "Snitching on your own team."
+    },
+    {
+      "id": "w269",
+      "text": "Speedrunning a breakup."
+    },
+    {
+      "id": "w270",
+      "text": "Spilling coffee on the server."
+    },
+    {
+      "id": "w271",
+      "text": "Stalking your ex's new main."
+    },
+    {
+      "id": "w272",
+      "text": "Starting drama for content."
+    },
+    {
+      "id": "w273",
+      "text": "Stealing the last slice."
+    },
+    {
+      "id": "w274",
+      "text": "Staying up for a drop."
+    },
+    {
+      "id": "w275",
+      "text": "Streaming your therapy session."
+    },
+    {
+      "id": "w276",
+      "text": "Subtweeting the whole server."
+    },
+    {
+      "id": "w277",
+      "text": "Swearing at a cutscene."
+    },
+    {
+      "id": "w278",
+      "text": "Taking a screenshot of the L."
+    },
+    {
+      "id": "w279",
+      "text": "Teabagging your best friend."
+    },
+    {
+      "id": "w280",
+      "text": "The admin's secret alt."
+    },
+    {
+      "id": "w281",
+      "text": "The bot's last warning."
+    },
+    {
+      "id": "w282",
+      "text": "The group's worst decision."
+    },
+    {
+      "id": "w283",
+      "text": "The mod's onlyfans."
+    },
+    {
+      "id": "w284",
+      "text": "The server's biggest liar."
+    },
+    {
+      "id": "w285",
+      "text": "The TTS voice calling you out."
+    },
+    {
+      "id": "w286",
+      "text": "The voice chat's collective sigh."
+    },
+    {
+      "id": "w287",
+      "text": "Thinking you're the main character."
+    },
+    {
+      "id": "w288",
+      "text": "Throwing the game for a friend."
+    },
+    {
+      "id": "w289",
+      "text": "Toxic in the friendlies."
+    },
+    {
+      "id": "w290",
+      "text": "Trusting a random link."
+    },
+    {
+      "id": "w291",
+      "text": "Typing without thinking."
+    },
+    {
+      "id": "w292",
+      "text": "Using a guide for a dating sim."
+    },
+    {
+      "id": "w293",
+      "text": "Using emotes to flirt."
+    },
+    {
+      "id": "w294",
+      "text": "Voting yourself MVP."
+    },
+    {
+      "id": "w295",
+      "text": "Wasting a revive on a troll."
+    },
+    {
+      "id": "w296",
+      "text": "Watching porn on the second monitor."
+    },
+    {
+      "id": "w297",
+      "text": "Whispering to your code."
+    },
+    {
+      "id": "w298",
+      "text": "Winning by being the last idiot."
+    },
+    {
+      "id": "w299",
+      "text": "Writing a thesis on a meme."
+    },
+    {
+      "id": "w300",
+      "text": "Yelling at a loading bar."
+    },
+    {
+      "id": "w301",
+      "text": "Your alt account's identity."
+    },
+    {
+      "id": "w302",
+      "text": "Zero regard for the meta."
+    },
+    {
+      "id": "w303",
+      "text": "A backseat driver with no license."
+    },
+    {
+      "id": "w304",
+      "text": "A bot that judges your life."
+    },
+    {
+      "id": "w305",
+      "text": "A commit message that says \"fix\"."
+    },
+    {
+      "id": "w306",
+      "text": "A gamer girl who is a dude."
+    },
+    {
+      "id": "w307",
+      "text": "A guild drama recap."
+    },
+    {
+      "id": "w308",
+      "text": "A hot take nobody asked for."
+    },
+    {
+      "id": "w309",
+      "text": "A loot box you can't afford."
+    },
+    {
+      "id": "w310",
+      "text": "A mod who bans for fun."
+    },
+    {
+      "id": "w311",
+      "text": "A patch that breaks everything."
+    },
+    {
+      "id": "w312",
+      "text": "A raid that ended in divorce."
+    },
+    {
+      "id": "w313",
+      "text": "A server boost you regret."
+    },
+    {
+      "id": "w314",
+      "text": "A teammate who is always late."
+    },
+    {
+      "id": "w315",
+      "text": "A voice crack during a confession."
+    },
+    {
+      "id": "w316",
+      "text": "A weeb in denial."
+    },
+    {
+      "id": "w317",
+      "text": "Accidental screen share of porn."
+    },
+    {
+      "id": "w318",
+      "text": "Adult content in the welcome channel."
+    },
+    {
+      "id": "w319",
+      "text": "All caps and zero context."
+    },
+    {
+      "id": "w320",
+      "text": "An ego bigger than the raid."
+    },
+    {
+      "id": "w321",
+      "text": "An empty wallet and full regrets."
+    },
+    {
+      "id": "w322",
+      "text": "Another \"quick\" game."
+    },
+    {
+      "id": "w323",
+      "text": "Arguing with a loading screen."
+    },
+    {
+      "id": "w324",
+      "text": "Asking for feet pics in DMs."
+    },
+    {
+      "id": "w325",
+      "text": "Being carried and still toxic."
+    },
+    {
+      "id": "w326",
+      "text": "Being the only one sober."
+    },
+    {
+      "id": "w327",
+      "text": "Blaming the healer, again."
+    },
+    {
+      "id": "w328",
+      "text": "Blue-screening mid-raid."
+    },
+    {
+      "id": "w329",
+      "text": "Boasting about a wood rank."
+    },
+    {
+      "id": "w330",
+      "text": "Buying a skin over rent."
+    },
+    {
+      "id": "w331",
+      "text": "Calling it a \"tactical retreat\"."
+    },
+    {
+      "id": "w332",
+      "text": "Camping the spawn."
+    },
+    {
+      "id": "w333",
+      "text": "Catching feelings for an NPC."
+    },
+    {
+      "id": "w334",
+      "text": "Cheating with a guide."
+    },
+    {
+      "id": "w335",
+      "text": "Clutching with one HP."
+    },
+    {
+      "id": "w336",
+      "text": "Confusing roleplay with reality."
+    },
+    {
+      "id": "w337",
+      "text": "Connecting on a weird level."
+    },
+    {
+      "id": "w338",
+      "text": "Crying over a JPEG."
+    },
+    {
+      "id": "w339",
+      "text": "Deleting the server by accident."
+    },
+    {
+      "id": "w340",
+      "text": "Disrespecting the patch notes."
+    },
+    {
+      "id": "w341",
+      "text": "Doing your taxes in hex."
+    },
+    {
+      "id": "w342",
+      "text": "Donating to a streamer you dislike."
+    },
+    {
+      "id": "w343",
+      "text": "Down bad for a bot."
+    },
+    {
+      "id": "w344",
+      "text": "Dying to a tutorial."
+    },
+    {
+      "id": "w345",
+      "text": "Eating ramen at 5 AM."
+    },
+    {
+      "id": "w346",
+      "text": "Editing the wiki for attention."
+    },
+    {
+      "id": "w347",
+      "text": "Explaining your kink to Discord."
+    },
+    {
+      "id": "w348",
+      "text": "Falling for a phishing link."
+    },
+    {
+      "id": "w349",
+      "text": "Fan service and bad choices."
+    },
+    {
+      "id": "w350",
+      "text": "Feeling attacked by a GIF."
+    },
+    {
+      "id": "w351",
+      "text": "Forgetting your alt's password."
+    },
+    {
+      "id": "w352",
+      "text": "Getting doxxed by yourself."
+    },
+    {
+      "id": "w353",
+      "text": "Getting roasted by a tip."
+    },
+    {
+      "id": "w354",
+      "text": "Going commando to the office."
+    },
+    {
+      "id": "w355",
+      "text": "Hiding your screen from parents."
+    },
+    {
+      "id": "w356",
+      "text": "A 3 AM confessional in VC."
+    },
+    {
+      "id": "w357",
+      "text": "A ban appeal written in crayon."
+    },
+    {
+      "id": "w358",
+      "text": "A channel named #questionable."
+    },
+    {
+      "id": "w359",
+      "text": "A crash report with feelings."
+    },
+    {
+      "id": "w360",
+      "text": "A gamer chair with stains."
+    },
+    {
+      "id": "w361",
+      "text": "A guildie's browser history."
+    },
+    {
+      "id": "w362",
+      "text": "A hot mic during a boss fight."
+    },
+    {
+      "id": "w363",
+      "text": "A junior dev's first deploy."
+    },
+    {
+      "id": "w364",
+      "text": "A loot dispute in court."
+    },
+    {
+      "id": "w365",
+      "text": "A mod's alt account exposed."
+    },
+    {
+      "id": "w366",
+      "text": "A patch that nerfs joy."
+    },
+    {
+      "id": "w367",
+      "text": "A raid leader crying."
+    },
+    {
+      "id": "w368",
+      "text": "A screenshot taken at the wrong time."
+    },
+    {
+      "id": "w369",
+      "text": "A senior dev's rubber duck."
+    },
+    {
+      "id": "w370",
+      "text": "A server rule nobody reads."
+    },
+    {
+      "id": "w371",
+      "text": "A streamer's accidental tab."
+    },
+    {
+      "id": "w372",
+      "text": "A teammate's open mic."
+    },
+    {
+      "id": "w373",
+      "text": "A voice crack mid-sentence."
+    },
+    {
+      "id": "w374",
+      "text": "Accidentally sending a sticker."
+    },
+    {
+      "id": "w375",
+      "text": "Adult swim in the pool."
+    },
+    {
+      "id": "w376",
+      "text": "An AFK player's excuse."
+    },
+    {
+      "id": "w377",
+      "text": "An all-caps apology."
+    },
+    {
+      "id": "w378",
+      "text": "An anime body pillow."
+    },
+    {
+      "id": "w379",
+      "text": "An apology in #announcements."
+    },
+    {
+      "id": "w380",
+      "text": "An empty bank account."
+    },
+    {
+      "id": "w381",
+      "text": "An ex's new main character."
+    },
+    {
+      "id": "w382",
+      "text": "An NPC with better AI."
+    },
+    {
+      "id": "w383",
+      "text": "Arguing with the TTS."
+    },
+    {
+      "id": "w384",
+      "text": "Asking the bot for a hug."
+    },
+    {
+      "id": "w385",
+      "text": "Being the guild's therapist."
+    },
+    {
+      "id": "w386",
+      "text": "Blaming the router again."
+    },
+    {
+      "id": "w387",
+      "text": "Breaking the fourth wall."
+    },
+    {
+      "id": "w388",
+      "text": "Buying a body pillow."
+    },
+    {
+      "id": "w389",
+      "text": "Camping the objective."
+    },
+    {
+      "id": "w390",
+      "text": "Catching a vibe in VC."
+    },
+    {
+      "id": "w391",
+      "text": "Cheating at a party game."
+    },
+    {
+      "id": "w392",
+      "text": "Clutching with a potato PC."
+    },
+    {
+      "id": "w393",
+      "text": "Confessing in the ticket channel."
+    },
+    {
+      "id": "w394",
+      "text": "Crying over a login screen."
+    },
+    {
+      "id": "w395",
+      "text": "Deleting your search history."
+    },
+    {
+      "id": "w396",
+      "text": "Denying the obvious."
+    },
+    {
+      "id": "w397",
+      "text": "Disrespecting the healer."
+    },
+    {
+      "id": "w398",
+      "text": "Doing crimes for XP."
+    },
+    {
+      "id": "w399",
+      "text": "Donating to a troll."
+    },
+    {
+      "id": "w400",
+      "text": "Down bad for a voice."
+    }
+  ]
+}
