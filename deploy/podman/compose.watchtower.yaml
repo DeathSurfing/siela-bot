@@ -1,5 +1,8 @@
 # Optional watchtower overlay: auto-deploy `main` from GitHub.
 #
+# The watchtower image pins podman-compose 1.5.x: 1.3.x waits for the one-shot
+# `migrate` service to reach "running", which hangs deploys.
+#
 # The watchtower container needs three host resources:
 #   - the checkout, mounted at the same absolute path it has on the host so
 #     host-side `podman build` resolves build contexts;
