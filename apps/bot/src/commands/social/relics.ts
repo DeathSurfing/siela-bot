@@ -82,6 +82,13 @@ function initialPageFromArgs(args: string[]): { target: string | null; page: num
   return { target: null, page: parsePage(first) };
 }
 
+function relicWindowLabel(settings: RelicSettingsRow): string {
+  const start = `${String(settings.startHourIst).padStart(2, "0")}:00`;
+  const endMinutes = settings.startHourIst * 60 + settings.durationMinutes;
+  const end = `${String(Math.floor(endMinutes / 60) % 24).padStart(2, "0")}:${String(endMinutes % 60).padStart(2, "0")}`;
+  return `${start} to ${end} IST`;
+}
+
 function auctionUnavailable(settings: RelicSettingsRow) {
   const now = new Date();
   const window = relicDropWindow(now, {
@@ -96,17 +103,21 @@ function auctionUnavailable(settings: RelicSettingsRow) {
     startingBid: settings.startingBid,
     minIncrement: settings.minIncrement,
   });
-  const body = [
+  const lines = [
     settings.enabled && settings.channelId
-      ? `The auction channel is <#${settings.channelId}>. Auctions run daily from **${settings.startHourIst}:00** to **${String(settings.startHourIst + Math.floor(settings.durationMinutes / 60)).padStart(2, "0")}:${String(settings.durationMinutes % 60).padStart(2, "0")} IST**.`
+      ? `The auction channel is <#${settings.channelId}>. Auctions run daily from **${relicWindowLabel(settings)}**.`
       : settings.channelId
         ? "Relic auctions are paused. An admin can resume them with `/relics enable`."
         : "Relic auctions are not configured yet. An admin can run `/relics channel`.",
-    now.getTime() >= window.start.getTime() && now.getTime() < window.end.getTime()
-      ? "The auction window is open now. The drop starts on the next scheduler tick."
-      : `Next window opens <t:${Math.floor(next.getTime() / 1000)}:R>.`,
-  ].join("\n");
-  return card({ title: "No relic is live", body });
+  ];
+  if (settings.enabled && settings.channelId) {
+    lines.push(
+      now.getTime() >= window.start.getTime() && now.getTime() < window.end.getTime()
+        ? "The auction window is open now. The drop starts on the next scheduler tick."
+        : `Next window opens <t:${Math.floor(next.getTime() / 1000)}:R>.`,
+    );
+  }
+  return card({ title: "No relic is live", body: lines.join("\n") });
 }
 
 export const relicsCommand: Command = {
@@ -430,7 +441,7 @@ export const relicsCommand: Command = {
         await relics.setPingRole(ctx.guild.id, pingRoleId, ctx.author.id);
         await ctx.reply(
           success(
-            `Relic auctions will run in <#${channel.id}> every day from 4:00 PM to 5:00 PM IST.${
+            `Relic auctions will run in <#${channel.id}> daily.${
               pingRoleId ? ` Pings will mention <@&${pingRoleId}>.` : " Auction pings are cleared."
             }`,
           ),
@@ -471,22 +482,20 @@ export const relicsCommand: Command = {
           startingBid: settings.startingBid,
           minIncrement: settings.minIncrement,
         });
-        const nextDrop =
-          now.getTime() >= window.start.getTime() && now.getTime() < window.end.getTime()
-            ? "window open now"
-            : `<t:${Math.floor(next.getTime() / 1000)}:R>`;
         await ctx.reply({
           ...card({
             title: "Relic vault configuration",
             body: [
-              `**Status** · ${settings.enabled ? "enabled" : "paused"}`,
-              `**Channel** · ${settings.channelId ? `<#${settings.channelId}>` : "not set"}`,
-              `**Window** · ${settings.startHourIst}:00 IST for ${settings.durationMinutes} minutes`,
+              `**Status** · ${settings.enabled ? "Active" : "Paused"}`,
+              `**Channel** · ${settings.channelId ? `<#${settings.channelId}>` : "Not set"}`,
+              `**Window** · ${relicWindowLabel(settings)}`,
               `**Starting bid** · ${formatSc(settings.startingBid)}`,
               `**Minimum raise** · ${formatSc(settings.minIncrement)}`,
-              `**Ping role** · ${settings.pingRoleId ? `<@&${settings.pingRoleId}>` : "none"}`,
+              `**Ping role** · ${settings.pingRoleId ? `<@&${settings.pingRoleId}>` : "Not set"}`,
               `**Minted relics** · ${summary.cards} (${summary.legendary} legendary, ${summary.mythic} mythic)`,
-              `**Next drop** · ${nextDrop}`,
+              ...(settings.enabled && settings.channelId
+                ? [`**Next drop** · ${now.getTime() >= window.start.getTime() && now.getTime() < window.end.getTime() ? "window open now" : `<t:${Math.floor(next.getTime() / 1000)}:R>`}`]
+                : []),
               "",
               "-# Saturday and Sunday roll a richer rarity table. Genesis serials #0001–#0010 earn double yield.",
             ].join("\n"),

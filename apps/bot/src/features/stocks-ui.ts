@@ -10,7 +10,7 @@ import {
 } from "discord.js";
 import type { ReplyPayload } from "../framework/types.js";
 import type { EconomyService } from "./economy.js";
-import { changePct, sparkline, type MarketView, type PortfolioView } from "./stocks.js";
+import { changePct, sparkline, type MarketView, type PortfolioView, type StockBuyResult, type StockSellResult } from "./stocks.js";
 import { actionRow, card, error, success } from "./ui.js";
 
 function signed(value: number, digits = 1): string {
@@ -35,7 +35,7 @@ export function marketPayload(view: MarketView): ReplyPayload {
   const updated = Math.floor(view.lastTickAt.getTime() / 1000);
   const body = [
     `**SIELA-6** · ${view.index.toFixed(1)} · ${signed(view.indexChange)}%`,
-    `-# Hourly prices · 1% fee per trade · last tick <t:${updated}:R>`,
+    `-# Hourly prices · 1% fee, minimum 1 SC · last tick <t:${updated}:R>`,
     "",
     ...lines,
   ].join("\n");
@@ -141,6 +141,15 @@ export function tradeErrorMessage(cause: unknown): string {
   }
 }
 
+export function tradeResultMessage(result: StockBuyResult): string;
+export function tradeResultMessage(result: StockSellResult): string;
+export function tradeResultMessage(result: StockBuyResult | StockSellResult): string {
+  if ("pnl" in result) {
+    return `Sold ${result.shares} ${result.symbol} at ${coins(result.price)}. Fee ${coins(result.fee)}. P/L ${signed(result.pnl)} SC. Balance ${coins(result.balance)}.`;
+  }
+  return `Bought ${result.shares} ${result.symbol} at ${coins(result.price)}. Fee ${coins(result.fee)}. Balance ${coins(result.balance)}.`;
+}
+
 export async function handleStockButton(
   economy: EconomyService,
   interaction: ButtonInteraction,
@@ -188,19 +197,11 @@ export async function handleStockModal(
   try {
     if (side === "buy") {
       const result = await economy.buyStock(guildId, interaction.user.id, symbol, shares);
-      await interaction.editReply(
-        success(
-          `Bought ${result.shares} ${result.symbol} at ${coins(result.price)}. Fee ${coins(result.fee)}. Balance ${coins(result.balance)}.`,
-        ),
-      );
+      await interaction.editReply(success(tradeResultMessage(result)));
       return;
     }
     const result = await economy.sellStock(guildId, interaction.user.id, symbol, shares);
-    await interaction.editReply(
-      success(
-        `Sold ${result.shares} ${result.symbol} at ${coins(result.price)}. Fee ${coins(result.fee)}. P/L ${signed(result.pnl)} SC. Balance ${coins(result.balance)}.`,
-      ),
-    );
+    await interaction.editReply(success(tradeResultMessage(result)));
   } catch (cause) {
     await interaction.editReply(error(tradeErrorMessage(cause)));
   }

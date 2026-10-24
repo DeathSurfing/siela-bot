@@ -5,6 +5,7 @@ import {
   marketPayload,
   portfolioPayload,
   tradeErrorMessage,
+  tradeResultMessage,
 } from "../../features/stocks-ui.js";
 import { success } from "../../features/ui.js";
 
@@ -72,18 +73,10 @@ export const stocksCommand: Command = {
       try {
         if (action === "buy") {
           const result = await economy.buyStock(ctx.guild.id, ctx.author.id, symbol, shares);
-          await ctx.reply(
-            success(
-              `Bought ${result.shares} ${result.symbol} at ${coins(result.price)}. Fee ${coins(result.fee)}. Balance ${coins(result.balance)}.`,
-            ),
-          );
+          await ctx.reply(success(tradeResultMessage(result)));
         } else {
           const result = await economy.sellStock(ctx.guild.id, ctx.author.id, symbol, shares);
-          await ctx.reply(
-            success(
-              `Sold ${result.shares} ${result.symbol} at ${coins(result.price)}. Fee ${coins(result.fee)}. P/L ${result.pnl >= 0 ? "+" : ""}${result.pnl} SC. Balance ${coins(result.balance)}.`,
-            ),
-          );
+          await ctx.reply(success(tradeResultMessage(result)));
         }
       } catch (cause) {
         throw new UserError(tradeErrorMessage(cause));
