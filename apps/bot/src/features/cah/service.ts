@@ -140,6 +140,7 @@ export class CahService {
       whiteCards: pack.white.map((card) => card.id),
       blackCards: pack.black.map((card) => card.id),
     });
+    joinGame(game, options.host.id, options.host.displayName);
 
     const session: CahSession = {
       game,
@@ -174,15 +175,7 @@ export class CahService {
     const result = joinGame(session.game, member.id, member.displayName);
     if (!result.ok) throw new UserError(result.reason);
     await this.updateCard(session);
-    const augmented = session as CahSession & {
-      session: CahSession;
-      dmSent: boolean;
-      payload: ReplyPayload | null;
-    };
-    augmented.session = session;
-    augmented.dmSent = false;
-    augmented.payload = null;
-    return augmented;
+    return session;
   }
 
   leave(guildId: string, userId: string): void {
@@ -388,7 +381,7 @@ export class CahService {
       }
       if (action === "endcancel") {
         await interaction
-          .update(messageOptions({ components: [new ContainerBuilder().setAccentColor(UI_ACCENT).addTextDisplayComponents(text("## CAH")).addTextDisplayComponents(text("The game continues."))], flags: MessageFlags.IsComponentsV2 }, false))
+          .update(messageOptions(this.buildStatusPayload(session.game), false))
           .catch(() => undefined);
         return;
       }
@@ -615,10 +608,9 @@ export class CahService {
 
   private buildLobbyPayload(game: CahGameState): ReplyPayload {
     const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
-    container.addTextDisplayComponents(text("## Cards Against Humanity · Lobby"));
-    container.addTextDisplayComponents(text(`Host · <@${game.hostId}>`));
+    container.addTextDisplayComponents(text("## CAH · Lobby"));
     container.addTextDisplayComponents(
-      text(`Players ${game.players.size}/${game.maxPlayers} · Points goal ${game.pointsGoal}`),
+      text(`Host · <@${game.hostId}> · Players ${game.players.size}/${game.maxPlayers} · Goal ${game.pointsGoal}`),
     );
     container.addSeparatorComponents(separator());
     const playerList = [...game.players.values()]
@@ -661,9 +653,9 @@ export class CahService {
   private buildRoundPayload(game: CahGameState): ReplyPayload {
     const round = game.round!;
     const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
-    container.addTextDisplayComponents(text("## Cards Against Humanity · Round"));
+    container.addTextDisplayComponents(text("## CAH · Round"));
     container.addTextDisplayComponents(text(`Black card · ${this.cardText(round.blackCardId, "black")}`));
-    container.addTextDisplayComponents(text(`Judge · <@${round.judgeId}> · Phase · ${game.phase}`));
+    container.addTextDisplayComponents(text(`Judge · <@${round.judgeId}>`));
     container.addTextDisplayComponents(
       text(`Submissions · ${round.submissions.size}/${Math.max(1, game.players.size - 1)}`),
     );
@@ -685,7 +677,7 @@ export class CahService {
       if (winner) {
         const winnerPlayer = game.players.get(winner.playerId);
         container.addTextDisplayComponents(
-          text(`Winner · ${winnerPlayer?.displayName ?? winner.playerId} · ${this.cardText(winner.whiteCardIds[0] ?? "", "white")}`),
+          text(`Winner · ${winnerPlayer?.displayName ?? winner.playerId} · Slot ${round.winnerSlot}`),
         );
       }
     }
@@ -748,7 +740,7 @@ export class CahService {
     if (note) container.addTextDisplayComponents(text(note));
     const winner = [...game.players.values()].sort((a, b) => b.score - a.score)[0];
     if (winner) {
-      container.addTextDisplayComponents(text(`Winner · ${winner.displayName} · ${winner.score} points`));
+      container.addTextDisplayComponents(text(`Winner · ${winner.displayName}`));
     }
     container.addSeparatorComponents(separator());
     const scores = [...game.players.values()]
@@ -771,9 +763,6 @@ export class CahService {
       : false;
     const canSubmit = game.status === "active" && game.phase === "submit" && !isJudge && !alreadySubmitted;
 
-    for (const cardId of player.hand) {
-      container.addTextDisplayComponents(text(`- ${this.cardText(cardId, "white")}`));
-    }
     if (!player.hand.length) {
       container.addTextDisplayComponents(text("-# No cards in hand."));
     }
@@ -781,7 +770,7 @@ export class CahService {
     const buttons = player.hand.map((cardId) =>
       new ButtonBuilder()
         .setCustomId(`cah:submit:${game.id}:${cardId}`)
-        .setLabel(this.cardText(cardId, "white").slice(0, 40) || cardId)
+        .setLabel(this.cardText(cardId, "white") || cardId)
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(!canSubmit),
     );
@@ -837,16 +826,16 @@ export class CahService {
 
   private buildRulesPayload(): ReplyPayload {
     const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
-    container.addTextDisplayComponents(text("## Cards Against Humanity · Rules"));
+    container.addTextDisplayComponents(text("## CAH · Rules"));
     container.addTextDisplayComponents(
       text(
         [
-          "**Players** · 3 to 10.",
-          "**Goal** · First to 7 points (host can change).",
+          `**Players** · ${MIN_PLAYERS} to ${MAX_PLAYERS}.`,
+          `**Goal** · First to the points goal (default ${DEFAULT_POINTS_GOAL}).`,
           "**Rounds** · Judge draws a black card; everyone else submits one white card.",
           "**Judging** · The judge picks the funniest submission; that player scores.",
           "**Judge** · Rotates each round; the judge sits out submissions.",
-          "**Hand** · 7 white cards, refilled after each round.",
+          `**Hand** · ${HAND_SIZE} white cards, refilled after each round.`,
           "**Controls** · Host can force reveal, advance rounds, and end the game.",
         ].join("\n"),
       ),
