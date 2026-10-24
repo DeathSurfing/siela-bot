@@ -201,6 +201,7 @@ async function main(): Promise<void> {
       return;
     }
 
+    const deployStartedAt = Date.now();
     const result = await runDeploy(mode, deps);
     if (!result.ok) {
       await fail(target, local, mode, result.detail);
@@ -213,6 +214,7 @@ async function main(): Promise<void> {
       return;
     }
 
+    const durationSec = Math.round((Date.now() - deployStartedAt) / 1000);
     state.lastDeployedSha = target;
     state.lastDeployedAt = nowIso();
     state.lastMode = mode;
@@ -220,8 +222,8 @@ async function main(): Promise<void> {
     state.blockedSha = null;
     state.blockedReason = null;
     await persist();
-    logger.info({ sha: short(target), mode }, "deploy complete");
-    await send(`✅ watchtower deployed ${short(target)} (${mode})`);
+    logger.info({ sha: short(target), mode, durationSec }, "deploy complete");
+    await send(`✅ watchtower deployed ${short(target)} (${mode}, ${durationSec}s)`);
   }
 
   async function tick(force = false): Promise<void> {
