@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { MessageFlags } from "discord.js";
 import { TambolaService } from "./service.js";
 import { rowNumbers, ticketNumbers } from "./game.js";
 
@@ -229,5 +230,83 @@ describe("TambolaService", () => {
     expect(game.claims.get("top_line")?.userId).toBe("player");
     expect(interaction.getState().replied).not.toBeNull();
     service.stop();
+  });
+
+  it("updates the ticket page through ticketpage interaction", async () => {
+    const { service, channel, guild } = createService();
+    const host = fakeMember("host", "Host");
+    const player = fakeMember("player", "Player");
+    const session = await service.host({
+      guild: guild as never,
+      channel: channel as never,
+      host: host as never,
+      maxPlayers: 20,
+      autoMark: false,
+      voiceChannelId: null,
+    });
+    await service.join("guild", player as never);
+    await service.join("guild", host as never);
+    const game = session.game;
+    game.addTicket("player");
+    game.addTicket("player");
+    const interaction = fakeInteraction(`tambola:ticketpage:${game.id}:2`, "player");
+    await service.handleInteraction(interaction as never);
+    const updated = interaction.getState().updated as { components?: unknown[] } | null;
+    expect(updated).not.toBeNull();
+    expect(JSON.stringify(updated)).toContain("Page 2");
+    service.stop();
+  });
+
+  it("replies ephemerally with the board payload", async () => {
+    const { service, channel, guild } = createService();
+    const host = fakeMember("host", "Host");
+    const session = await service.host({
+      guild: guild as never,
+      channel: channel as never,
+      host: host as never,
+      maxPlayers: 20,
+      autoMark: false,
+      voiceChannelId: null,
+    });
+    const game = session.game;
+    const interaction = fakeInteraction(`tambola:board:${game.id}`, "host", { guild });
+    await service.handleInteraction(interaction as never);
+    const replied = interaction.getState().replied as { flags?: number } | null;
+    expect(replied).not.toBeNull();
+    expect(JSON.stringify(replied)).toContain("Called board");
+    expect(JSON.stringify(replied)).toContain("```");
+    expect((replied?.flags ?? 0) & MessageFlags.Ephemeral).toBe(MessageFlags.Ephemeral);
+    service.stop();
+  });
+
+  it("replies ephemerally with the players payload", async () => {
+    const { service, channel, guild } = createService();
+    const host = fakeMember("host", "Host");
+    const session = await service.host({
+      guild: guild as never,
+      channel: channel as never,
+      host: host as never,
+      maxPlayers: 20,
+      autoMark: false,
+      voiceChannelId: null,
+    });
+    const game = session.game;
+    const interaction = fakeInteraction(`tambola:players:${game.id}`, "host", { guild });
+    await service.handleInteraction(interaction as never);
+    const replied = interaction.getState().replied as { flags?: number } | null;
+    expect(replied).not.toBeNull();
+    expect(JSON.stringify(replied)).toContain("Players");
+    expect((replied?.flags ?? 0) & MessageFlags.Ephemeral).toBe(MessageFlags.Ephemeral);
+    service.stop();
+  });
+
+  it("replies for stale games on ticketpage, board, and players", async () => {
+    const { service } = createService();
+    for (const action of ["ticketpage:1", "board", "players"]) {
+      const interaction = fakeInteraction(`tambola:${action}:NOPE`, "host");
+      await service.handleInteraction(interaction as never);
+      const replied = interaction.getState().replied as { content?: string } | null;
+      expect(replied?.content).toBe("That Tambola game is no longer active.");
+    }
   });
 });
