@@ -51,6 +51,22 @@
         "typescript": "7.0.2",
       },
     },
+    "apps/watchtower": {
+      "name": "@siela/watchtower",
+      "version": "0.1.0",
+      "dependencies": {
+        "@siela/config": "workspace:*",
+        "pino": "^10.4.0",
+        "zod": "^4.6.7",
+      },
+      "devDependencies": {
+        "@types/node": "^26.6.5",
+        "bun-types": "^1.4.4",
+        "tsup": "^9.0.0",
+        "typescript": "7.0.2",
+        "vitest": "^5.0.5",
+      },
+    },
     "packages/config": {
       "name": "@siela/config",
       "version": "0.1.0",
@@ -327,6 +343,8 @@
     "@siela/mcp": ["@siela/mcp@workspace:apps/mcp"],
 
     "@siela/shared": ["@siela/shared@workspace:packages/shared"],
+
+    "@siela/watchtower": ["@siela/watchtower@workspace:apps/watchtower"],
 
     "@snazzah/davey": ["@snazzah/davey@0.1.12", "", { "optionalDependencies": { "@snazzah/davey-android-arm-eabi": "0.1.12", "@snazzah/davey-android-arm64": "0.1.12", "@snazzah/davey-darwin-arm64": "0.1.12", "@snazzah/davey-darwin-x64": "0.1.12", "@snazzah/davey-freebsd-x64": "0.1.12", "@snazzah/davey-linux-arm-gnueabihf": "0.1.12", "@snazzah/davey-linux-arm64-gnu": "0.1.12", "@snazzah/davey-linux-arm64-musl": "0.1.12", "@snazzah/davey-linux-x64-gnu": "0.1.12", "@snazzah/davey-linux-x64-musl": "0.1.12", "@snazzah/davey-wasm32-wasi": "0.1.12", "@snazzah/davey-win32-arm64-msvc": "0.1.12", "@snazzah/davey-win32-ia32-msvc": "0.1.12", "@snazzah/davey-win32-x64-msvc": "0.1.12" } }, "sha512-V+NlX5931RwVamZhhEfZekMdcvXDKdMAmHW1AuGaykVQsNyBOq3bpmGpoKRBDCYgFWKIufJ0Dcg3m4cYhvUy6g=="],
 

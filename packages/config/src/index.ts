@@ -7,6 +7,22 @@ const optionalSnowflake = z.preprocess(
   snowflake.optional(),
 );
 
+const optionalString = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().optional(),
+);
+const optionalUrl = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().url().optional(),
+);
+const booleanString = (defaultValue: "true" | "false") =>
+  z
+    .enum(["true", "false"])
+    .default(defaultValue)
+    .transform((value) => value === "true");
+
+const UPSTREAM_REPO_URL = "https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot.git";
+
 const logLevel = z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]);
 
 function readSecret(name: string, env: NodeJS.ProcessEnv): string | undefined {
@@ -73,6 +89,36 @@ const mcpSchema = z.object({
   TZ: z.string().default("UTC"),
 });
 
+const watchtowerSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  LOG_LEVEL: logLevel.default("info"),
+  TZ: z.string().default("UTC"),
+
+  // Source of truth. Point this at a fork to follow the fork instead.
+  WATCHTOWER_REPO_URL: z.string().min(1).default(UPSTREAM_REPO_URL),
+  WATCHTOWER_BRANCH: z.string().min(1).default("main"),
+  // Absolute path of the checkout on the host. The compose overlay mounts it
+  // at the same path so host Podman can resolve build contexts.
+  WATCHTOWER_REPO_DIR: z.string().min(1, "WATCHTOWER_REPO_DIR is required"),
+
+  WATCHTOWER_INTERVAL_SEC: z.coerce.number().int().min(15).max(86_400).default(60),
+  WATCHTOWER_CI_GATE: z.enum(["auto", "required", "off"]).default("auto"),
+  WATCHTOWER_CI_GRACE_SEC: z.coerce.number().int().min(0).max(3_600).default(180),
+  WATCHTOWER_CI_TIMEOUT_SEC: z.coerce.number().int().min(60).max(7_200).default(900),
+  WATCHTOWER_HEALTH_TIMEOUT_SEC: z.coerce.number().int().min(30).max(1_800).default(180),
+  WATCHTOWER_BUILD_NETWORK: optionalString,
+  WATCHTOWER_RUN_MIGRATIONS: booleanString("true"),
+  WATCHTOWER_DRY_RUN: booleanString("false"),
+  WATCHTOWER_STATE_DIR: z.string().min(1).default("/state"),
+
+  WATCHTOWER_HTTP_HOST: z.string().default("0.0.0.0"),
+  WATCHTOWER_HTTP_PORT: z.coerce.number().int().min(1).max(65_535).default(3003),
+  WATCHTOWER_TOKEN: z.string().min(16, "WATCHTOWER_TOKEN must be at least 16 characters"),
+  WATCHTOWER_NOTIFY_WEBHOOK_URL: optionalUrl,
+
+  GH_TOKEN: optionalString,
+});
+
 export type BotConfig = z.infer<typeof botSchema> & {
   adminRoleIds: string[];
   botOwnerId: string | null;
@@ -83,6 +129,8 @@ export type BotConfig = z.infer<typeof botSchema> & {
 export type McpConfig = z.infer<typeof mcpSchema> & {
   allowedOrigins: string[];
 };
+
+export type WatchtowerConfig = z.infer<typeof watchtowerSchema>;
 
 export function loadBotConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
   const parsed = botSchema.safeParse({
@@ -124,4 +172,19 @@ export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env): McpConfig {
     ...parsed.data,
     allowedOrigins: csv(parsed.data.MCP_ALLOWED_ORIGINS),
   };
+}
+
+export function loadWatchtowerConfig(env: NodeJS.ProcessEnv = process.env): WatchtowerConfig {
+  const parsed = watchtowerSchema.safeParse({
+    ...env,
+    GH_TOKEN: readSecret("GH_TOKEN", env) ?? env.GH_TOKEN,
+    WATCHTOWER_TOKEN: readSecret("WATCHTOWER_TOKEN", env) ?? env.WATCHTOWER_TOKEN,
+  });
+  if (!parsed.success) {
+    const details = parsed.error.issues
+      .map((issue) => `${issue.path.join(".") || "env"}: ${issue.message}`)
+      .join("\n");
+    throw new Error(`Invalid watchtower environment:\n${details}`);
+  }
+  return parsed.data;
 }

@@ -19,7 +19,7 @@ The project is open source under the MIT license. Contributions, bug reports, an
 - **Delulu.** Generates short bias scenarios through a local vLLM service. Falls back to Hugging Face, Pollinations, and built-in scenarios when the local service is unavailable.
 - **TTS.** Reads enabled voice-channel chat with KittenTTS Nano ONNX and the Bruno voice. Edge TTS remains available as a fallback.
 - **Community features.** Welcome cards, auto-role, temporary voice channels, confessions, birthdays, friendship levels, family trees, activity tracking, and scheduled prayer-time voice events.
-- **Operations.** Runs as a rootless Podman stack with PostgreSQL, Valkey, vLLM, KittenTTS, health endpoints, and an optional MCP server. The bot registers 63 commands and exposes 51 MCP tools.
+- **Operations.** Runs as a rootless Podman stack with PostgreSQL, Valkey, vLLM, KittenTTS, health endpoints, an optional MCP server, and an optional watchtower that auto-deploys commits from GitHub. The bot registers 63 commands and exposes 51 MCP tools.
 
 ## Architecture
 

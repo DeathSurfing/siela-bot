@@ -37,6 +37,7 @@ The host, the Podman daemon, and the deployment `.env` are trusted. Discord user
 | Secret leakage | Generated `.env` has mode 600 and is ignored by Git. Pino redaction is enabled. | A secret committed to Git history remains in forks and clones after removal. |
 | Data loss | PostgreSQL volume plus `pg_dump` backups. The runbook documents a restore drill. | There is no automated backup or point-in-time recovery. |
 | Container compromise | Rootless Podman, non-root users, read-only root filesystems where configured, dropped capabilities, and `no-new-privileges`. | PostgreSQL, Valkey, vLLM, KittenTTS, and the migration container are not fully hardened. |
+| Watchtower auto-deploy | Disabled by default. When enabled, it mounts the host Podman socket, polls a configured GitHub branch, and only deploys after CI passes. Deploys are health-gated and roll back to the previous commit. | The socket is root-equivalent on the host, and the container runs code from the configured repository. A compromised branch, token, or watchtower image compromises the host. Only follow a repository you control, scope `GH_TOKEN` to that repository, and keep the CI gate enabled. |
 
 ## Security assumptions
 

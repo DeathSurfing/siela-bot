@@ -8,9 +8,14 @@
 #   DISCORD_CLIENT_ID  (otherwise derived from the token)
 #   GUILD_ID           (otherwise auto-detected by the bot)
 #   MCP_ENABLED        (true starts MCP; default false)
+#   WATCHTOWER_ENABLED (true starts the auto-deploy watchtower; default false)
+#   WATCHTOWER_REPO_URL (fork URL to follow instead of upstream)
+#   WATCHTOWER_BRANCH  (default main)
+#   WATCHTOWER_REPO_DIR (default: this checkout)
+#   GH_TOKEN           (private forks and CI-gate API headroom)
 #   FORCE=1            (overwrite an existing .env)
 #
-# The script generates POSTGRES_PASSWORD and MCP_TOKEN,
+# The script generates POSTGRES_PASSWORD, MCP_TOKEN, and WATCHTOWER_TOKEN,
 # then writes deploy/podman/.env with mode 600.
 
 set -euo pipefail
@@ -59,6 +64,12 @@ fi
 
 POSTGRES_PASSWORD="$(rand_secret)"
 MCP_TOKEN="$(rand_secret)"
+WATCHTOWER_TOKEN="$(rand_secret)"
+
+WATCHTOWER_ENABLED="${WATCHTOWER_ENABLED:-false}"
+WATCHTOWER_REPO_DIR="${WATCHTOWER_REPO_DIR:-${ROOT_DIR}}"
+WATCHTOWER_REPO_URL="${WATCHTOWER_REPO_URL:-https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot.git}"
+WATCHTOWER_BRANCH="${WATCHTOWER_BRANCH:-main}"
 
 umask 077
 cat >"${ENV_FILE}" <<EOF
@@ -74,6 +85,13 @@ DATABASE_URL=postgres://siela:${POSTGRES_PASSWORD}@postgres:5432/siela
 MCP_ENABLED=${MCP_ENABLED:-false}
 MCP_TOKEN=${MCP_TOKEN}
 MCP_URL=http://mcp:8080/mcp
+
+WATCHTOWER_ENABLED=${WATCHTOWER_ENABLED}
+WATCHTOWER_REPO_URL=${WATCHTOWER_REPO_URL}
+WATCHTOWER_BRANCH=${WATCHTOWER_BRANCH}
+WATCHTOWER_REPO_DIR=${WATCHTOWER_REPO_DIR}
+WATCHTOWER_TOKEN=${WATCHTOWER_TOKEN}
+GH_TOKEN=${GH_TOKEN:-}
 
 
 CONTROL_API_URL=http://bot-control:3001
@@ -92,7 +110,8 @@ fi
 echo "wrote ${ENV_FILE} (mode 600)"
 echo "client id: ${CLIENT_ID}"
 echo "guild id: ${GUILD_ID:-auto-detect}"
-echo "generated: POSTGRES_PASSWORD, MCP_TOKEN"
+echo "generated: POSTGRES_PASSWORD, MCP_TOKEN, WATCHTOWER_TOKEN"
 echo "MCP: ${MCP_ENABLED:-false} (set MCP_ENABLED=true in deploy/podman/.env to enable)"
+echo "WATCHTOWER: ${WATCHTOWER_ENABLED} (follows ${WATCHTOWER_REPO_URL} ${WATCHTOWER_BRANCH})"
 echo "invite: ${INVITE_URL}"
 echo "next: scripts/podman-stack.sh up -d --build"

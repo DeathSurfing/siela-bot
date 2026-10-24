@@ -1,0 +1,38 @@
+# Siela Bot — watchtower image
+# Build from the repository root:
+#   podman build -f deploy/podman/Containerfile.watchtower -t siela-watchtower .
+#
+# The image needs the host Podman socket at runtime. It mounts the checkout at
+# the same absolute path as the host so `podman build` resolves build contexts.
+
+FROM oven/bun:1 AS bun-base
+
+FROM oven/bun:1 AS build
+WORKDIR /app
+COPY package.json bun.lock bunfig.toml tsconfig.base.json ./
+COPY apps/bot/package.json apps/bot/package.json
+COPY apps/mcp/package.json apps/mcp/package.json
+COPY apps/watchtower/package.json apps/watchtower/package.json
+COPY packages/config/package.json packages/config/package.json
+COPY packages/db/package.json packages/db/package.json
+COPY packages/shared/package.json packages/shared/package.json
+RUN bun install --frozen-lockfile
+COPY apps/watchtower apps/watchtower
+COPY packages/config packages/config
+RUN bun run --cwd apps/watchtower build
+
+FROM debian:13-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates git libstdc++6 podman podman-compose \
+  && rm -rf /var/lib/apt/lists/*
+COPY --from=bun-base /usr/local/bin/bun /usr/local/bin/bun
+ENV NODE_ENV=production
+ENV HOME=/tmp
+ENV CONTAINER_HOST=unix:///run/podman/podman.sock
+ENV BUN_INSTALL_CACHE_DIR=/state/bun-cache
+WORKDIR /app
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/apps/watchtower/dist ./dist
+COPY --from=build /app/apps/watchtower/package.json ./package.json
+EXPOSE 3003
+CMD ["bun", "dist/index.js"]
