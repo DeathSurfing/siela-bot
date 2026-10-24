@@ -22,9 +22,12 @@ COPY packages/config packages/config
 RUN bun run --cwd apps/watchtower build
 
 FROM debian:13-slim AS runtime
+# podman-compose 1.3.x (Debian package) waits for one-shot dependencies to be
+# "running", which never happens for the migrate service. Pin 1.5.x from pip.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates git libstdc++6 podman podman-compose \
-  && rm -rf /var/lib/apt/lists/*
+      ca-certificates git libstdc++6 podman python3-pip \
+  && pip3 install --no-cache-dir --break-system-packages podman-compose==1.5.0 \
+  && rm -rf /var/lib/apt/lists/* /root/.cache
 COPY --from=bun-base /usr/local/bin/bun /usr/local/bin/bun
 ENV NODE_ENV=production
 ENV HOME=/tmp
