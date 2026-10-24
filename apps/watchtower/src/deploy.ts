@@ -123,6 +123,13 @@ async function deployFull(deps: DeployDeps): Promise<DeployResult> {
   );
   if (!bot.ok) return bot;
 
+  const tts = await buildImage(
+    deps,
+    "services/tts/Containerfile",
+    "localhost/siela-tts:latest",
+  );
+  if (!tts.ok) return tts;
+
   if (deps.mcpEnabled) {
     const mcp = await buildImage(
       deps,
@@ -140,7 +147,7 @@ async function deployFull(deps: DeployDeps): Promise<DeployResult> {
   const dependencies = await ensureDependencies(deps);
   if (!dependencies.ok) return dependencies;
 
-  const services = deps.mcpEnabled ? ["bot", "mcp"] : ["bot"];
+  const services = deps.mcpEnabled ? ["bot", "mcp", "tts"] : ["bot", "tts"];
   return composeUp(deps, services);
 }
 

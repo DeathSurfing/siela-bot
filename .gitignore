@@ -39,3 +39,7 @@ logs/
 # Licensed scheduled-event audio (keep only the README)
 apps/bot/assets/events/*
 !apps/bot/assets/events/README.md
+.local-tts/
+
+# Rust
+target/

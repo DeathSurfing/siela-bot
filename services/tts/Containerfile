@@ -1,0 +1,40 @@
+# Siela TTS (Rust) — drop-in replacement for the Python KittenTTS service.
+# Multi-stage: Rust builder, slim Debian runtime.
+# Build from the repository root:
+#   podman build -f services/tts/Containerfile -t localhost/siela-tts-rs:latest .
+
+FROM docker.io/library/rust:1-trixie AS build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libespeak-ng-dev ca-certificates curl \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY services/tts/Cargo.toml services/tts/Cargo.lock services/tts/build.rs ./
+# Warm the dependency cache before copying real sources.
+RUN mkdir -p src && echo 'fn main() {}' > src/main.rs && echo '' > src/lib.rs \
+  && cargo fetch && cargo build --release \
+  && rm -rf src target
+COPY services/tts/src ./src
+RUN cargo build --release
+
+FROM docker.io/library/debian:trixie-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libespeak-ng1 espeak-ng-data ca-certificates curl \
+  && rm -rf /var/lib/apt/lists/*
+ARG KITTEN_TTS_MODEL=KittenML/kitten-tts-nano-0.8
+ENV MODEL_PATH=/models/kitten_tts_nano_v0_8.onnx \
+    VOICES_PATH=/models/voices.npz \
+    CONFIG_PATH=/models/config.json \
+    TTS_VOICE=Bruno \
+    TTS_SPEED=1.0 \
+    HOST=0.0.0.0 \
+    PORT=8000 \
+    RUST_LOG=warn
+WORKDIR /app
+COPY --from=build /app/target/release/siela-tts /app/siela-tts
+# Bake the model into the image, mirroring deploy/podman/tts/Containerfile.tts.
+RUN mkdir -p /models && cd /models \
+  && curl -sSL -o kitten_tts_nano_v0_8.onnx "https://huggingface.co/${KITTEN_TTS_MODEL}/resolve/main/kitten_tts_nano_v0_8.onnx" \
+  && curl -sSL -o voices.npz "https://huggingface.co/${KITTEN_TTS_MODEL}/resolve/main/voices.npz" \
+  && curl -sSL -o config.json "https://huggingface.co/${KITTEN_TTS_MODEL}/resolve/main/config.json"
+EXPOSE 8000
+CMD ["/app/siela-tts"]

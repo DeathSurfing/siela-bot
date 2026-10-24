@@ -26,6 +26,11 @@ describe("planDeploy", () => {
     expect(planDeploy(["apps/bot/assets/events/azan.ogg"])).toBe("full");
   });
 
+  it("rebuilds for TTS service changes", () => {
+    expect(planDeploy(["services/tts/src/main.rs"])).toBe("full");
+    expect(planDeploy(["deploy/podman/compose.yaml"])).toBe("full");
+  });
+
   it("treats an empty diff as no work", () => {
     expect(planDeploy([])).toBe("none");
   });

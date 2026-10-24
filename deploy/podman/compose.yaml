@@ -87,16 +87,16 @@ services:
   tts:
     image: localhost/siela-tts:latest
     build:
-      context: ./tts
-      dockerfile: Containerfile.tts
+      context: ../..
+      dockerfile: services/tts/Containerfile
     container_name: siela-tts
     networks: [data]
     environment:
-      KITTEN_TTS_MODEL: KittenML/kitten-tts-nano-0.8
+      # KITTEN_TTS_MODEL selects baked-in weights (image build arg).
       TTS_VOICE: Bruno
       TTS_SPEED: "1.0"
     restart: unless-stopped
-    mem_limit: 2g
+    mem_limit: 1g
 
   migrate:
     image: localhost/siela-bot:latest
