@@ -70,6 +70,7 @@ import { buildMusicPayload } from "./features/music-ui.js";
 import { LyricsService } from "./features/lyrics.js";
 import { buildLyricsPayload } from "./features/lyrics-ui.js";
 import { TambolaService } from "./features/tambola/service.js";
+import { CahService } from "./features/cah/service.js";
 import { TtsService } from "./features/tts.js";
 import { EconomyService } from "./features/economy.js";
 import { handleStockButton, handleStockModal } from "./features/stocks-ui.js";
@@ -145,6 +146,7 @@ export class SielaBot {
     );
     this.music = music;
     const tambola = new TambolaService(this.client, music, this.config, this.logger, economy);
+    const cah = new CahService(this.client, this.config, this.logger);
     const tts = new TtsService(music, this.config, this.logger);
     music.setVoiceBusyChecker((guildId) => tambola.isUsingVoice(guildId) || tts.isEnabled(guildId));
     const isBotInVoice = (guildId: string): boolean =>
@@ -194,6 +196,7 @@ export class SielaBot {
       music,
       lyrics,
       tambola,
+      cah,
       tts,
       voiceSfx,
       economy,
@@ -247,6 +250,7 @@ export class SielaBot {
     this.client.on(Events.ChannelDelete, (channel) => {
       if (channel.type === ChannelType.GuildVoice) void this.services.tempVc.onChannelDelete(channel.id);
       this.services.tambola.onChannelDelete(channel.id);
+      this.services.cah.onChannelDelete(channel.id);
     });
     this.client.on(Events.ChannelUpdate, (oldChannel, newChannel) => {
       if (newChannel.type === ChannelType.GuildVoice) {
@@ -414,6 +418,15 @@ export class SielaBot {
         interaction.customId.startsWith("tambola:")
       ) {
         await this.services.tambola.handleInteraction(interaction);
+        return;
+      }
+      if (
+        (interaction.isButton() ||
+          interaction.isStringSelectMenu() ||
+          interaction.isChannelSelectMenu()) &&
+        interaction.customId.startsWith("cah:")
+      ) {
+        await this.services.cah.handleInteraction(interaction);
         return;
       }
       if (interaction.isButton() && interaction.customId.startsWith("economy:bj:")) {
@@ -1082,6 +1095,7 @@ export class SielaBot {
   private async onMemberRemove(member: GuildMember | PartialGuildMember): Promise<void> {
     if (member.guild.id !== this.guildId) return;
     this.services.tambola.onMemberRemove(member.guild.id, member.user.id);
+    this.services.cah.onMemberRemove(member.guild.id, member.user.id);
     await Promise.allSettled([
       this.services.welcome.onMemberRemove(member),
       this.services.tempVc.onMemberRemove(member.guild, member.user.id),
@@ -1121,6 +1135,7 @@ export class SielaBot {
     await Promise.allSettled([this.controlServer.stop(), this.healthServer.stop()]);
     if (this.music) await this.music.shutdown().catch(() => undefined);
     this.services.tambola.stop();
+    this.services.cah.stop();
     this.services.tts.stop();
     this.services.voiceSfx.stop();
     this.services.tempVc.stop();

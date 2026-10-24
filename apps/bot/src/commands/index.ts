@@ -32,6 +32,7 @@ import { vcCommand } from "./voice/vc.js";
 import { moveallCommand } from "./voice/moveall.js";
 import { loveCalcCommand } from "./social/love.js";
 import { tambolaCommand } from "./social/tambola.js";
+import { cahCommand } from "./social/cah.js";
 import { relicsCommand, inventoryCommand, showcaseCommand } from "./social/relics.js";
 import {
   choduCommand,
@@ -71,6 +72,7 @@ export const commands: Command[] = [
   moveallCommand,
   loveCalcCommand,
   tambolaCommand,
+  cahCommand,
   relicsCommand,
   inventoryCommand,
   showcaseCommand,
