@@ -56,19 +56,13 @@ services:
     mem_limit: 256m
 
   llm:
-    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    image: ghcr.io/ggml-org/llama.cpp:server
     container_name: siela-llm
     networks: [edge, control]
     volumes:
       - llmcache:/root/.cache/huggingface
-      - /opt/nvidia-libs:/opt/nvidia-libs:ro
     environment:
-      LD_LIBRARY_PATH: /opt/nvidia-libs
       HF_HOME: /root/.cache/huggingface
-    devices:
-      - /dev/nvidia0:/dev/nvidia0
-      - /dev/nvidiactl:/dev/nvidiactl
-      - /dev/nvidia-uvm:/dev/nvidia-uvm
     command:
       - "--hf-repo"
       - "DeathSurfing/tinyTanLLM-delulu-gemma"
@@ -80,10 +74,8 @@ services:
       - "8000"
       - "-c"
       - "1024"
-      - "--n-gpu-layers"
-      - "99"
     restart: unless-stopped
-    mem_limit: 2g
+    mem_limit: 4g
 
   tts:
     image: localhost/siela-tts:latest
