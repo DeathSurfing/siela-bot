@@ -50,7 +50,7 @@ flowchart LR
 |---|---|---|
 | `postgres` | `postgres:17-alpine` | Data on `pgdata`; `data` network only |
 | `valkey` | `valkey/valkey:8-alpine` | Append-only cache; `VALKEY_URL=redis://valkey:6379` |
-| `llm` | `ghcr.io/ggerganov/llama.cpp:server-cuda` | GPU; model `DeathSurfing/tinyTanLLM-delulu-gemma` (`delulu-gemma-q4_k_m.gguf`, ctx 1024); weights cached in `llmcache` |
+| `llm` | `ghcr.io/ggml-org/llama.cpp:server-cuda` | GPU; model `DeathSurfing/tinyTanLLM-delulu-gemma` (`delulu-gemma-q4_k_m.gguf`, ctx 1024); weights cached in `llmcache` |
 | `tts` | `localhost/siela-tts:latest` | CPU; KittenTTS model baked at build; `/healthz`, `/synthesize`, `/synthesize-stream` |
 | `migrate` | `localhost/siela-bot:latest` | One-shot migration runner; exits after the schema is current |
 | `bot` | `localhost/siela-bot:latest` | `oven/bun` image with yt-dlp, mpv, and ffmpeg |

@@ -56,7 +56,7 @@ services:
     mem_limit: 256m
 
   llm:
-    image: ghcr.io/ggerganov/llama.cpp:server-cuda
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
     container_name: siela-llm
     networks: [edge, control]
     volumes:
