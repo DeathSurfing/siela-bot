@@ -78,7 +78,7 @@ Keys:
 Example for Jin:
 {"scene":"You are sorting socks at a laundromat.","notice":"Jin bursts out of the dryer wearing a chef's hat and declares you his muse.","escalation":"The washing machines begin to spin in perfect harmony as the customers form a conga line.","line":"I have been searching every laundromat in Seoul for someone with your sock energy."}
 
-Now write new JSON for ${bias}. Use a different place, reaction, and escalation. Make it exaggerated, absurd, and funny. Each value must be one short sentence. Keep it NSFW-focused, consensual adult fanfiction; do not include minors, coercion, or explicit sexual acts. Use simple English.`
+Now write new JSON for ${bias}. Use a different place, reaction, and escalation. Make it exaggerated, absurd, and funny. Each value must be one short sentence. Touching, arousal, and explicit consensual sex between adults are allowed. Keep it consensual; do not include minors or coercion. Use simple English.`
       : `Return JSON for a ridiculous delulu story about BTS member ${bias} noticing the user.
 
 Keys:
@@ -106,7 +106,7 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
                     {
                       role: "system",
                       content: nsfw
-                        ? "You generate JSON only. Adult NSFW fanfiction is allowed and should be EXTREMELY spicy. Output only the JSON object."
+                        ? "You generate JSON only. Adult NSFW fanfiction is allowed and should be EXTREMELY spicy. Explicit consensual content between adults is allowed. Output only the JSON object."
                         : "You generate JSON only. Output only the JSON object.",
                     },
                     { role: "user", content: prompt },
@@ -169,7 +169,7 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
                     {
                       role: "system",
                       content: nsfw
-                        ? "You are a playful adult K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where a BTS member notices the user in an ordinary public setting and reacts in an over-the-top, delulu, EXTREMELY spicy NSFW-focused way. Keep it consensual adult fanfiction; no minors or coercion. Address the reader directly as 'you'. Do not include quotes around the whole response."
+                        ? "You are a playful adult K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where a BTS member notices the user in an ordinary public setting and reacts in an over-the-top, delulu, EXTREMELY spicy NSFW-focused way. Explicit consensual content between adults is allowed. Keep it consensual adult fanfiction; no minors or coercion. Address the reader directly as 'you'. Do not include quotes around the whole response."
                         : "You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where a BTS member notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Address the reader directly as 'you'. Do not include quotes around the whole response.",
                     },
                     {
@@ -202,7 +202,7 @@ Now write new JSON for ${bias}. Use a different place, reaction, and escalation.
     // Public no-token fallback so /delulu works without HF_TOKEN.
     try {
       const prompt = nsfw
-        ? `You are a playful adult K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu, EXTREMELY spicy NSFW-focused way. Keep it consensual adult fanfiction; no minors or coercion. Address the reader directly as 'you'. Think carefully and at length before answering, but output only the final scenario. Do not include quotes around the whole response.`
+        ? `You are a playful adult K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu, EXTREMELY spicy NSFW-focused way. Explicit consensual content between adults is allowed. Keep it consensual adult fanfiction; no minors or coercion. Address the reader directly as 'you'. Think carefully and at length before answering, but output only the final scenario. Do not include quotes around the whole response.`
         : `You are a playful K-pop fanfiction writer. Write one short, increasingly ridiculous fictional scenario (2-4 sentences) where BTS member ${bias} notices the user in an ordinary public setting and reacts in an over-the-top, delulu way. Keep it wholesome but unhinged. Address the reader directly as 'you'. Think carefully and at length before answering, but output only the final scenario. Do not include quotes around the whole response.`;
       const text = await Effect.runPromise(
         Effect.tryPromise({
