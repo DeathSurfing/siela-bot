@@ -39,7 +39,7 @@ Commands: `economy balance|daily|work|transfer|top|shop|buy|coinflip|slots|black
 - `slots <amount>`: any pair pays 1.6x, triple pays 5x. The paytable returns about 96.8% of stakes, so slots are a sink rather than a faucet. Otherwise the bet is lost.
 - `blackjack <amount>`: bet spent up front; win pays 2x, blackjack pays 2.5x (floored), push returns the bet. One hand per user at a time. Games are in-memory only and are lost on restart.
 - All gambling commands cap a single bet at 10,000 SC.
-- Actually charged features: delulu starts at 5 SC SFW / 15 SC NSFW and doubles with each use that day (SFW 5, 10, 20, 40; NSFW 15, 30). SFW is capped at 4 uses/day and NSFW at 2 uses/day. Failed generations are refunded.
+- Actually charged features: delulu starts at 5 SC SFW / 15 SC NSFW and doubles with each use that day (SFW 5, 10, 20, 40; NSFW 15, 30, 60, ...). SFW is capped at 4 uses/day; NSFW has no daily cap and is limited only by coins. Failed generations are refunded.
 - Tambola extra ticket 25 SC; Tambola per-player auto-mark 10 SC; `premium_30d` 2000 SC for 30 days.
 - Relic auctions: bids are escrowed immediately and the winning bid is consumed; outbid bids are refunded. See [RELICS.md](RELICS.md).
 

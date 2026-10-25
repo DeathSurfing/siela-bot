@@ -53,7 +53,7 @@ Both reports note that no public bot documents a balance tuned for 10–50 daily
 | Sink | Cost | Why |
 |---|---:|---|
 | Delulu SFW | 5, 10, 20, 40 SC | Surge pricing doubles per daily use. Four uses cost 75 SC total. |
-| Delulu NSFW | 15, 30 SC | Two uses cost 45 SC total. |
+| Delulu NSFW | 15, 30, 60, ... SC | Uncapped; surge pricing doubles per daily use. Coins are the only limit. |
 | Tambola extra ticket | 25 SC | Optional extra chances. |
 | Tambola auto-mark | 10 SC | Convenience. |
 | Premium | 2,000 SC / 30 days | A long-term status goal. Premium is status-only. |
@@ -65,7 +65,7 @@ Both reports note that no public bot documents a balance tuned for 10–50 daily
 
 The old gate was a flat 5 SC / 15 SC. A active member could earn enough for many uses, and a wealthy member could run the model without limit. The new gate has two parts:
 
-1. The price doubles with each use that day. SFW: 5, 10, 20, 40. NSFW: 15, 30.
+1. The price doubles with each use that day. SFW: 5, 10, 20, 40 (capped at 4 uses/day). NSFW: 15, 30, 60, ... (no daily cap).
 2. A hard daily cap. SFW stops at four uses; NSFW stops at two.
 
 A failed generation is refunded and does not consume a use. The usage query subtracts refunded transactions by payment ID, so a model failure does not silently burn the daily quota.

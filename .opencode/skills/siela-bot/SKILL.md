@@ -98,7 +98,7 @@ Categories: `music`, `social`, `voice`, `utility`, `admin`.
 | Confessions | `features/confession.ts`, `commands/social/confess.ts`, `commands/admin/confession.ts` | Anonymous wall, moderation. |
 | Birthdays | `features/birthday.ts`, `commands/utility/birthday.ts` | Daily scheduler, optional wishes. |
 | Activity | `features/activity.ts`, `commands/utility/activity.ts` | Message/command/reaction/voice stats, retention. |
-| Delulu | `features/delulu.ts`, `commands/social/delulu.ts` | Local llama.cpp (`DeathSurfing/tinyTanLLM-delulu-gemma` Q4_K_M); surge-priced 5/15 SC base, doubling per daily use. SFW capped at 4/day, NSFW at 2/day. No HF token required. |
+| Delulu | `features/delulu.ts`, `commands/social/delulu.ts` | Local llama.cpp (`DeathSurfing/tinyTanLLM-delulu-gemma` Q4_K_M); surge-priced 5/15 SC base, doubling per daily use. SFW capped at 4/day, NSFW uncapped (coin-limited). No HF token required. |
 | Random VC | `features/randomVc.ts` | Rare 2–6h drop, synthetic SFX, skips when voice is busy. |
 | Economy | `features/economy.ts`, `features/stocks.ts`, `features/stocks-ui.ts`, economy/stocks commands | Siela Coins wallet, 50 SC starting balance, voice income, Tambola rewards, a six-stock bot market maker with a 1% fee, gambling sinks, shop, premium 2000 SC/30d. See `docs/ECONOMY.md`. |
 | Relics | `features/relics/*`, `commands/social/relics.ts` | Daily 4–5 PM IST one-of-one card auction, escrowed SC bids, weekend rarity boost, vaults, yield, showcases, trades. See `docs/RELICS.md`. |

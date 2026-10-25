@@ -36,10 +36,10 @@ export const deluluCommand: Command = {
     const used = await ctx.services.economy
       .countDeluluUsesToday(ctx.guild.id, ctx.author.id, kind)
       .catch(() => 0);
-    const limit = nsfw ? 2 : 4;
-    if (used >= limit) {
+    const limit = 4;
+    if (!nsfw && used >= limit) {
       throw new UserError(
-        `Daily ${nsfw ? "NSFW " : ""}delulu limit reached (${limit} uses). Try again tomorrow.`,
+        `Daily delulu limit reached (${limit} uses). Try again tomorrow.`,
       );
     }
     const cost = (nsfw ? 15 : 5) * 2 ** used;

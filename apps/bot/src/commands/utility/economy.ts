@@ -16,7 +16,7 @@ const MAX_BET = 10_000;
 
 const GLOBAL_SHOP = [
   { key: "delulu", name: "Delulu", price: 5, category: "AI", purchasable: false, description: "Per use, doubling each day: 5, 10, 20, 40 SC." },
-  { key: "delulu_nsfw", name: "Delulu NSFW", price: 15, category: "AI", purchasable: false, description: "Per use, doubling each day: 15, 30 SC." },
+  { key: "delulu_nsfw", name: "Delulu NSFW", price: 15, category: "AI", purchasable: false, description: "Per use, doubling each day: 15, 30, 60, ... SC. No daily cap." },
   { key: "tambola_ticket", name: "Tambola ticket", price: 25, category: "Tambola", purchasable: true, description: "Buy an extra ticket in the current Tambola lobby." },
   { key: "tambola_automark", name: "Tambola auto-mark", price: 10, category: "Tambola", purchasable: true, description: "Enable auto-marking for all of your tickets." },
   { key: "premium_30d", name: "Premium (30 days)", price: 2000, category: "Premium", purchasable: true, description: "Grant 30 days of premium perks." },

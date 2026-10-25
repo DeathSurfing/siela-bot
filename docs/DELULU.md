@@ -17,7 +17,7 @@ Only step 4 throwing counts as generation failure (practically unreachable).
 
 ## Costs and refunds
 
-- SFW: 5 SC. NSFW (`/delulu nsfw` or `delulu nsfw/true/on/1`): 15 SC.
+- SFW: 5 SC, capped at 4 uses/day. NSFW (`/delulu nsfw` or `delulu nsfw/true/on/1`): 15 SC, no daily cap — surge pricing (doubling per use) and coin balance are the only limits.
 - Charged via `economy.spend` before generation; insufficient funds returns "You need {cost} SC to run delulu...".
 - On generation failure the cost is refunded via `economy.award` (`delulu_refund`); a failed refund is written to the audit log (`delulu.refund_failed`).
 
