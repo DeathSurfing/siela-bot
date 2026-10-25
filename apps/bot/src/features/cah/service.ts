@@ -663,9 +663,7 @@ export class CahService {
     if (game.phase === "judge" || game.phase === "reveal") {
       const slots = [...round.submissions.entries()]
         .map(([slot, submission]) => {
-          const shown = game.phase === "reveal"
-            ? this.cardText(submission.whiteCardIds[0] ?? "", "white")
-            : "Hidden";
+          const shown = this.cardText(submission.whiteCardIds[0] ?? "", "white");
           return `Slot ${slot} · ${shown}`;
         })
         .join("\n");
