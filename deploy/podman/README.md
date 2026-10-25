@@ -18,7 +18,7 @@ The bot container does not require GPU access. Only the `llm` service receives t
 ```mermaid
 flowchart LR
   BOT[bot]
-  LLM[vLLM :8000]
+  LLM[llama.cpp :8000]
   PG[(PostgreSQL)]
   VK[(Valkey)]
   TTS[KittenTTS]
@@ -50,7 +50,7 @@ flowchart LR
 |---|---|---|
 | `postgres` | `postgres:17-alpine` | Data on `pgdata`; `data` network only |
 | `valkey` | `valkey/valkey:8-alpine` | Append-only cache; `VALKEY_URL=redis://valkey:6379` |
-| `llm` | `vllm/vllm-openai:v0.6.3` | GPU; model `Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3`; weights cached in `llmcache` |
+| `llm` | `ghcr.io/ggerganov/llama.cpp:server-cuda` | GPU; model `DeathSurfing/tinyTanLLM-delulu-gemma` (`delulu-gemma-q4_k_m.gguf`, ctx 1024); weights cached in `llmcache` |
 | `tts` | `localhost/siela-tts:latest` | CPU; KittenTTS model baked at build; `/healthz`, `/synthesize`, `/synthesize-stream` |
 | `migrate` | `localhost/siela-bot:latest` | One-shot migration runner; exits after the schema is current |
 | `bot` | `localhost/siela-bot:latest` | `oven/bun` image with yt-dlp, mpv, and ffmpeg |

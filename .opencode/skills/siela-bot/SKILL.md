@@ -30,7 +30,7 @@ apps/bot (discord.js)
   ├─ Fastify health/metrics :3002
   ├─ PostgreSQL via Drizzle
   ├─ Valkey via Bun Redis client
-  ├─ optional local vLLM (delulu)
+  ├─ optional local llama.cpp (delulu)
   └─ optional local KittenTTS (tts)
         ▲
 apps/mcp (optional, no Discord or DB client)
@@ -98,7 +98,7 @@ Categories: `music`, `social`, `voice`, `utility`, `admin`.
 | Confessions | `features/confession.ts`, `commands/social/confess.ts`, `commands/admin/confession.ts` | Anonymous wall, moderation. |
 | Birthdays | `features/birthday.ts`, `commands/utility/birthday.ts` | Daily scheduler, optional wishes. |
 | Activity | `features/activity.ts`, `commands/utility/activity.ts` | Message/command/reaction/voice stats, retention. |
-| Delulu | `features/delulu.ts`, `commands/social/delulu.ts` | Local vLLM (`Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3`); surge-priced 5/15 SC base, doubling per daily use. SFW capped at 4/day, NSFW at 2/day. No HF token required. |
+| Delulu | `features/delulu.ts`, `commands/social/delulu.ts` | Local llama.cpp (`DeathSurfing/tinyTanLLM-delulu-gemma` Q4_K_M); surge-priced 5/15 SC base, doubling per daily use. SFW capped at 4/day, NSFW at 2/day. No HF token required. |
 | Random VC | `features/randomVc.ts` | Rare 2–6h drop, synthetic SFX, skips when voice is busy. |
 | Economy | `features/economy.ts`, `features/stocks.ts`, `features/stocks-ui.ts`, economy/stocks commands | Siela Coins wallet, 50 SC starting balance, voice income, Tambola rewards, a six-stock bot market maker with a 1% fee, gambling sinks, shop, premium 2000 SC/30d. See `docs/ECONOMY.md`. |
 | Relics | `features/relics/*`, `commands/social/relics.ts` | Daily 4–5 PM IST one-of-one card auction, escrowed SC bids, weekend rarity boost, vaults, yield, showcases, trades. See `docs/RELICS.md`. |
@@ -248,7 +248,7 @@ The init script prints the invite URL. MCP is off by default; set `MCP_ENABLED=t
 
 - `postgres` — Postgres 17, `pgdata` volume.
 - `valkey` — Valkey 8, `valkeydata` volume.
-- `llm` — vLLM server (`Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3`) for delulu, `llmcache` volume.
+- `llm` — llama.cpp server (`DeathSurfing/tinyTanLLM-delulu-gemma` Q4_K_M, ctx 1024) for delulu, `llmcache` volume.
 - `tts` — KittenTTS Nano ONNX service (voice Bruno), Edge TTS fallback in bot.
 - `migrate` — one-shot `node dist/scripts/migrate.js`.
 - `bot` — Discord bot + control API + health/metrics.
@@ -386,7 +386,7 @@ podman exec siela-postgres pg_dump -U siela -Fc siela \
 - `docs/ECONOMY.md` — Siela Coins, pricing, premium.
 - `docs/RELICS.md` — relic cards, daily auction, bidding, vaults, yield, trades.
 - `docs/TTS.md` — KittenTTS service, voices, fallback, `/tts`.
-- `docs/DELULU.md` — vLLM delulu generation and costs.
+- `docs/DELULU.md` — llama.cpp delulu generation and costs.
 - `docs/RUNBOOK.md` — deploy, updates, backups, remote Podman, troubleshooting.
 - `docs/MCP.md` — MCP transports, clients, tool groups.
 - `docs/THREAT-MODEL.md` — security boundaries.

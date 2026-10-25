@@ -50,7 +50,7 @@ podman exec siela-bot python3 -c "import urllib.request; print(urllib.request.ur
 podman exec siela-postgres pg_isready -U "${POSTGRES_USER:-siela}" -d "${POSTGRES_DB:-siela}"
 podman exec siela-valkey valkey-cli ping
 
-# vLLM (OpenAI-compatible; no auth on the compose network)
+# llama.cpp server (OpenAI-compatible; no auth on the compose network)
 podman exec siela-bot python3 -c "import urllib.request; print(urllib.request.urlopen('http://llm:8000/health', timeout=30).status)"
 
 # KittenTTS service
@@ -203,7 +203,7 @@ podman system connection remove siela-server
 - **Bot is not in the guild**: invite it with the `bot` and `applications.commands` scopes and `permissions=322292816`. Reuse the URL printed by `scripts/podman-init.sh`.
 - **Music does not play**: check `podman exec siela-bot yt-dlp --version` and `podman exec siela-bot mpv --version`. Music uses yt-dlp + mpv, not Lavalink. Spotify tracks are resolved through Spotify's public oEmbed metadata, and Spotify playlists/albums (first 50 tracks) are read from Spotify's public embed metadata; each track is then matched to a YouTube result. No Spotify credentials are required.
 - **Tambola TTS is silent**: check the lobby card's TTS line. Tambola needs `Connect` and `Speak` in the selected voice channel. First check the KittenTTS service (`http://tts:8000/healthz` and `/synthesize` per Service checks above) and `TTS_SERVICE_URL`/`TTS_STREAM`/`TTS_BACKEND`/`TTS_VOICE` in `.env`. Edge TTS is the fallback path: test it with `podman exec siela-bot python3 -m edge_tts --voice en-IN-NeerjaNeural --text "test" --write-media /tmp/tambola-test.mp3`, then inspect `podman logs siela-bot | grep -i tambola`.
-- **LLM features (delulu) fail**: check the `siela-llm` container (`podman logs siela-llm`) and `http://llm:8000/health` per Service checks; vLLM needs the GPU devices and the `llmcache` volume.
+- **LLM features (delulu) fail**: check the `siela-llm` container (`podman logs siela-llm`) and `http://llm:8000/health` per Service checks; llama.cpp needs the GPU devices and the `llmcache` volume.
 - **Migrations fail**: run `./scripts/podman-stack.sh run --rm migrate` and read the output; it retries DB readiness 30 times and honors `MIGRATIONS_DIR` if set.
 - **MCP is not running**: it is optional and off by default. Set `MCP_ENABLED=true` in `deploy/podman/.env`, then run `scripts/podman-stack.sh up -d`.
 - **MCP unreachable from the host**: it is on the internal `mcp` network by default. Use `compose.mcp.yaml` plus `compose.host.yaml` for `127.0.0.1:8080`, or run the MCP client as a container on `siela_mcp`.

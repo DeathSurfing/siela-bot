@@ -16,10 +16,10 @@ The project is open source under the MIT license. Contributions, bug reports, an
 - **Economy.** Tracks Siela Coins in a PostgreSQL ledger. Supports daily rewards, work, voice and Tambola income, transfers, gambling, a shop, premium passes, a six-stock exchange, and surge-priced Delulu with daily AI caps.
 - **Siela Relics.** Auctions one procedurally generated, one-of-one meme card every day from 4:00 PM to 5:00 PM IST. Escrowed SC bidding, weekend rarity boosts, permanent vaults, passive yield, showcase profiles, and player trades.
 - **Tambola.** Runs 90-ball games with private DM tickets, line and full-house claims, paid extra tickets, paid auto-marking, and spoken number calls.
-- **Delulu.** Generates short bias scenarios through a local vLLM service. Falls back to Hugging Face, Pollinations, and built-in scenarios when the local service is unavailable.
+- **Delulu.** Generates short bias scenarios through a local llama.cpp service. Falls back to Hugging Face, Pollinations, and built-in scenarios when the local service is unavailable.
 - **TTS.** Reads enabled voice-channel chat with KittenTTS Nano ONNX and the Bruno voice. Edge TTS remains available as a fallback.
 - **Community features.** Welcome cards, auto-role, temporary voice channels, confessions, birthdays, friendship levels, family trees, activity tracking, and scheduled prayer-time voice events.
-- **Operations.** Runs as a rootless Podman stack with PostgreSQL, Valkey, vLLM, KittenTTS, health endpoints, an optional MCP server, and an optional watchtower that auto-deploys commits from GitHub. The bot registers 63 commands and exposes 51 MCP tools.
+- **Operations.** Runs as a rootless Podman stack with PostgreSQL, Valkey, llama.cpp, KittenTTS, health endpoints, an optional MCP server, and an optional watchtower that auto-deploys commits from GitHub. The bot registers 63 commands and exposes 51 MCP tools.
 
 ## Architecture
 
@@ -32,7 +32,7 @@ flowchart LR
   REG --> FEAT[Feature services]
   FEAT --> PG[(PostgreSQL)]
   FEAT --> VK[(Valkey)]
-  FEAT --> LLM[Local vLLM<br/>Delulu]
+  FEAT --> LLM[Local llama.cpp<br/>Delulu]
   FEAT --> TTS[KittenTTS service]
   FEAT --> EXT[YouTube, SoundCloud,<br/>Spotify, LRCLIB, Aladhan]
   FEAT --> MEM[In-memory state<br/>Tambola, blackjack, cooldowns]
@@ -46,7 +46,7 @@ The bot is one long-lived Bun process. The control API and health server run ins
 
 ## Quick start
 
-The full production stack targets Linux with Podman 5 or newer and an NVIDIA GPU for the local vLLM service. Local development works without a GPU.
+The full production stack targets Linux with Podman 5 or newer and an NVIDIA GPU for the local LLM service. Local development works without a GPU.
 
 ```bash
 git clone https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot.git
@@ -72,7 +72,7 @@ The complete first-run checklist, including Discord intents, invite permissions,
 | Discord client | discord.js |
 | Database | PostgreSQL 17 with Drizzle ORM and Bun SQL |
 | Cache and queues | Valkey 8, optional |
-| Local LLM | vLLM with an OpenAI-compatible API |
+| Local LLM | llama.cpp server with an OpenAI-compatible API |
 | Local TTS | KittenTTS Nano ONNX, Edge TTS fallback |
 | Music | yt-dlp, mpv, ffmpeg |
 | Containers | Rootless Podman and Podman Compose |

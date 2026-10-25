@@ -8,7 +8,7 @@
 
 Tried in order; each step must return usable text or the next step runs:
 
-1. Local vLLM (`LLM_URL`, `POST /v1/chat/completions`): model `LLM_MODEL`, default `"default"`. Compose (`deploy/podman/compose.yaml`) serves `Goekdeniz-Guelmez/Josiefied-Qwen2.5-1.5B-Instruct-abliterated-v3` on `vllm/vllm-openai:v0.6.3` with `LLM_URL=http://llm:8000`. JSON-schema response, max 256 tokens, 20s timeout, 2 retries. Parsed into `scene/notice/escalation/line` and composed as sentences.
+1. Local llama.cpp (`LLM_URL`, `POST /v1/chat/completions`): model `LLM_MODEL`, default `"default"`. Compose (`deploy/podman/compose.yaml`) serves `DeathSurfing/tinyTanLLM-delulu-gemma` (`delulu-gemma-q4_k_m.gguf`, 1.7 GB) on `llama.cpp:server-cuda` with `LLM_URL=http://llm:8000`, context 1024, full GPU offload. JSON-schema response, max 256 tokens, 20s timeout, 2 retries. Parsed into `scene/notice/escalation/line` and composed as sentences.
 2. Hugging Face router (`https://router.huggingface.co/v1/chat/completions`, needs `HF_TOKEN`): model `huihui-ai/Qwen2.5-0.5B-Instruct-abliterated-v3`. Max 140 tokens, 25s timeout, 1 retry. Returned as-is after stripping `<think>` blocks.
 3. Pollinations (`https://text.pollinations.ai/...`, no token): 20s timeout, 1 retry. Responses containing "free limit reached" or "please wait" are discarded.
 4. Static fallback: one of 5 SFW (or 5 NSFW) hardcoded scenarios, prefixed with the bias name. Always succeeds.

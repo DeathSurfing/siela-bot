@@ -18,10 +18,10 @@ flowchart TD
 
 | Path | Requirements | What works |
 |---|---|---|
-| Container deployment | Linux, Podman 5+, a compose provider, NVIDIA GPU, `/opt/nvidia-libs` | Full stack, including local vLLM and KittenTTS |
+| Container deployment | Linux, Podman 5+, a compose provider, NVIDIA GPU, `/opt/nvidia-libs` | Full stack, including local LLM and KittenTTS |
 | Local development | Bun 1.4, Node 24 tooling, PostgreSQL 17, optional Valkey | Bot, commands, database, music, and fallback TTS/LLM paths |
 
-The checked-in compose stack defines a GPU-backed vLLM service. It does not provide a supported no-GPU production overlay. If you do not have an NVIDIA GPU, use local development. Delulu then falls back to public or built-in scenarios, and TTS can use Edge TTS.
+The checked-in compose stack defines a GPU-backed LLM service (llama.cpp server). It does not provide a supported no-GPU production overlay. If you do not have an NVIDIA GPU, use local development. Delulu then falls back to public or built-in scenarios, and TTS can use Edge TTS.
 
 ## 2. Discord application setup
 

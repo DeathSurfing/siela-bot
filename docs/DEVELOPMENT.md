@@ -199,7 +199,7 @@ ffmpeg -version
 
 If a binary is outside `PATH`, set `YTDLP_PATH`, `MPV_PATH`, or `FFMPEG_PATH`. `MUSIC_BACKEND=mpv` is the default. `MUSIC_BACKEND=ffmpeg` uses the ffmpeg playback path. `!ping` reports music status, and a failed binary check logs `<backend> backend not available`.
 
-### vLLM
+### Local LLM
 
 `/delulu` uses `LLM_URL` when set. The compose service exposes `http://llm:8000`. Local development can leave `LLM_URL` unset and use the fallback chain in [DELULU.md](DELULU.md).
 
