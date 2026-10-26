@@ -7,8 +7,8 @@ export const testCommand: Command = {
   name: "test",
   category: "admin",
   description: "Run the full scheduled voice event workflow for testing.",
-  usage: "<azan|anthem|hanumanchalisa>",
-  examples: ["test azan", "test anthem", "test hanumanchalisa"],
+  usage: "<azan|anthem|hanumanchalisa|church|monastery|gurudwara>",
+  examples: ["test azan", "test anthem", "test hanumanchalisa", "test church", "test monastery", "test gurudwara"],
   cooldownMs: 2_000,
   async execute(ctx: CommandContext) {
     if (!TEST_USER_IDS.has(ctx.author.id)) {
@@ -17,7 +17,7 @@ export const testCommand: Command = {
     }
     const kind = ctx.args[0];
     if (!kind) {
-      await ctx.reply({ content: "Usage: `test <azan|anthem|hanumanchalisa>`", ephemeral: true });
+      await ctx.reply({ content: "Usage: `test <azan|anthem|hanumanchalisa|church|monastery|gurudwara>`", ephemeral: true });
       return;
     }
     const message = await ctx.reply({ content: `Running scheduled event test: **${kind}**…` });

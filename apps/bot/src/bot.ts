@@ -171,6 +171,8 @@ export class SielaBot {
       this.config.EVENT_SCHEDULE_ENABLED,
       this.config.EVENT_PRAYER,
       isVoiceBusy,
+      this.config.YTDLP_PATH,
+      this.config.FFMPEG_PATH,
     );
     const activity = new ActivityService(this.dbHandle.db, friendship, tempVc, music, this.logger, economy);
     const leveling = new LevelingService(this.dbHandle.db, settings, this.client, this.logger);

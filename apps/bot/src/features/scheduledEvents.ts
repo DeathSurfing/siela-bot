@@ -1,3 +1,4 @@
+import { spawn, type ChildProcess } from "node:child_process";
 import { createReadStream, existsSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -21,7 +22,8 @@ type Prayer = "Fajr" | "Dhuhr" | "Asr" | "Maghrib" | "Isha";
 interface Phase {
   key: string;
   channelName: string;
-  audioName: string;
+  audioName?: string;
+  youtubeUrl?: string;
   offsetMs: number;
 }
 
@@ -31,6 +33,24 @@ const PHASES: Phase[] = [
   { key: "azan", channelName: "masjid", audioName: "azan", offsetMs: 0 },
   { key: "anthem", channelName: "parliament", audioName: "anthem", offsetMs: 60 * 60 * 1000 },
   { key: "chalisa", channelName: "mandir", audioName: "hanuman-chalisa", offsetMs: 2 * 60 * 60 * 1000 },
+  {
+    key: "church",
+    channelName: "church",
+    youtubeUrl: "https://www.youtube.com/watch?v=nCxqjEz5hJ4",
+    offsetMs: 3 * 60 * 60 * 1000,
+  },
+  {
+    key: "monastery",
+    channelName: "monastery",
+    youtubeUrl: "https://www.youtube.com/watch?v=O3tqJfgYWOs",
+    offsetMs: 4 * 60 * 60 * 1000,
+  },
+  {
+    key: "gurudwara",
+    channelName: "gurudwara",
+    youtubeUrl: "https://www.youtube.com/watch?v=QJwu2BMnf2I",
+    offsetMs: 5 * 60 * 60 * 1000,
+  },
 ];
 const TICK_MS = 15_000;
 const RUN_WINDOW_MS = 60_000;
@@ -67,6 +87,8 @@ export class ScheduledEventService {
   private readonly ran = new Set<string>();
   private activeConnection: VoiceConnection | null = null;
   private activePlayer: AudioPlayer | null = null;
+  private ytdlpProcess: ChildProcess | null = null;
+  private ffmpegProcess: ChildProcess | null = null;
 
   constructor(
     private readonly music: MusicService | null,
@@ -74,6 +96,8 @@ export class ScheduledEventService {
     private readonly enabled: boolean,
     private readonly prayer: Prayer,
     private readonly isVoiceBusy?: (guildId: string) => boolean,
+    private readonly ytdlpPath = "yt-dlp",
+    private readonly ffmpegPath = "ffmpeg",
   ) {}
 
   start(guild: Guild): void {
@@ -156,7 +180,9 @@ export class ScheduledEventService {
 
     let channel = guild.channels.cache.find(
       (candidate): candidate is VoiceChannel =>
-        candidate.type === ChannelType.GuildVoice && candidate.parentId === category!.id,
+        candidate.type === ChannelType.GuildVoice &&
+        candidate.parentId === category!.id &&
+        candidate.name === name,
     );
     if (!channel) {
       channel = await guild.channels.create({
@@ -223,6 +249,79 @@ export class ScheduledEventService {
     });
   }
 
+  private async playYouTubeAudio(guild: Guild, channel: VoiceChannel, url: string): Promise<void> {
+    const connection = joinVoiceChannel({
+      channelId: channel.id,
+      guildId: guild.id,
+      adapterCreator: guild.voiceAdapterCreator,
+      selfDeaf: true,
+    });
+    this.activeConnection = connection;
+    await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
+
+    const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Play } });
+    this.activePlayer = player;
+    connection.subscribe(player);
+
+    const ytdlp = spawn(
+      this.ytdlpPath,
+      [
+        "--js-runtimes",
+        "node",
+        "--no-part",
+        "--no-cache-dir",
+        "-f",
+        "bestaudio[abr<=312]/bestaudio/best[abr<=312]/best",
+        "-o",
+        "-",
+        "--no-playlist",
+        "--no-warnings",
+        "--quiet",
+        url,
+      ],
+      { cwd: "/tmp", stdio: ["ignore", "pipe", "pipe"] },
+    );
+    this.ytdlpProcess = ytdlp;
+
+    const ffmpeg = spawn(
+      this.ffmpegPath,
+      ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"],
+      { cwd: "/tmp", stdio: ["pipe", "pipe", "pipe"] },
+    );
+    this.ffmpegProcess = ffmpeg;
+
+    ytdlp.stdout?.on("error", () => undefined);
+    ytdlp.stderr?.on("data", () => undefined);
+    ytdlp.on("error", (error) => {
+      this.logger.warn({ err: error, url }, "scheduled event yt-dlp spawn failed");
+    });
+    ffmpeg.stdin?.on("error", () => undefined);
+    ffmpeg.stdout?.on("error", () => undefined);
+    ffmpeg.stderr?.on("data", () => undefined);
+    ffmpeg.on("error", (error) => {
+      this.logger.warn({ err: error, url }, "scheduled event ffmpeg spawn failed");
+    });
+    ytdlp.stdout?.pipe(ffmpeg.stdin!);
+
+    const resource = createAudioResource(ffmpeg.stdout!, {
+      inputType: StreamType.Raw,
+      inlineVolume: true,
+    });
+    resource.volume?.setVolume(0.9);
+
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, 20 * 60 * 1000);
+      timer.unref?.();
+      const done = (): void => {
+        clearTimeout(timer);
+        resolve();
+      };
+      player.once(AudioPlayerStatus.Idle, done);
+      player.once("error", done);
+      player.play(resource);
+    });
+  }
+
   async test(kind: string, guild: Guild): Promise<{ phase: string; channel: string; audio: string }> {
     if (this.isVoiceBusy?.(guild.id) || this.music?.isVoiceLocked(guild.id)) {
       throw new Error("Tambola is using the voice channel. End it before testing event audio.");
@@ -230,12 +329,21 @@ export class ScheduledEventService {
     const normalized = kind.toLowerCase().replace(/[^a-z]/g, "");
     const phase = PHASES.find((candidate) => {
       if (candidate.key === "chalisa") return normalized === "hanumanchalisa" || normalized === "chalisa";
+      if (candidate.key === "monastery") return normalized === "monastery" || normalized === "monestary";
       return candidate.key === normalized;
     });
-    if (!phase) throw new Error("Use `azan`, `anthem`, or `hanumanchalisa`.");
-    const audio = findAudio(phase.audioName);
-    if (!audio) {
-      throw new Error(`Missing audio file: assets/events/${phase.audioName}.ogg|mp3|wav|m4a|flac`);
+    if (!phase) throw new Error("Use `azan`, `anthem`, `hanumanchalisa`, `church`, `monastery`, or `gurudwara`.");
+    let audio: string;
+    if (phase.youtubeUrl) {
+      audio = phase.youtubeUrl;
+    } else if (phase.audioName) {
+      const found = findAudio(phase.audioName);
+      if (!found) {
+        throw new Error(`Missing audio file: assets/events/${phase.audioName}.ogg|mp3|wav|m4a|flac`);
+      }
+      audio = found;
+    } else {
+      throw new Error(`Phase ${phase.key} has no audio source.`);
     }
     this.logger.info({ guildId: guild.id, phase: phase.key }, "scheduled event test starting");
     await this.runPhase(guild, phase);
@@ -247,10 +355,6 @@ export class ScheduledEventService {
       this.logger.info({ guildId: guild.id, phase: phase.key }, "scheduled event skipped because Tambola is using voice");
       return;
     }
-    const path = findAudio(phase.audioName);
-    if (!path) {
-      throw new Error(`Missing audio file: assets/events/${phase.audioName}.ogg|mp3|wav|m4a|flac`);
-    }
 
     try {
       this.stopPlayback();
@@ -258,7 +362,17 @@ export class ScheduledEventService {
       await this.music?.disconnect(guild.id).catch(() => undefined);
       const channel = await this.ensureEventChannel(guild, phase.channelName);
       await this.moveEveryone(guild, channel);
-      await this.playAudio(guild, channel, path);
+      if (phase.youtubeUrl) {
+        await this.playYouTubeAudio(guild, channel, phase.youtubeUrl);
+      } else if (phase.audioName) {
+        const path = findAudio(phase.audioName);
+        if (!path) {
+          throw new Error(`Missing audio file: assets/events/${phase.audioName}.ogg|mp3|wav|m4a|flac`);
+        }
+        await this.playAudio(guild, channel, path);
+      } else {
+        throw new Error(`Phase ${phase.key} has no audio source.`);
+      }
       this.logger.info({ phase: phase.key, channelId: channel.id }, "scheduled voice event completed");
     } finally {
       this.stopPlayback();
@@ -268,6 +382,10 @@ export class ScheduledEventService {
   private stopPlayback(): void {
     this.activePlayer?.stop(true);
     this.activeConnection?.destroy();
+    this.ytdlpProcess?.kill("SIGKILL");
+    this.ffmpegProcess?.kill("SIGKILL");
+    this.ytdlpProcess = null;
+    this.ffmpegProcess = null;
     this.activePlayer = null;
     this.activeConnection = null;
   }
