@@ -6,7 +6,7 @@ This document explains how the bot is assembled and where state lives. It is the
 
 Siela Bot runs as one long-lived Bun process. `apps/bot/src/bot.ts` is the composition root. It creates the Discord client, the command registry, the feature services, the Fastify control API, and the health server.
 
-The MCP server is the only separate application process. It has no Discord client and no database client. It calls the control API over the internal `control` network with a bearer token. The compose service currently receives the shared deployment env file, so treat the MCP container as secret-bearing. See [MCP.md](MCP.md).
+Automation talks to the control API over the internal `control` network with a bearer token (`MCP_TOKEN`).
 
 ```mermaid
 flowchart LR
@@ -29,9 +29,6 @@ flowchart LR
   REG --> EXT[YouTube, SoundCloud,<br/>Spotify, LRCLIB, Aladhan]
   REG --> MEM[In-memory state]
   REG --> TMP["/tmp cache and sockets"]
-
-  MCP[Optional MCP server] -->|Bearer token| API
-  CLIENT[MCP client] --> MCP
 ```
 
 ## Command lifecycle
@@ -124,7 +121,7 @@ The economy ledger is append-only. Every balance change writes a transaction row
 
 ## Deployment topology
 
-The production stack contains PostgreSQL, Valkey, vLLM, KittenTTS, a one-shot migration container, and the bot. MCP and Caddy are optional overlays.
+The production stack contains PostgreSQL, Valkey, vLLM, KittenTTS, a one-shot migration container, and the bot. Watchtower is an optional overlay.
 
 ```mermaid
 flowchart LR
@@ -134,13 +131,10 @@ flowchart LR
   VK[(Valkey)]
   TTS[KittenTTS]
   MIG[migrate, one-shot]
-  MCP[MCP server]
-  CADDY[Caddy :8443]
 
   EDGE((edge, routable))
   DATA((data, internal))
   CONTROL((control, internal))
-  MCPNET((mcp, internal))
 
   BOT --- EDGE
   BOT --- DATA
@@ -151,13 +145,9 @@ flowchart LR
   VK --- DATA
   TTS --- DATA
   MIG --- DATA
-  MCP --- CONTROL
-  MCP --- MCPNET
-  CADDY --- EDGE
-  CADDY --- MCPNET
 ```
 
-The bot is attached to `edge`, `data`, and `control`. It reaches Discord and external services through `edge`, durable services through `data`, and MCP through the `bot-control` alias on `control`. The MCP server is attached to `control` for API access and `mcp` for clients.
+The bot is attached to `edge`, `data`, and `control`. It reaches Discord and external services through `edge`, durable services through `data`, and automation reaches it through the `bot-control` alias on `control`.
 
 See [deploy/podman/README.md](../deploy/podman/README.md) for service configuration and overlays.
 
@@ -178,5 +168,4 @@ To add durable state, update `packages/db/src/schema.ts`, generate a migration, 
 - The bot is single-guild by design. It binds to `GUILD_ID` or the only guild it can see and leaves other guilds.
 - Context-menu commands are not implemented. The registry supports slash and prefix commands.
 - Active Tambola games and blackjack hands are not persisted. A restart cancels them.
-- MCP tool coverage is limited to the control API surface. Economy, Delulu, TTS, and social commands have no MCP tools.
 - The bot container does not need GPU access. Only the vLLM container does.

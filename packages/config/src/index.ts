@@ -76,19 +76,6 @@ const botSchema = z.object({
   TZ: z.string().default("UTC"),
 });
 
-const mcpSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  MCP_TOKEN: z.string().min(16, "MCP_TOKEN must be at least 16 characters"),
-  CONTROL_API_URL: z.string().url().default("http://bot-control:3001"),
-  MCP_URL: z.string().url().default("http://mcp:8080/mcp"),
-  MCP_TRANSPORT: z.enum(["http", "stdio"]).default("http"),
-  MCP_HTTP_HOST: z.string().default("0.0.0.0"),
-  MCP_HTTP_PORT: z.coerce.number().int().min(1).max(65535).default(8080),
-  MCP_ALLOWED_ORIGINS: z.string().optional(),
-  LOG_LEVEL: logLevel.default("info"),
-  TZ: z.string().default("UTC"),
-});
-
 const watchtowerSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   LOG_LEVEL: logLevel.default("info"),
@@ -126,10 +113,6 @@ export type BotConfig = z.infer<typeof botSchema> & {
   clientId: string | null;
 };
 
-export type McpConfig = z.infer<typeof mcpSchema> & {
-  allowedOrigins: string[];
-};
-
 export type WatchtowerConfig = z.infer<typeof watchtowerSchema>;
 
 export function loadBotConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
@@ -154,23 +137,6 @@ export function loadBotConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     botOwnerId: parsed.data.BOT_OWNER_ID ?? null,
     guildId: parsed.data.GUILD_ID ?? null,
     clientId: parsed.data.DISCORD_CLIENT_ID ?? null,
-  };
-}
-
-export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env): McpConfig {
-  const parsed = mcpSchema.safeParse({
-    ...env,
-    MCP_TOKEN: readSecret("MCP_TOKEN", env) ?? env.MCP_TOKEN,
-  });
-  if (!parsed.success) {
-    const details = parsed.error.issues
-      .map((issue) => `${issue.path.join(".") || "env"}: ${issue.message}`)
-      .join("\n");
-    throw new Error(`Invalid MCP environment:\n${details}`);
-  }
-  return {
-    ...parsed.data,
-    allowedOrigins: csv(parsed.data.MCP_ALLOWED_ORIGINS),
   };
 }
 

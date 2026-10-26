@@ -42,7 +42,6 @@ Useful commands:
 
 ```bash
 bun run dev:bot          # watch and run the bot
-bun run dev:mcp          # watch and run the MCP server
 bun run db:generate      # generate a Drizzle migration
 bun run db:migrate       # apply migrations
 bun run --cwd apps/bot test -- <file>   # run one bot test file
@@ -57,7 +56,7 @@ bun run --cwd apps/bot test -- <file>   # run one bot test file
 - Route new component custom IDs in `apps/bot/src/bot.ts`.
 - Use `UserError` for failures that users should understand.
 - Use `ServiceUnavailableError` when an optional dependency is unavailable.
-- Audit admin and MCP mutations with `AuditService` where the route supports it.
+- Audit admin and control-API mutations with `AuditService` where the route supports it.
 - Clean up timers, collectors, voice connections, and listeners during shutdown.
 - Keep custom IDs namespaced, for example `music:`, `tambola:`, `tempvc:`, and `help:`.
 

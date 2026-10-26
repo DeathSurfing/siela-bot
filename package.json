@@ -2,7 +2,7 @@
   "name": "siela-bot",
   "version": "0.1.0",
   "private": true,
-  "description": "Self-hosted single-guild Discord bot with music, economy, Tambola, TTS, social features, and an optional MCP control server.",
+  "description": "Self-hosted single-guild Discord bot with music, economy, Tambola, TTS, and social features.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -18,13 +18,12 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "bun run --cwd apps/bot build && bun run --cwd apps/mcp build && bun run --cwd apps/watchtower build",
-    "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/config typecheck && bun run --cwd packages/db typecheck && bun run --cwd apps/mcp typecheck && bun run --cwd apps/watchtower typecheck && bun run --cwd apps/bot typecheck",
+    "build": "bun run --cwd apps/bot build && bun run --cwd apps/watchtower build",
+    "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/config typecheck && bun run --cwd packages/db typecheck && bun run --cwd apps/watchtower typecheck && bun run --cwd apps/bot typecheck",
     "test": "bun run --cwd packages/shared test && bun run --cwd apps/bot test && bun run --cwd apps/watchtower test",
     "db:generate": "bun run --cwd packages/db generate",
     "db:migrate": "bun run --cwd apps/bot migrate",
     "dev:bot": "bun run --cwd apps/bot dev",
-    "dev:mcp": "bun run --cwd apps/mcp dev",
     "podman:config": "podman compose -p siela -f deploy/podman/compose.yaml config",
     "podman:smoke": "./scripts/podman-compose-smoke.sh"
   },

@@ -1,5 +1,4 @@
 import { loadWatchtowerConfig } from "@siela/config";
-import { join } from "node:path";
 import { createLogger } from "./logger.js";
 import {
   changedFiles,
@@ -15,10 +14,9 @@ import { waitForCi } from "./ci.js";
 import { planDeploy } from "./plan.js";
 import { runDeploy, type DeployDeps } from "./deploy.js";
 import { waitForBotHealthy } from "./health.js";
-import { readEnvFlag } from "./workspace.js";
-import { loadState, saveState, type WatchtowerState } from "./state.js";
 import { notify } from "./notify.js";
 import { startStatusServer } from "./server.js";
+import { loadState, saveState, type WatchtowerState } from "./state.js";
 import { sleep } from "./run.js";
 
 function nowIso(): string {
@@ -36,7 +34,6 @@ async function main(): Promise<void> {
   const logger = createLogger(config.LOG_LEVEL);
   const repoDir = config.WATCHTOWER_REPO_DIR;
   const state = await loadState(config.WATCHTOWER_STATE_DIR);
-  const mcpEnabled = readEnvFlag(join(repoDir, "deploy/podman/.env"), "MCP_ENABLED");
 
   const remote = {
     repoDir,
@@ -44,7 +41,7 @@ async function main(): Promise<void> {
     branch: config.WATCHTOWER_BRANCH,
     token: config.GH_TOKEN,
   };
-  const deps: DeployDeps = { config, logger, repoDir, mcpEnabled };
+  const deps: DeployDeps = { config, logger, repoDir };
 
   let running = false;
   let stopped = false;
@@ -272,7 +269,6 @@ async function main(): Promise<void> {
       intervalSec: config.WATCHTOWER_INTERVAL_SEC,
       ciGate: config.WATCHTOWER_CI_GATE,
       dryRun: config.WATCHTOWER_DRY_RUN,
-      mcpEnabled,
       lastDeployedSha: state.lastDeployedSha,
     },
     "watchtower started",

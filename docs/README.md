@@ -8,7 +8,6 @@ flowchart TD
   GET --> ARCH[docs/ARCHITECTURE]
   START --> CONTRIB[CONTRIBUTING]
   ARCH --> RUN[docs/RUNBOOK]
-  ARCH --> MCP[docs/MCP]
   ARCH --> ECON[docs/ECONOMY]
   ARCH --> RELICS[docs/RELICS]
   ARCH --> TTS[docs/TTS]
@@ -29,7 +28,6 @@ flowchart TD
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Repository layout, command flow, extension recipes, tests, debugging |
 | [RELEASE.md](RELEASE.md) | Branch and pull request expectations, pre-merge checks, deployment, verification, rollback |
 | [RUNBOOK.md](RUNBOOK.md) | Deployment, updates, backups, health checks, troubleshooting |
-| [MCP.md](MCP.md) | MCP transports, clients, tool groups, and trust boundary |
 | [ECONOMY.md](ECONOMY.md) | Siela Coins, earning, spending, shop, premium, admin operations |
 | [ECONOMY_V2.md](ECONOMY_V2.md) | Earning and AI-gating rationale, exchange model, balance targets |
 | [RELICS.md](RELICS.md) | Relic card catalog, daily auctions, bidding, vaults, yield, trades |

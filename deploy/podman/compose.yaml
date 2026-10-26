@@ -5,12 +5,12 @@
 # No top-level `name`, no `profiles`, no `deploy`, no `secrets`,
 # no `build.target`, and no `depends_on.condition`.
 #
-# MCP is optional and lives in compose.mcp.yaml. Use the stack wrapper:
+# Use the stack wrapper:
 #   scripts/podman-stack.sh up -d
 # or compose explicitly:
 #   podman compose -p siela -f deploy/podman/compose.yaml up -d
 # Use `-p siela` so network names are deterministic: siela_edge,
-# siela_data, siela_control (and siela_mcp when MCP is enabled).
+# siela_data, siela_control.
 
 networks:
   edge:

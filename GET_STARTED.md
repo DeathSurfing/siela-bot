@@ -76,7 +76,7 @@ export GUILD_ID="..."   # recommended for a single-guild install
 ./scripts/podman-init.sh
 ```
 
-The script writes `deploy/podman/.env` with mode 600. It derives `DISCORD_CLIENT_ID`, generates `POSTGRES_PASSWORD` and `MCP_TOKEN`, and prints an invite URL with the recommended permission bitfield.
+The script writes `deploy/podman/.env` with mode 600. It derives `DISCORD_CLIENT_ID`, generates `POSTGRES_PASSWORD` and the control API bearer (`MCP_TOKEN`), and prints an invite URL with the recommended permission bitfield.
 
 Set `GUILD_ID` on the first install. If it is unset and the bot joins a different guild first, it binds to that guild and leaves the others.
 

@@ -7,8 +7,7 @@ This document summarizes the main trust boundaries and residual risks. It descri
 ```mermaid
 flowchart LR
   U[Discord users] -->|commands and components| BOT[Bot process]
-  M[MCP client] -->|bearer token| MCP[MCP server]
-  MCP -->|internal HTTP| API[Control API]
+  A[Automation] -->|bearer token| API[Control API]
   API --> BOT
   BOT --> DB[(PostgreSQL)]
   BOT --> VK[(Valkey)]
@@ -17,14 +16,14 @@ flowchart LR
   BOT --> EXT[External HTTP services]
 ```
 
-The host, the Podman daemon, and the deployment `.env` are trusted. Discord users, MCP clients, model output, and external HTTP responses are untrusted.
+The host, the Podman daemon, and the deployment `.env` are trusted. Discord users, automation clients, model output, and external HTTP responses are untrusted.
 
 | Threat | Control | Residual risk |
 |---|---|---|
 | Non-admin configuration changes | `adminOnly` command guard plus inline `isAdmin` checks. Admin means guild owner, `Manage Guild`, `BOT_OWNER_ID`, or `ADMIN_ROLE_IDS`. | Admin actions are not all audited. The `test` command uses a hardcoded user ID. |
 | Auto-role privilege escalation | Reject `Administrator`, managed roles, `@everyone`, and roles above the bot. | A misconfigured role hierarchy can still grant more access than intended. |
 | Temporary voice abuse | Channel-scoped owner permissions, no guild Kick or Ban, bot overwrite guard. | Role-level `Connect` allows can bypass the private-channel intent. |
-| MCP token leak | One generated `MCP_TOKEN`. MCP is client-facing on the internal `mcp` network and reaches the control API on `control`. Destructive tools require `confirm: true`. | A token holder can call every MCP tool. Audit coverage is partial. The compose service also receives the shared deployment env file, so a compromised MCP container can read the Discord token and database URL. |
+| Control API token leak | One generated `MCP_TOKEN` bearer for the internal control API on `control`. | A token holder can call every control route. Audit coverage is partial. |
 | Prompt injection through Delulu | User input goes to an LLM, never to SQL or a shell. Output is bounded JSON. | A model can produce unwanted text. The bot has no channel-level NSFW gate for `/delulu nsfw`. |
 | Delulu NSFW misuse | NSFW costs 15 SC instead of 5 SC. Prompts constrain output. | Enforcement is prompt-level only. The command is not marked NSFW, so Discord does not enforce an age gate. |
 | Economy ledger abuse | Daily and work cooldowns use atomic updates. Transfers and spends reject insufficient funds. After account creation, every balance change writes an immutable ledger row. The initial account seed is the one exception. | Only admin adjustments, premium purchases, and shop mutations write an audit row. Game and transfer activity does not. |
@@ -41,9 +40,9 @@ The host, the Podman daemon, and the deployment `.env` are trusted. Discord user
 
 ## Security assumptions
 
-- The control API and MCP server are not exposed directly to the public internet.
+- The control API is not exposed directly to the public internet.
 - The host is patched and access to the Podman socket is restricted.
-- Discord tokens and MCP tokens are rotated after exposure.
+- Discord tokens and control API tokens are rotated after exposure.
 - The deployment uses a dedicated bot token and a dedicated PostgreSQL password.
 - Event audio and other media are supplied by the operator and have appropriate rights.
 

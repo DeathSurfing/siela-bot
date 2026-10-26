@@ -34,7 +34,7 @@ body:
         - Temporary voice
         - Welcome and auto-role
         - Deployment
-        - MCP or control API
+        - Control API
         - Documentation
         - Other
     validations:

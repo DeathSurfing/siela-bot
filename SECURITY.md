@@ -22,7 +22,7 @@ You can expect an initial response within a reasonable time. This is a volunteer
 
 Security reports are most useful for:
 
-- Authentication or authorization bypass in commands, the control API, or MCP tools.
+- Authentication or authorization bypass in commands or the control API.
 - Secret exposure in source, logs, build artifacts, or documentation.
 - SQL injection, command injection, or unsafe deserialization.
 - Server-side request forgery in music, avatar, or external content fetching.
@@ -49,4 +49,4 @@ Security reports are most useful for:
 
 ## Deployment assumptions
 
-The threat model assumes a trusted host and a private Podman network. The control API and MCP server should not be published directly to the public internet without TLS and an authenticated reverse proxy. See [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) for controls and residual risks.
+The threat model assumes a trusted host and a private Podman network. The control API should not be published directly to the public internet without TLS and an authenticated reverse proxy. See [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) for controls and residual risks.

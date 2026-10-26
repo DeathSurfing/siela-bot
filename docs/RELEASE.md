@@ -28,9 +28,9 @@ bun run build
 What each command covers:
 
 - `bun install --frozen-lockfile` fails when `package.json` and `bun.lock` disagree. Commit the lockfile when dependencies change.
-- `bun run typecheck` checks `packages/shared`, `packages/config`, `packages/db`, `apps/mcp`, and `apps/bot`.
+- `bun run typecheck` checks `packages/shared`, `packages/config`, `packages/db`, `apps/watchtower`, and `apps/bot`.
 - `bun run test` runs the shared package tests, then the bot tests.
-- `bun run build` bundles `apps/bot` and `apps/mcp` into `dist/`.
+- `bun run build` bundles `apps/bot` and `apps/watchtower` into `dist/`.
 
 The CI workflow `.github/workflows/ci.yml` runs the same commands on Ubuntu with Bun 1.4.2. A local pass does not replace CI when the change touches platform-specific code, voice, native modules, or container files.
 
@@ -78,7 +78,6 @@ Deployment checklist:
 - [ ] The new image is built
 - [ ] `migrate` exits 0
 - [ ] The bot container is recreated and running
-- [ ] MCP is restarted when `MCP_ENABLED=true`
 - [ ] No migration is left pending
 - [ ] Post-deploy checks pass
 

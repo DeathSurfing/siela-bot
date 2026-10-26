@@ -17,7 +17,6 @@ This guide covers the repository layout, command flow, extension points, tests, 
 | `apps/bot/src/framework/` | Command types, registry, prefix and slash parsing, context helpers, permissions, and cooldowns. |
 | `apps/bot/src/control/` | Control API on port 3001 and health server on port 3002. |
 | `apps/bot/src/scripts/migrate.ts` | Migration runner with database readiness retries. |
-| `apps/mcp/` | Optional MCP server. It calls the control API and has no database client. |
 | `packages/config/` | Zod environment schemas. |
 | `packages/db/` | Drizzle schema, database client, and migrations under `drizzle/`. |
 | `packages/shared/` | Shared constants, types, and pure logic. |
@@ -161,7 +160,7 @@ Test files are colocated as `*.test.ts` and use Vitest. There is no separate tes
 
 Covered today: pure game rules, parsers, UI payload builders, URL and lyric helpers, stock and relic logic, and shared utilities. Examples include `apps/bot/src/features/tambola/game.test.ts`, `apps/bot/src/framework/prefix.test.ts`, and `packages/shared/src/relics/logic.test.ts`.
 
-Not covered: Discord gateway events, command registration, `bot.ts` wiring, component routing, database migrations and queries, live voice and music playback, vLLM and TTS calls, and the control API or MCP server. Changes in those areas need manual verification in a test guild or a new test harness.
+Not covered: Discord gateway events, command registration, `bot.ts` wiring, component routing, database migrations and queries, live voice and music playback, vLLM and TTS calls, and the control API. Changes in those areas need manual verification in a test guild or a new test harness.
 
 Manual check: run the bot in a test guild, then use `!ping`, `/ping`, and the command or component you changed. Check the logs for unexpected errors. Do not test destructive admin commands against a production guild.
 

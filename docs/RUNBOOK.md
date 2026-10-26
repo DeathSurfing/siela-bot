@@ -1,6 +1,6 @@
 # Siela Bot Runbook
 
-Always use the wrapper (`scripts/podman-stack.sh`) for compose operations. It selects the MCP overlay from `MCP_ENABLED`. Raw `podman compose` commands bypass the overlays.
+Always use the wrapper (`scripts/podman-stack.sh`) for compose operations. It selects the watchtower overlay from `WATCHTOWER_ENABLED`. Raw `podman compose` commands bypass the overlays.
 
 For the full first-run checklist, see [GET_STARTED.md](../GET_STARTED.md).
 
@@ -159,12 +159,11 @@ podman exec siela-postgres pg_dump -U "${POSTGRES_USER:-siela}" -Fc "${POSTGRES_
   | gzip > "/var/backups/siela/siela-$(date +%F).dump.gz"
 ```
 
-Restore (stop the bot first so nothing writes mid-restore, and stop MCP if it is enabled):
+Restore (stop the bot first so nothing writes mid-restore):
 
 ```bash
 set -a; . deploy/podman/.env; set +a
 ./scripts/podman-stack.sh stop bot
-podman stop siela-mcp >/dev/null 2>&1 || true
 gunzip -c /var/backups/siela/siela-YYYY-MM-DD.dump.gz \
   | podman exec -i siela-postgres pg_restore -U "${POSTGRES_USER:-siela}" -d "${POSTGRES_DB:-siela}" --clean --if-exists
 ./scripts/podman-stack.sh up -d
@@ -205,5 +204,3 @@ podman system connection remove siela-server
 - **Tambola TTS is silent**: check the lobby card's TTS line. Tambola needs `Connect` and `Speak` in the selected voice channel. First check the KittenTTS service (`http://tts:8000/healthz` and `/synthesize` per Service checks above) and `TTS_SERVICE_URL`/`TTS_STREAM`/`TTS_BACKEND`/`TTS_VOICE` in `.env`. Edge TTS is the fallback path: test it with `podman exec siela-bot python3 -m edge_tts --voice en-IN-NeerjaNeural --text "test" --write-media /tmp/tambola-test.mp3`, then inspect `podman logs siela-bot | grep -i tambola`.
 - **LLM features (delulu) fail**: check the `siela-llm` container (`podman logs siela-llm`) and `http://llm:8000/health` per Service checks; llama.cpp needs the GPU devices and the `llmcache` volume.
 - **Migrations fail**: run `./scripts/podman-stack.sh run --rm migrate` and read the output; it retries DB readiness 30 times and honors `MIGRATIONS_DIR` if set.
-- **MCP is not running**: it is optional and off by default. Set `MCP_ENABLED=true` in `deploy/podman/.env`, then run `scripts/podman-stack.sh up -d`.
-- **MCP unreachable from the host**: it is on the internal `mcp` network by default. Use `compose.mcp.yaml` plus `compose.host.yaml` for `127.0.0.1:8080`, or run the MCP client as a container on `siela_mcp`.

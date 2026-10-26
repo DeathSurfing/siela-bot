@@ -53,7 +53,7 @@ export class ControlServer {
     this.app.addHook("preHandler", async (request, reply) => {
       const header = request.headers.authorization;
       if (!this.validToken(header)) {
-        return reply.code(401).send({ error: { code: "unauthorized", message: "Invalid MCP token" } });
+        return reply.code(401).send({ error: { code: "unauthorized", message: "Invalid control token" } });
       }
     });
     this.app.setErrorHandler((error, request, reply) => {

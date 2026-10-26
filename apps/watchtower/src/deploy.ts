@@ -9,7 +9,6 @@ export interface DeployDeps {
   config: WatchtowerConfig;
   logger: Logger;
   repoDir: string;
-  mcpEnabled: boolean;
 }
 
 export interface DeployResult {
@@ -33,7 +32,6 @@ async function runWrapper(
       // run` removes orphan containers, and this container is an orphan when
       // the overlay is omitted.
       WATCHTOWER_ENABLED: "true",
-      MCP_ENABLED: deps.mcpEnabled ? "true" : "false",
     },
     timeoutMs,
   });
@@ -130,15 +128,6 @@ async function deployFull(deps: DeployDeps): Promise<DeployResult> {
   );
   if (!tts.ok) return tts;
 
-  if (deps.mcpEnabled) {
-    const mcp = await buildImage(
-      deps,
-      "deploy/podman/Containerfile.mcp",
-      "localhost/siela-mcp:latest",
-    );
-    if (!mcp.ok) return mcp;
-  }
-
   if (deps.config.WATCHTOWER_RUN_MIGRATIONS) {
     const migrated = await runMigrations(deps);
     if (!migrated.ok) return migrated;
@@ -147,7 +136,7 @@ async function deployFull(deps: DeployDeps): Promise<DeployResult> {
   const dependencies = await ensureDependencies(deps);
   if (!dependencies.ok) return dependencies;
 
-  const services = deps.mcpEnabled ? ["bot", "mcp", "tts"] : ["bot", "tts"];
+  const services = ["bot", "tts"];
   return composeUp(deps, services);
 }
 

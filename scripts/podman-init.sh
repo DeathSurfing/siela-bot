@@ -7,7 +7,6 @@
 # Optional:
 #   DISCORD_CLIENT_ID  (otherwise derived from the token)
 #   GUILD_ID           (otherwise auto-detected by the bot)
-#   MCP_ENABLED        (true starts MCP; default false)
 #   WATCHTOWER_ENABLED (true starts the auto-deploy watchtower; default false)
 #   WATCHTOWER_REPO_URL (fork URL to follow instead of upstream)
 #   WATCHTOWER_BRANCH  (default main)
@@ -15,8 +14,8 @@
 #   GH_TOKEN           (private forks and CI-gate API headroom)
 #   FORCE=1            (overwrite an existing .env)
 #
-# The script generates POSTGRES_PASSWORD, MCP_TOKEN, and WATCHTOWER_TOKEN,
-# then writes deploy/podman/.env with mode 600.
+# The script generates POSTGRES_PASSWORD, MCP_TOKEN (internal control API
+# bearer), and WATCHTOWER_TOKEN, then writes deploy/podman/.env with mode 600.
 
 set -euo pipefail
 
@@ -82,9 +81,7 @@ POSTGRES_USER=siela
 POSTGRES_DB=siela
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 DATABASE_URL=postgres://siela:${POSTGRES_PASSWORD}@postgres:5432/siela
-MCP_ENABLED=${MCP_ENABLED:-false}
 MCP_TOKEN=${MCP_TOKEN}
-MCP_URL=http://mcp:8080/mcp
 
 WATCHTOWER_ENABLED=${WATCHTOWER_ENABLED}
 WATCHTOWER_REPO_URL=${WATCHTOWER_REPO_URL}
@@ -110,8 +107,7 @@ fi
 echo "wrote ${ENV_FILE} (mode 600)"
 echo "client id: ${CLIENT_ID}"
 echo "guild id: ${GUILD_ID:-auto-detect}"
-echo "generated: POSTGRES_PASSWORD, MCP_TOKEN, WATCHTOWER_TOKEN"
-echo "MCP: ${MCP_ENABLED:-false} (set MCP_ENABLED=true in deploy/podman/.env to enable)"
+echo "generated: POSTGRES_PASSWORD, MCP_TOKEN (control API bearer), WATCHTOWER_TOKEN"
 echo "WATCHTOWER: ${WATCHTOWER_ENABLED} (follows ${WATCHTOWER_REPO_URL} ${WATCHTOWER_BRANCH})"
 echo "invite: ${INVITE_URL}"
 echo "next: scripts/podman-stack.sh up -d --build"

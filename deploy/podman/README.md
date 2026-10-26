@@ -1,6 +1,6 @@
 # Podman deployment
 
-Production stack for Siela Bot. All services run under one compose project (`-p siela`). Use `scripts/podman-stack.sh` for compose operations. The wrapper selects the MCP overlay when `MCP_ENABLED=true`.
+Production stack for Siela Bot. All services run under one compose project (`-p siela`). Use `scripts/podman-stack.sh` for compose operations. The wrapper selects the watchtower overlay when `WATCHTOWER_ENABLED=true`.
 
 ## Prerequisites
 
@@ -23,13 +23,10 @@ flowchart LR
   VK[(Valkey)]
   TTS[KittenTTS]
   MIG[migrate, one-shot]
-  MCP[MCP server]
-  CADDY[Caddy :8443]
 
   EDGE((edge, routable))
   DATA((data, internal))
   CONTROL((control, internal))
-  MCPNET((mcp, internal))
 
   BOT --- EDGE
   BOT --- DATA
@@ -40,10 +37,6 @@ flowchart LR
   VK --- DATA
   TTS --- DATA
   MIG --- DATA
-  MCP --- CONTROL
-  MCP --- MCPNET
-  CADDY --- EDGE
-  CADDY --- MCPNET
 ```
 
 | Service | Image | Notes |
@@ -75,7 +68,7 @@ export GUILD_ID="..."
 ./scripts/podman-stack.sh logs -f bot
 ```
 
-`DISCORD_TOKEN` is the only secret you must provide. The init script generates the database and MCP secrets, writes `deploy/podman/.env` with mode 600, and prints an invite URL with the recommended permissions.
+`DISCORD_TOKEN` is the only secret you must provide. The init script generates the database and control-API secrets, writes `deploy/podman/.env` with mode 600, and prints an invite URL with the recommended permissions.
 
 See [GET_STARTED.md](../../GET_STARTED.md) for the full first-run checklist.
 
@@ -88,44 +81,15 @@ See [GET_STARTED.md](../../GET_STARTED.md) for the full first-run checklist.
 ./scripts/podman-stack.sh down
 ```
 
-`MCP_ENABLED` is read from the environment first, then from `deploy/podman/.env`. When the flag is off, `up` and `down` remove a leftover `siela-mcp` container.
+When the flag is off, `up` and `down` remove a leftover `siela-mcp` container from pre-retirement deployments.
 
 ## Overlays
 
 | File | Purpose |
 |---|---|
-| `compose.mcp.yaml` | Optional MCP server. Enabled with `MCP_ENABLED=true` |
 | `compose.watchtower.yaml` | Optional auto-deploy sidecar. Enabled with `WATCHTOWER_ENABLED=true` |
-| `compose.host.yaml` | Optional: publish MCP on `127.0.0.1:8080` for host-local clients. Requires the MCP overlay |
-| `compose.proxy.yaml` | Optional: Caddy TLS front door for external MCP clients |
 | `compose.fast.yaml` | Fast code-only deploy. Bind-mounts `apps/bot/dist` over `/app/dist` |
-| `Caddyfile` | TLS proxy configuration |
 | `.env.example` | Configuration reference. Prefer `scripts/podman-init.sh` |
-
-Enable MCP and publish it to host loopback:
-
-```bash
-MCP_ENABLED=true ./scripts/podman-stack.sh \
-  -f deploy/podman/compose.host.yaml up -d
-```
-
-The wrapper already includes `compose.yaml` and `compose.mcp.yaml`. Add only the override you need.
-
-## MCP flag
-
-MCP is off by default. Set this in `.env`:
-
-```env
-MCP_ENABLED=false
-```
-
-Enable it for one command:
-
-```bash
-MCP_ENABLED=true ./scripts/podman-stack.sh up -d
-```
-
-When enabled, the MCP server is reachable on the internal `mcp` network at `MCP_URL=http://mcp:8080/mcp`. It is not published to the host unless you add `compose.host.yaml` or the Caddy overlay.
 
 ## Watchtower (automatic updates)
 
@@ -205,7 +169,7 @@ WATCHTOWER_ENABLED=true ./scripts/podman-stack.sh up -d --build watchtower
 
 ## Notes
 
-- Networks: `edge`, `data` (internal), `control` (internal), and `mcp` (internal) when MCP is enabled.
+- Networks: `edge`, `data` (internal), and `control` (internal).
 - The `migrate` service is one-shot and idempotent. The bot is ordered after the container starts, not after it exits.
 - The compose files avoid `profiles`, `secrets`, `build.target`, and `depends_on.condition` so they work with both `podman compose` providers.
 - Updates: `git pull --ff-only`, rebuild, run `migrate`, then start the stack. See [docs/RUNBOOK.md](../../docs/RUNBOOK.md). The optional `watchtower` container automates this flow.

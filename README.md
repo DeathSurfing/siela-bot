@@ -5,7 +5,7 @@
 [![Runtime: Bun](https://img.shields.io/badge/runtime-Bun%201.4-f9f1e1)](https://bun.sh)
 [![Deploy: Podman](https://img.shields.io/badge/deploy-Podman%205%2B-892ca0)](https://podman.io)
 
-Siela Bot is a self-hosted Discord bot for a single community server. It combines music, a coin economy, daily trading-card auctions, Tambola, social features, text-to-speech, temporary voice channels, welcome automation, and an optional MCP control server.
+Siela Bot is a self-hosted Discord bot for a single community server. It combines music, a coin economy, daily trading-card auctions, Tambola, social features, text-to-speech, temporary voice channels, welcome automation, and a bearer-token control API.
 
 The project is open source under the MIT license. Contributions, bug reports, and documentation fixes are welcome.
 
@@ -19,7 +19,7 @@ The project is open source under the MIT license. Contributions, bug reports, an
 - **Delulu.** Generates short bias scenarios through a local llama.cpp service. Falls back to Hugging Face, Pollinations, and built-in scenarios when the local service is unavailable.
 - **TTS.** Reads enabled voice-channel chat with KittenTTS Nano ONNX and the Bruno voice. Edge TTS remains available as a fallback.
 - **Community features.** Welcome cards, auto-role, temporary voice channels, confessions, birthdays, friendship levels, family trees, activity tracking, and scheduled prayer-time voice events.
-- **Operations.** Runs as a rootless Podman stack with PostgreSQL, Valkey, llama.cpp, KittenTTS, health endpoints, an optional MCP server, and an optional watchtower that auto-deploys commits from GitHub. The bot registers 63 commands and exposes 51 MCP tools.
+- **Operations.** Runs as a rootless Podman stack with PostgreSQL, Valkey, llama.cpp, KittenTTS, health endpoints, a bearer-token control API, and an optional watchtower that auto-deploys commits from GitHub. The bot registers 63 commands.
 
 ## Architecture
 
@@ -38,11 +38,9 @@ flowchart LR
   FEAT --> MEM[In-memory state<br/>Tambola, blackjack, cooldowns]
 
   BOT --> API[Control API<br/>Bearer token]
-  API --> MCP[Optional MCP server]
-  MCP --> CLIENT[MCP clients]
 ```
 
-The bot is one long-lived Bun process. The control API and health server run inside that process. The MCP server is the only separate application process, and it reaches the bot over the internal control network. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for command flow, boot order, persistence, and deployment diagrams.
+The bot is one long-lived Bun process. The control API and health server run inside that process; automation talks to the control API over the internal control network with a bearer token. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for command flow, boot order, persistence, and deployment diagrams.
 
 ## Quick start
 
@@ -59,7 +57,7 @@ export GUILD_ID="..."   # recommended for a single-guild install
 ./scripts/podman-stack.sh up -d --build
 ```
 
-`DISCORD_TOKEN` is the only secret you must provide. The init script derives the client ID, generates the database and MCP secrets, writes a mode 600 `.env`, and prints an invite URL with the recommended permissions.
+`DISCORD_TOKEN` is the only secret you must provide. The init script derives the client ID, generates the database and control-API secrets, writes a mode 600 `.env`, and prints an invite URL with the recommended permissions.
 
 The complete first-run checklist, including Discord intents, invite permissions, verification, and troubleshooting, is in [GET_STARTED.md](GET_STARTED.md).
 
@@ -76,13 +74,12 @@ The complete first-run checklist, including Discord intents, invite permissions,
 | Local TTS | KittenTTS Nano ONNX, Edge TTS fallback |
 | Music | yt-dlp, mpv, ffmpeg |
 | Containers | Rootless Podman and Podman Compose |
-| Control and automation | Fastify control API, MCP server, Prometheus metrics |
+| Control and automation | Fastify control API, Prometheus metrics |
 
 ## Repository layout
 
 ```text
 apps/bot        Discord bot, feature services, control API, health server
-apps/mcp        Optional MCP server and tool catalog
 packages/db     Drizzle schema, migrations, PostgreSQL client
 packages/config Environment validation
 packages/shared Shared types, schemas, constants, utilities
@@ -107,7 +104,6 @@ For local development, use a PostgreSQL container and a `.env` file inside `apps
 - [GET_STARTED.md](GET_STARTED.md) is the short path from clone to a working bot.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains process structure, command flow, boot order, and storage.
 - [docs/RUNBOOK.md](docs/RUNBOOK.md) covers deployment, updates, backups, and troubleshooting.
-- [docs/MCP.md](docs/MCP.md) covers MCP transports, clients, and the 51-tool catalog.
 - [docs/ECONOMY.md](docs/ECONOMY.md) explains Siela Coins and pricing.
 - [docs/ECONOMY_V2.md](docs/ECONOMY_V2.md) explains the earning, AI-gating, and exchange design choices.
 - [docs/RELICS.md](docs/RELICS.md) explains relic cards, the daily auction, vaults, yield, and trades.
