@@ -194,6 +194,25 @@ export function empty(message: string): ReplyPayload {
 }
 
 /** Normalize outgoing Discord messages, retaining controls, attachments and delivery options. */
+/**
+ * True when the payload asks Discord to notify someone. Mentions rendered
+ * inside Components V2 text do not notify, so these payloads keep their raw
+ * content instead of being wrapped into a container.
+ */
+function wantsPing(allowedMentions: unknown): boolean {
+  if (!allowedMentions || typeof allowedMentions !== "object") return false;
+  const value = allowedMentions as {
+    parse?: unknown;
+    users?: unknown;
+    roles?: unknown;
+    repliedUser?: unknown;
+  };
+  if (Array.isArray(value.parse) && value.parse.length > 0) return true;
+  if (Array.isArray(value.users) && value.users.length > 0) return true;
+  if (Array.isArray(value.roles) && value.roles.length > 0) return true;
+  return false;
+}
+
 export function styleMessage<T>(input: T): T {
   const payload = typeof input === "string" ? { content: input } : input;
   if (!payload || typeof payload !== "object") return input;
@@ -201,6 +220,7 @@ export function styleMessage<T>(input: T): T {
   const flags = Number(data.flags?.bitfield ?? data.flags ?? 0);
   if (flags & MessageFlags.IsComponentsV2) return input;
   if (!data.content && !data.embeds?.length) return input;
+  if (wantsPing(data.allowedMentions)) return input;
   const container = brandedContainer();
   const addText = (value: string) => {
     // Text displays accept at most 4000 characters each.

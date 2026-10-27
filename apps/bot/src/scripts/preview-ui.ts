@@ -1,6 +1,6 @@
 /** Render real Discord payloads into an offline visual review sheet. No Discord posts. */
 import { mkdir, writeFile } from "node:fs/promises";
-import { resolve, join } from "node:path";
+import { basename, resolve, join } from "node:path";
 import type { GuildMember } from "discord.js";
 import type { BotConfig } from "@siela/config";
 import type { ReplyPayload } from "../framework/types.js";
@@ -69,7 +69,7 @@ for (let i = 0; i < examples.length; i += 1) {
   const [title, payload] = examples[i]!;
   const prefix = `preview-${i}`;
   for (const file of payload.files ?? []) {
-    if (Buffer.isBuffer(file.attachment)) await writeFile(join(out, `${prefix}-${file.name}`), file.attachment);
+    if (Buffer.isBuffer(file.attachment)) await writeFile(join(out, `${prefix}-${basename(file.name ?? "attachment")}`), file.attachment);
   }
   const components = (payload.components ?? []).map((n: any) => n.toJSON());
   snapshots.push({ title, flags: payload.flags, components });

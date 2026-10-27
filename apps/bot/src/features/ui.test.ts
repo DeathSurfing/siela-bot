@@ -88,14 +88,14 @@ describe("outgoing message styling", () => {
   it("preserves controls, files, mentions and private delivery", () => {
     const row = { type: 1, components: [{ type: 2, custom_id: "keep:this:id", label: "Continue", style: 1 }] };
     const files = [{ attachment: Buffer.from("image"), name: "image.png" }];
-    const mentions = { users: ["123"] };
-    const result = styleMessage({ content: "Hello <@123>", components: [row], files, allowedMentions: mentions, ephemeral: true });
+    const mentions = { parse: [] as never[], repliedUser: false };
+    const result = styleMessage({ content: "Hello there", components: [row], files, allowedMentions: mentions, ephemeral: true });
     expect(result).not.toHaveProperty("content");
     expect(result.components[1]).toBe(row);
     expect(result.files).toBe(files);
     expect(result.allowedMentions).toBe(mentions);
     expect(result.ephemeral).toBe(true);
-    expect(JSON.stringify(result)).toContain("Hello <@123>");
+    expect(JSON.stringify(result)).toContain("Hello there");
   });
   it("retains welcome image attachments while converting legacy embeds", () => {
     const result = styleMessage({ embeds: [{ title: "Welcome", description: "Make yourself at home", image: { url: "attachment://welcome.png" } }], files: ["welcome.png"] });
@@ -103,6 +103,24 @@ describe("outgoing message styling", () => {
     expect(JSON.stringify(result)).toContain("attachment://welcome.png");
     expect(JSON.stringify(result)).toContain("Make yourself at home");
   });
+  it("keeps raw content when a ping is requested, since component mentions do not notify", () => {
+    const row = { type: 1, components: [{ type: 2, custom_id: "keep:ping:id", label: "Bid", style: 1 }] };
+    const rolePing = { content: "New relic up for auction", allowedMentions: { roles: ["456"] }, components: [row] };
+    expect(styleMessage(rolePing)).toBe(rolePing);
+    expect(rolePing.components[0]).toBe(row);
+    const userPing = { content: "Welcome <@123>", allowedMentions: { users: ["123"], parse: [] as never[] } };
+    expect(styleMessage(userPing)).toBe(userPing);
+    const parsePing = { content: "@everyone game night", allowedMentions: { parse: ["everyone" as const] } };
+    expect(styleMessage(parsePing)).toBe(parsePing);
+  });
+
+  it("still styles payloads whose mention policy suppresses pings", () => {
+    const quiet = { content: "Nothing to notify", allowedMentions: { parse: [] as never[], repliedUser: false } };
+    const styled = styleMessage(quiet) as { content?: string; components?: unknown[] };
+    expect(styled.content).toBeUndefined();
+    expect(Array.isArray(styled.components)).toBe(true);
+  });
+
   it("does not double-wrap rich panels or erase component-only edits", () => {
     const rich = card({ title: "Help", body: "Choose a category" });
     expect(styleMessage(rich)).toBe(rich);
