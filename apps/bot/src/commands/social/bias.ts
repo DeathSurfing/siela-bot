@@ -17,7 +17,7 @@ const BTS_ALIASES = new Map<string, BtsMember>([
   ["jk", "Jungkook"],
 ]);
 
-function normalizeMember(value: string | undefined): BtsMember | null {
+export function normalizeMember(value: string | undefined): BtsMember | null {
   if (!value) return null;
   const cleaned = value.toLowerCase().replace(/^<@!?|>$/g, "").trim();
   const exact = BTS_MEMBERS.find((member) => member.toLowerCase() === cleaned);

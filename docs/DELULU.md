@@ -1,6 +1,12 @@
 # Delulu
 
-`/delulu` generates a short fictional scenario where the caller's saved bias notices them. Requires a saved bias (`bias <member> <wrecker>`). Cooldown 5s.
+`/delulu` generates a short fictional scenario where the caller's saved bias notices them. Cooldown 5s.
+
+## First-use bias setup
+
+If no bias is saved, `/delulu` opens a modal with two required dropdowns: bias and bias wrecker. Each dropdown contains all seven BTS members; the selections must be different. Submitting saves the choices and immediately runs the requested scenario, with the usual coin cost and daily limit. The NSFW option is preserved through setup.
+
+Prefix commands such as `!delulu` show a **Set bias & continue** button, because a text message cannot open a Discord modal directly. Only the requesting user can use the setup. Setup buttons and modals expire after five minutes; invalid selections offer a retry without saving or charging. If generation is blocked by insufficient funds or the daily limit, the saved bias remains available for the next request. Members can still manage their saved choices with `/bias`.
 
 - Code: `apps/bot/src/features/delulu.ts` (`DeluluService.generate`), `apps/bot/src/commands/social/delulu.ts`.
 
