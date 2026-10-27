@@ -14,14 +14,15 @@ import { escapeMarkdown, formatDuration, truncate, type MusicQueueState } from "
 import type { ReplyPayload } from "../framework/types.js";
 import { EMOJI, ICONS, UI_ACCENT, actionRow, progressBar, text } from "./ui.js";
 
-function buttonId(guildId: string, action: string): string {
-  return `music:${action}:${guildId}`;
+function buttonId(guildId: string, action: string, channelId?: string | null): string {
+  return channelId ? `music:${action}:${guildId}:${channelId}` : `music:${action}:${guildId}`;
 }
 
 export function buildMusicPayload(
   guildId: string,
   state: MusicQueueState | null,
   notice?: string,
+  channelId?: string | null,
 ): ReplyPayload {
   if (!state?.current) {
     return {
@@ -76,17 +77,17 @@ export function buildMusicPayload(
   container.addActionRowComponents(
     actionRow(
       new ButtonBuilder()
-        .setCustomId(buttonId(guildId, "pause"))
+        .setCustomId(buttonId(guildId, "pause", channelId))
         .setLabel(state.paused ? "Resume" : "Pause")
         .setEmoji(state.paused ? EMOJI.play : EMOJI.pause)
         .setStyle(state.paused ? ButtonStyle.Success : ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId(buttonId(guildId, "lyrics"))
+        .setCustomId(buttonId(guildId, "lyrics", channelId))
         .setLabel("Lyrics")
         .setEmoji(EMOJI.lyrics)
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId(buttonId(guildId, "skip"))
+        .setCustomId(buttonId(guildId, "skip", channelId))
         .setLabel("Skip")
         .setEmoji(EMOJI.skip)
         .setStyle(ButtonStyle.Secondary),
@@ -94,7 +95,7 @@ export function buildMusicPayload(
   );
 
   const more = new StringSelectMenuBuilder()
-    .setCustomId(`music:more:${guildId}`)
+    .setCustomId(channelId ? `music:more:${guildId}:${channelId}` : `music:more:${guildId}`)
     .setPlaceholder(`${ICONS.more} More controls…`)
     .addOptions(
       { label: "Rewind 10s", value: "rewind", emoji: EMOJI.rewind },

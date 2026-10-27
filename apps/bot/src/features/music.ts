@@ -853,19 +853,31 @@ export class MusicService extends EventEmitter {
   }
 
   /**
-   * Fleet node driving this guild's playback, set when the commander
-   * auto-routes `/play` to a worker. The commander owns the interface
-   * (now-playing card + buttons) while audio plays on the worker.
+   * Fleet nodes per voice channel: every VC is its own music instance.
+   * Keyed `${guildId}:${channelId}` so simultaneous streams in different
+   * channels stay independent and sticky to their node.
    */
-  private readonly fleetNodes = new Map<string, string>();
+  private readonly vcNodes = new Map<string, string>();
 
-  setFleetNode(guildId: string, nodeId: string | null): void {
-    if (nodeId) this.fleetNodes.set(guildId, nodeId);
-    else this.fleetNodes.delete(guildId);
+  private vcKey(guildId: string, channelId: string): string {
+    return `${guildId}:${channelId}`;
   }
 
-  getFleetNode(guildId: string): string | null {
-    return this.fleetNodes.get(guildId) ?? null;
+  setFleetNode(guildId: string, channelId: string, nodeId: string | null): void {
+    const key = this.vcKey(guildId, channelId);
+    if (nodeId) this.vcNodes.set(key, nodeId);
+    else this.vcNodes.delete(key);
+  }
+
+  getFleetNode(guildId: string, channelId?: string | null): string | null {
+    if (channelId) return this.vcNodes.get(this.vcKey(guildId, channelId)) ?? null;
+    return null;
+  }
+
+  clearFleetNodes(guildId: string): void {
+    for (const key of [...this.vcNodes.keys()]) {
+      if (key.startsWith(`${guildId}:`)) this.vcNodes.delete(key);
+    }
   }
 
   isConnected(guildId: string): boolean {

@@ -105,13 +105,13 @@ control network), not at individual nodes:
   `play` allows a 5-minute upstream timeout (large playlist resolves).
 - Any other `/v1/*` — proxied to the commander as-is.
 
-Discord `!music`/`/music` commands normally drive the commander's queue in the
-author's channel. If the commander's voice is locked (Tambola game, TTS
-session) and `ROUTER_URL` is set, `/play` auto-routes to a free fleet node
-instead of failing, replying with the full now-playing card for that node.
-All interface — the card and its pause/skip/stop/loop/shuffle/filter/lyrics
-buttons — is owned by the commander and forwarded through the router, so
-there is exactly one place to read and control playback.
+Discord `!music`/`/play` commands treat **every voice channel as its own
+music instance**. Playing in VC-A then VC-B runs two simultaneous streams:
+the commander takes a channel when its voice is free for it, otherwise the
+track auto-routes to a free fleet node, and the VC→node binding sticks for
+later plays in that channel. Each instance gets the full now-playing card,
+and all buttons route to the node behind that card. Queues never merge
+across channels; stop/disconnect ends only that VC's instance.
 
 ## Sticky TTS
 

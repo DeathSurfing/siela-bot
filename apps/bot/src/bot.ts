@@ -647,23 +647,24 @@ export class SielaBot {
   }
 
   private async onMusicButton(interaction: ButtonInteraction): Promise<void> {
-    const [prefix, action, guildId] = interaction.customId.split(":");
+    const [prefix, action, guildId, channelId] = interaction.customId.split(":");
     if (prefix !== "music" || !action || !guildId) return;
-    await this.handleMusicAction(interaction, action, guildId);
+    await this.handleMusicAction(interaction, action, guildId, channelId);
   }
 
   private async onMusicMoreSelect(interaction: StringSelectMenuInteraction): Promise<void> {
-    const [prefix, kind, guildId] = interaction.customId.split(":");
+    const [prefix, kind, guildId, channelId] = interaction.customId.split(":");
     if (prefix !== "music" || kind !== "more" || !guildId) return;
     const action = interaction.values[0];
     if (!action) return;
-    await this.handleMusicAction(interaction, action, guildId);
+    await this.handleMusicAction(interaction, action, guildId, channelId);
   }
 
   private async handleMusicAction(
     interaction: ButtonInteraction | StringSelectMenuInteraction,
     action: string,
     guildId: string,
+    channelId?: string,
   ): Promise<void> {
     if (!this.guildId || guildId !== this.guildId) return;
     const guild = interaction.guild;
@@ -672,9 +673,9 @@ export class SielaBot {
     const member = await guild.members.fetch(interaction.user.id).catch(() => null);
     if (!music || !member) return;
 
-    const fleetNode = music.getFleetNode(guild.id);
+    const fleetNode = channelId ? music.getFleetNode(guild.id, channelId) : null;
     if (fleetNode && this.config.ROUTER_URL) {
-      await this.handleFleetMusicAction(interaction, action, guild, member, music, fleetNode);
+      await this.handleFleetMusicAction(interaction, action, guild, member, music, fleetNode, channelId);
       return;
     }
 
@@ -688,7 +689,7 @@ export class SielaBot {
       }
     };
 
-    const channelId = music.channelId(guild.id);
+    const localChannelId = music.channelId(guild.id);
     const state = music.state(guild.id);
     if (action === "lyrics") {
       if (!state?.current) return replyError("Nothing is playing.");
@@ -704,8 +705,8 @@ export class SielaBot {
       }
       return;
     }
-    if (!channelId) return replyError("The bot is not in a voice channel.");
-    if (member.voice.channelId !== channelId) return replyError("Join the bot's voice channel first.");
+    if (!localChannelId) return replyError("The bot is not in a voice channel.");
+    if (member.voice.channelId !== localChannelId) return replyError("Join the bot's voice channel first.");
     if (!state?.current) return replyError("Nothing is playing.");
 
     try {
@@ -748,7 +749,7 @@ export class SielaBot {
           components: [
             new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
               new StringSelectMenuBuilder()
-                .setCustomId(`music:filter:${guild.id}`)
+                .setCustomId(channelId ? `music:filter:${guild.id}:${channelId}` : `music:filter:${guild.id}`)
                 .setPlaceholder("Choose a filter")
                 .addOptions(
                   { label: "Off", value: "off", description: "No audio filter", emoji: EMOJI.off },
@@ -806,6 +807,7 @@ export class SielaBot {
     member: GuildMember,
     music: MusicService,
     nodeId: string,
+    channelId?: string | null,
   ): Promise<void> {
     const fleet = new FleetClient(this.config.ROUTER_URL ?? null, this.config.MCP_TOKEN, this.logger);
 
@@ -821,7 +823,7 @@ export class SielaBot {
 
     const refresh = async (): Promise<void> => {
       const { state } = await fleet.nodeState(nodeId);
-      await interaction.editReply(buildMusicPayload(guild.id, state)).catch(() => undefined);
+      await interaction.editReply(buildMusicPayload(guild.id, state, undefined, channelId ?? undefined)).catch(() => undefined);
       music.refreshNowPlaying(guild.id);
     };
 
@@ -829,7 +831,7 @@ export class SielaBot {
     try {
       playback = await fleet.nodeState(nodeId);
     } catch {
-      music.setFleetNode(guild.id, null);
+      if (channelId) music.setFleetNode(guild.id, channelId, null);
       await replyError("That fleet player is unreachable. Use `/play` to start a new queue.");
       return;
     }
@@ -849,7 +851,7 @@ export class SielaBot {
       return;
     }
     if (!playback.channelId) {
-      music.setFleetNode(guild.id, null);
+      if (channelId) music.setFleetNode(guild.id, channelId, null);
       return replyError("The fleet player is not in a voice channel.");
     }
     if (member.voice.channelId !== playback.channelId) return replyError("Join the fleet player's voice channel first.");
@@ -859,7 +861,7 @@ export class SielaBot {
       if (action === "pause") {
         if (playback.state.paused) await fleet.control(nodeId, "resume");
         else await fleet.control(nodeId, "pause");
-        await interaction.update(buildMusicPayload(guild.id, (await fleet.nodeState(nodeId)).state));
+        await interaction.update(buildMusicPayload(guild.id, (await fleet.nodeState(nodeId)).state, undefined, channelId ?? undefined));
         music.refreshNowPlaying(guild.id);
         return;
       }
@@ -896,7 +898,7 @@ export class SielaBot {
           components: [
             new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
               new StringSelectMenuBuilder()
-                .setCustomId(`music:filter:${guild.id}`)
+                .setCustomId(channelId ? `music:filter:${guild.id}:${channelId}` : `music:filter:${guild.id}`)
                 .setPlaceholder("Choose a filter")
                 .addOptions(
                   { label: "Off", value: "off", description: "No audio filter", emoji: EMOJI.off },
@@ -929,7 +931,7 @@ export class SielaBot {
           cancelId,
           onConfirm: async () => {
             await fleet.control(nodeId, "stop").catch(() => undefined);
-            music.setFleetNode(guild.id, null);
+            if (channelId) music.setFleetNode(guild.id, channelId, null);
             await interaction.message?.edit(card({ title: "Stopped", body: "The fleet player has been disconnected." })).catch(() => undefined);
             return card({ title: "Stopped", body: "The fleet player has been disconnected." });
           },
@@ -944,7 +946,7 @@ export class SielaBot {
   }
 
   private async onMusicFilterSelect(interaction: StringSelectMenuInteraction): Promise<void> {
-    const [prefix, kind, guildId] = interaction.customId.split(":");
+    const [prefix, kind, guildId, channelId] = interaction.customId.split(":");
     if (prefix !== "music" || kind !== "filter" || !guildId || !this.guildId || guildId !== this.guildId) return;
     const guild = interaction.guild;
     if (!guild) return;
@@ -967,7 +969,7 @@ export class SielaBot {
 
     // Fleet playback: the commander's local player is idle, so validate
     // against the worker's channel instead.
-    const fleetNode = music.getFleetNode(guild.id);
+    const fleetNode = channelId ? music.getFleetNode(guild.id, channelId) : null;
     if (fleetNode && this.config.ROUTER_URL) {
       const fleet = new FleetClient(this.config.ROUTER_URL, this.config.MCP_TOKEN, this.logger);
       await interaction.deferUpdate();
@@ -988,9 +990,9 @@ export class SielaBot {
       return;
     }
 
-    const channelId = music.channelId(guild.id);
-    if (!channelId) return errorReply("The bot is not in a voice channel.");
-    if (member.voice.channelId !== channelId) return errorReply("Join the bot's voice channel first.");
+    const localChannelId = music.channelId(guild.id);
+    if (!localChannelId) return errorReply("The bot is not in a voice channel.");
+    if (member.voice.channelId !== localChannelId) return errorReply("Join the bot's voice channel first.");
     if (!music.state(guild.id)?.current) return errorReply("Nothing is playing.");
 
     await interaction.deferUpdate();

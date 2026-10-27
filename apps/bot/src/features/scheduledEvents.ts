@@ -108,8 +108,8 @@ export class ScheduledEventService {
    * worker playback never overlaps the event. Best-effort: event audio
    * still plays if the router is unreachable.
    */
-  private async preemptSession(guildId: string, phase: string): Promise<void> {
-    if (!this.routerUrl || !this.routerToken) return;
+  private async preemptSession(guildId: string, phase: string): Promise<boolean> {
+    if (!this.routerUrl || !this.routerToken) return false;
     try {
       const response = await fetch(`${this.routerUrl.replace(/\/+$/, "")}/v1/session/preempt`, {
         method: "POST",
@@ -122,8 +122,10 @@ export class ScheduledEventService {
       });
       if (!response.ok) throw new Error(`router preempt returned ${response.status}`);
       this.logger.info({ guildId, phase }, "voice session preempted for scheduled event");
+      return true;
     } catch (error) {
       this.logger.warn({ err: error, guildId, phase }, "session preempt failed; playing event audio anyway");
+      return false;
     }
   }
 
@@ -387,7 +389,9 @@ export class ScheduledEventService {
       this.stopPlayback();
       await this.music?.stop(guild.id).catch(() => undefined);
       await this.music?.disconnect(guild.id).catch(() => undefined);
-      await this.preemptSession(guild.id, phase.key);
+      if (await this.preemptSession(guild.id, phase.key)) {
+        this.music?.clearFleetNodes(guild.id);
+      }
       const channel = await this.ensureEventChannel(guild, phase.channelName);
       await this.moveEveryone(guild, channel);
       if (phase.youtubeUrl) {

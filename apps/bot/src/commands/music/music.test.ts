@@ -182,6 +182,77 @@ describe("play command", () => {
     expect(text).not.toContain("secret message");
   });
 
+  it("queues onto the node already serving the voice channel", async () => {
+    const service = {
+      state: vi.fn().mockReturnValue(null),
+      play: vi.fn(),
+      setNowPlayingMessage: vi.fn(),
+      setFleetNode: vi.fn(),
+      getFleetNode: vi.fn().mockReturnValue("voice-2"),
+      isVoiceLocked: vi.fn().mockReturnValue(false),
+      isConnected: vi.fn().mockReturnValue(false),
+      channelId: vi.fn().mockReturnValue(null),
+      logger: { info: () => undefined, warn: () => undefined },
+    } as unknown as MusicService;
+    const bodies: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown, init?: RequestInit) => {
+        if (String(url).includes("/v1/music/state")) {
+          return new Response(
+            JSON.stringify({
+              playing: true,
+              paused: false,
+              volume: 80,
+              loop: "off",
+              position: 0,
+              current: { title: "Sticky", author: "A", length: 1, uri: "u", artworkUrl: null, isStream: false },
+              upcoming: [],
+              channelId: "voice-9",
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        bodies.push(String(init?.body ?? ""));
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    const edited: ReplyPayload[] = [];
+    const ctx = {
+      guild: { id: "guild-1" } as Guild,
+      member: { voice: { channelId: "voice-9" } } as unknown as GuildMember,
+      author: { id: "user-1" } as User,
+      args: ["lofi"],
+      rawArgs: "lofi",
+      commandName: "play",
+      source: "slash",
+      services: { music: service, config: { ROUTER_URL: "http://router:3100", MCP_TOKEN: "token-1234567890123456" } } as unknown as Services,
+      client: {} as CommandContext["client"],
+      channel: {} as CommandContext["channel"],
+      interaction: undefined,
+      message: undefined,
+      reply: vi.fn().mockResolvedValue(null),
+      defer: vi.fn().mockResolvedValue(undefined),
+      edit: vi.fn(async (payload: ReplyPayload) => {
+        edited.push(payload);
+        return null;
+      }),
+      followUp: vi.fn().mockResolvedValue(null),
+    } as unknown as CommandContext;
+
+    const playCommand = musicCommands.find((command) => command.name === "play");
+    await playCommand!.execute(ctx);
+    vi.unstubAllGlobals();
+
+    expect(service.play).not.toHaveBeenCalled();
+    expect(bodies.some((b) => b.includes('"nodeId":"voice-2"'))).toBe(true);
+    expect(textFromPayload(edited[0])).toContain("Playing on voice-2");
+  });
+
   it("falls back to a fleet node when local voice is locked", async () => {
     const service = {
       state: vi.fn().mockReturnValue(null),
@@ -190,6 +261,8 @@ describe("play command", () => {
       setFleetNode: vi.fn(),
       getFleetNode: vi.fn().mockReturnValue(null),
       isVoiceLocked: vi.fn().mockReturnValue(true),
+      isConnected: vi.fn().mockReturnValue(false),
+      channelId: vi.fn().mockReturnValue(null),
       logger: { info: () => undefined, warn: () => undefined },
     } as unknown as MusicService;
     const fetchMock = vi.fn(async (url: unknown) => {
