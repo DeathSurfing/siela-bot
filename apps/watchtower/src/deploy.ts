@@ -99,6 +99,9 @@ async function composeUp(
   services: string[],
   fastOverlay?: string,
 ): Promise<DeployResult> {
+  if (services.length === 0) {
+    return { ok: false, detail: "no services to recreate" };
+  }
   const args: string[] = [];
   if (fastOverlay) args.push("-f", fastOverlay);
   // --no-deps avoids podman-compose waiting for the one-shot `migrate`
@@ -146,7 +149,11 @@ async function deployFull(deps: DeployDeps): Promise<DeployResult> {
   const dependencies = await ensureDependencies(deps);
   if (!dependencies.ok) return dependencies;
 
-  return composeUp(deps, []);
+  // Explicit service list: never recreate the watchtower itself, or the
+  // deploy dies with it mid-run. Voice workers are discovered from the
+  // generated overlay when a fleet is configured.
+  const services = ["bot", "tts", "router", ...voiceWorkerServices(deps.repoDir)];
+  return composeUp(deps, services);
 }
 
 /**
@@ -216,9 +223,13 @@ async function deployFast(deps: DeployDeps): Promise<DeployResult> {
   const dependencies = await ensureDependencies(deps);
   if (!dependencies.ok) return dependencies;
 
+  // Fast deploys only swap code that bind-mounts over the running image
+  // (bot dist, router dist). Voice workers run the bot image, so their
+  // code changes need a full deploy; restarting them here would only drop
+  // active streams for no benefit.
   return composeUp(
     deps,
-    ["bot", "router", ...voiceWorkerServices(deps.repoDir)],
+    ["bot", "router"],
     join(deps.repoDir, "deploy/podman/compose.fast.yaml"),
   );
 }
