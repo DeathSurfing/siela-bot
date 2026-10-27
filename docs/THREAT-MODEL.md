@@ -6,17 +6,24 @@ This document summarizes the main trust boundaries and residual risks. It descri
 
 ```mermaid
 flowchart LR
-  U[Discord users] -->|commands and components| BOT[Bot process]
+  U[Discord users] -->|commands and components| BOT[Commander process]
   A[Automation] -->|bearer token| API[Control API]
   API --> BOT
+  A -->|bearer token| R[Router :3100]
+  R --> BOT
+  R --> W[Voice workers]
   BOT --> DB[(PostgreSQL)]
+  W --> DB
   BOT --> VK[(Valkey)]
-  BOT --> LLM[vLLM]
+  W --> VK
+  BOT --> LLM[llama.cpp]
   BOT --> TTS[KittenTTS]
   BOT --> EXT[External HTTP services]
 ```
 
 The host, the Podman daemon, and the deployment `.env` are trusted. Discord users, automation clients, model output, and external HTTP responses are untrusted.
+
+Every node holds the same `MCP_TOKEN`, so a leaked token reaches the router and every worker, not just the commander. Workers run the same image with full database credentials.
 
 | Threat | Control | Residual risk |
 |---|---|---|
@@ -27,7 +34,7 @@ The host, the Podman daemon, and the deployment `.env` are trusted. Discord user
 | Prompt injection through Delulu | User input goes to an LLM, never to SQL or a shell. Output is bounded JSON. | A model can produce unwanted text. The bot has no channel-level NSFW gate for `/delulu nsfw`. |
 | Delulu NSFW misuse | NSFW costs 15 SC instead of 5 SC. Prompts constrain output. | Enforcement is prompt-level only. The command is not marked NSFW, so Discord does not enforce an age gate. |
 | Economy ledger abuse | Daily and work cooldowns use atomic updates. Transfers and spends reject insufficient funds. After account creation, every balance change writes an immutable ledger row. The initial account seed is the one exception. | Only admin adjustments, premium purchases, and shop mutations write an audit row. Game and transfer activity does not. |
-| vLLM exposure | OpenAI-compatible endpoint with no authentication, reachable only on the container networks `edge` and `control`. The `edge` network has outbound access but no published host port. | Any container on those networks can call the model. |
+| llama.cpp exposure | OpenAI-compatible endpoint with no authentication, reachable only on the container networks `edge` and `control`. The `edge` network has outbound access but no published host port. | Any container on those networks can call the model. |
 | KittenTTS exposure | Unauthenticated synthesis endpoints on the internal `data` network. | Any container on `data` can generate audio. |
 | GPU device exposure | NVIDIA devices are passed only to the `llm` container. | A container escape in `llm` reaches the host GPU driver. |
 | Avatar fetch SSRF | Welcome cards fetch the member avatar with a four-second timeout. | There is no private-IP or loopback block on that fetch path. Discord CDN URLs are expected, but the code does not enforce the host. |
@@ -35,7 +42,7 @@ The host, the Podman daemon, and the deployment `.env` are trusted. Discord user
 | Mention spam | `allowedMentions` is empty unless a welcome message explicitly enables user pings. | A misconfigured welcome template can still ping users. |
 | Secret leakage | Generated `.env` has mode 600 and is ignored by Git. Pino redaction is enabled. | A secret committed to Git history remains in forks and clones after removal. |
 | Data loss | PostgreSQL volume plus `pg_dump` backups. The runbook documents a restore drill. | There is no automated backup or point-in-time recovery. |
-| Container compromise | Rootless Podman, non-root users, read-only root filesystems where configured, dropped capabilities, and `no-new-privileges`. | PostgreSQL, Valkey, vLLM, KittenTTS, and the migration container are not fully hardened. |
+| Container compromise | Rootless Podman, non-root users, read-only root filesystems where configured, dropped capabilities, and `no-new-privileges`. | PostgreSQL, Valkey, llama.cpp, KittenTTS, and the migration container are not fully hardened. |
 | Watchtower auto-deploy | Disabled by default. When enabled, it mounts the host Podman socket, polls a configured GitHub branch, and only deploys after CI passes. Deploys are health-gated and roll back to the previous commit. | The socket is root-equivalent on the host, and the container runs code from the configured repository. A compromised branch, token, or watchtower image compromises the host. Only follow a repository you control, scope `GH_TOKEN` to that repository, and keep the CI gate enabled. |
 
 ## Security assumptions

@@ -9,13 +9,18 @@ workers — and drive them through the router as if they were one bot.
 ```mermaid
 flowchart LR
   OP[Operator / automation] -->|Bearer MCP_TOKEN| R[router :3100]
-  R -->|/internal/*| C[commander<br/>siela-bot]
-  R -->|/internal/*| W1[voice-1<br/>siela-voice-1]
-  R -->|/internal/*| WN[voice-N]
+  R -->|/internal/music, /internal/tts| C[commander<br/>siela-bot]
+  R -->|/internal/music, /internal/tts| W1[voice-1<br/>siela-voice-1]
+  R -->|/internal/music, /internal/tts| WN[voice-N]
+  R -->|other /v1/*| C
   C --- PG[(PostgreSQL)]
   C --- VK[(Valkey)]
   W1 --- PG
   W1 --- VK
+  WN --- VK
+  C -.->|heartbeat 15s| VK
+  W1 -.->|heartbeat 15s| VK
+  WN -.->|heartbeat 15s| VK
 ```
 
 - **Commander** (`NODE_ROLE=commander`, default): the existing bot. Owns
@@ -114,6 +119,55 @@ and all interface — card buttons, `/nowplaying`, `/queue`, `/lyrics`, and
 every control command (`pause`, `skip`, `stop`, `volume`, `loop`, …) —
 follows the author's voice channel to the right node. Queues never merge
 across channels; stop/disconnect ends only that VC's stream.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor A as User in VC-A
+  actor B as User in VC-B
+  participant C as Commander
+  participant R as Router
+  participant W as voice-1
+
+  A->>C: /play track-1
+  C->>C: VC-A unbound, own voice free
+  C->>A: now-playing card for VC-A
+
+  B->>C: /play track-2
+  C->>C: VC-B unbound, own voice busy
+  C->>R: POST /v1/music/play
+  R->>R: semaphore picks a free node
+  R->>W: POST /internal/music/play
+  W->>B: joins VC-B, plays track-2
+  R-->>C: { nodeId: voice-1 }
+  C->>C: bind VC-B to voice-1
+  C->>B: now-playing card for VC-B
+```
+
+Session preempt runs before every scheduled event:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant S as Scheduler
+  participant C as Commander
+  participant R as Router
+  participant W as Workers
+
+  S->>C: prayer time reached
+  C->>C: stop and disconnect local music
+  C->>R: POST /v1/session/preempt
+  R->>W: GET /internal/tts/state per node
+  alt node is speaking TTS
+    R-->>R: skip it, sticky TTS keeps running
+  else idle or music only
+    R->>W: POST /internal/music/clear
+    R->>W: POST /internal/music/disconnect
+  end
+  R->>R: release semaphore reservations
+  R-->>C: per-node result
+  C->>C: play event audio in its event channel
+```
 
 ## Sticky TTS
 

@@ -26,7 +26,7 @@ The project is open source under the MIT license. Contributions, bug reports, an
 ```mermaid
 flowchart LR
   U[Discord users] -->|slash, prefix, buttons| DG[Discord gateway]
-  DG <--> BOT[Bot process<br/>discord.js + Bun]
+  DG <--> BOT[Commander process<br/>discord.js + Bun]
 
   BOT --> REG[Command registry and guards]
   REG --> FEAT[Feature services]
@@ -37,10 +37,40 @@ flowchart LR
   FEAT --> EXT[YouTube, SoundCloud,<br/>Spotify, LRCLIB, Aladhan]
   FEAT --> MEM[In-memory state<br/>Tambola, blackjack, cooldowns]
 
-  BOT --> API[Control API<br/>Bearer token]
+  BOT --> API[Control API :3001<br/>Bearer token]
+
+  API -.->|optional fleet| R[Router :3100]
+  R --> BOT
+  R --> W1[Voice worker 1]
+  R --> WN[Voice worker N]
+  W1 --- VK
+  WN --- VK
 ```
 
-The bot is one long-lived Bun process. The control API and health server run inside that process; automation talks to the control API over the internal control network with a bearer token. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for command flow, boot order, persistence, and deployment diagrams.
+The bot is one long-lived Bun process. The control API and health server run inside that process; automation talks to the control API over the internal control network with a bearer token.
+
+For more than one simultaneous voice stream, add N voice workers behind a stateless router. Each worker is the same image with its own Discord token, and every voice channel becomes its own music instance. See [docs/VOICE-FLEET.md](docs/VOICE-FLEET.md).
+
+```mermaid
+flowchart LR
+  subgraph FLEET[Voice fleet]
+    R[router :3100<br/>stateless]
+    C[commander<br/>commands + UI]
+    W1[voice-1]
+    W2[voice-2]
+  end
+
+  OP[Operator or automation] -->|Bearer token| R
+  R -->|music and tts by nodeId| C
+  R -->|music and tts by nodeId| W1
+  R -->|music and tts by nodeId| W2
+  R -->|everything else| C
+  C --> VK[(Valkey session<br/>heartbeats, 45s TTL)]
+  W1 --> VK
+  W2 --> VK
+```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for command flow, boot order, persistence, and deployment diagrams.
 
 ## Quick start
 
@@ -78,14 +108,26 @@ The complete first-run checklist, including Discord intents, invite permissions,
 
 ## Repository layout
 
-```text
-apps/bot        Discord bot, feature services, control API, health server
-packages/db     Drizzle schema, migrations, PostgreSQL client
-packages/config Environment validation
-packages/shared Shared types, schemas, constants, utilities
-deploy/podman   Compose files, Containerfiles, TTS service, overlays
-docs            Architecture, operations, feature, and security documentation
-scripts         Podman setup, stack wrapper, smoke test, fast deploy
+```mermaid
+flowchart TD
+  ROOT[siela-nogseuui-seobeo-bot]
+
+  ROOT --> BOT[apps/bot<br/>Discord bot, features,<br/>control API, worker API]
+  ROOT --> ROUTER[apps/router<br/>stateless fleet gateway]
+  ROOT --> WATCH[apps/watchtower<br/>auto-deploy sidecar]
+  ROOT --> CONFIG[packages/config<br/>environment validation]
+  ROOT --> DB[packages/db<br/>schema, migrations, client]
+  ROOT --> SHARED[packages/shared<br/>types, schemas, utils]
+  ROOT --> DEPLOY[deploy/podman<br/>compose, Containerfiles,<br/>TTS service, overlays]
+  ROOT --> DOCS[docs<br/>architecture, runbook,<br/>fleet, features, security]
+  ROOT --> SCRIPTS[scripts<br/>init, stack wrapper,<br/>voice overlay generator]
+
+  BOT -.-> SHARED
+  ROUTER -.-> SHARED
+  ROUTER -.-> CONFIG
+  WATCH -.-> CONFIG
+  BOT -.-> DB
+  BOT -.-> CONFIG
 ```
 
 ## Development

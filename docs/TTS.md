@@ -22,16 +22,23 @@ stateDiagram-v2
   [*] --> Idle
   Idle --> Music: play or join
   Music --> Idle: stop, disconnect, or queue end
+  note right of Music
+    Workers leave ~30s after the queue drains.
+    A fleet node can hold one stream per guild.
+  end note
   Idle --> Tambola: host starts a game
   Tambola --> Tambola: pause, resume, calls
   Tambola --> Idle: end or cancel
   Idle --> TTS: /tts on
-  TTS --> Idle: /tts off
+  TTS --> TTS: chat keeps speaking
+  TTS --> Idle: /tts off or 30s with no texts
   Idle --> Random: rare drop
   Random --> Idle: clip ends
   Idle --> Event: prayer phase
   Event --> Idle: audio ends
 ```
+
+A TTS session binds to exactly one node until it ends. The commander takes the session when its voice is free, otherwise a free fleet node does, and speech forwards to that node. Session preempt skips TTS-active nodes so scheduled events never cut it off.
 
 Tambola and standalone TTS stop music, preserve the queue, and lock the voice channel for the session. Music commands are rejected while the lock is active. Random voice drops and scheduled events skip the channel while music, Tambola, or TTS is using voice.
 

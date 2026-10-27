@@ -10,26 +10,50 @@ Automation talks to the control API over the internal `control` network with a b
 
 ```mermaid
 flowchart LR
-  U[Discord users] --> DG[Discord gateway and voice]
-
-  subgraph BP[Bot process]
+  subgraph BP[Commander process]
     BOT[discord.js client]
     REG[Command registry and feature services]
     API[Control API :3001]
+    WORKER[Worker API :3101]
     HEALTH[Health and metrics :3002]
     BOT --> REG
     API --> REG
+    WORKER --> REG
   end
 
+  subgraph WP[Voice worker process]
+    WBOT[discord.js client<br/>voice only]
+    WMUSIC[MusicService]
+    WTTS[TtsService]
+    WWORKER[Worker API :3101]
+    WHEALTH[Health :3002]
+    WBOT --> WMUSIC
+    WBOT --> WTTS
+    WWORKER --> WMUSIC
+    WWORKER --> WTTS
+  end
+
+  U[Discord users] --> DG[Discord gateway and voice]
   DG <--> BOT
+  DG <--> WBOT
+
+  R[Router :3100] --> WORKER
+  R --> WWORKER
+  R -->|all other routes| API
+
   REG --> PG[(PostgreSQL 17)]
   REG --> VK[(Valkey 8, optional)]
-  REG --> LLM[vLLM :8000]
+  REG --> LLM[llama.cpp :8000]
   REG --> TTS[KittenTTS :8000]
   REG --> EXT[YouTube, SoundCloud,<br/>Spotify, LRCLIB, Aladhan]
   REG --> MEM[In-memory state]
   REG --> TMP["/tmp cache and sockets"]
+
+  WMUSIC --> VK
+  WTTS --> TTS
 ```
+
+Only the commander serves the public control API and registers slash commands. Voice workers serve the internal worker API and health endpoints, take no chat input, and run no schedulers. The router is stateless and holds no Discord or database client.
 
 ## Command lifecycle
 
@@ -104,9 +128,10 @@ flowchart LR
   PG --> P4[Economy accounts, ledger, inventory, premium passes]
   PG --> P5[Relic cards, auctions, bids, vaults, trades]
 
-  VK --> V1[Music queue by guild]
+  VK --> V1[Music queue per node and guild]
   VK --> V2[Friendship delta buffer]
   VK --> V3[Economy balance and leaderboard cache]
+  VK --> V4[Fleet session heartbeats, 45s TTL]
 
   MEM --> M1[Active Tambola games]
   MEM --> M2[Blackjack hands]
@@ -121,16 +146,20 @@ The economy ledger is append-only. Every balance change writes a transaction row
 
 ## Deployment topology
 
-The production stack contains PostgreSQL, Valkey, vLLM, KittenTTS, a one-shot migration container, and the bot. Watchtower is an optional overlay.
+The production stack contains PostgreSQL, Valkey, llama.cpp, KittenTTS, a one-shot migration container, the commander, and the router. Voice workers and watchtower are optional.
 
 ```mermaid
 flowchart LR
-  BOT[bot]
-  LLM[vLLM :8000]
+  BOT[bot, commander]
+  ROUTER[router]
+  W1[bot-voice-1]
+  WN[bot-voice-N]
+  LLM[llama.cpp :8000]
   PG[(PostgreSQL)]
   VK[(Valkey)]
   TTS[KittenTTS]
   MIG[migrate, one-shot]
+  WT[watchtower, optional]
 
   EDGE((edge, routable))
   DATA((data, internal))
@@ -139,15 +168,24 @@ flowchart LR
   BOT --- EDGE
   BOT --- DATA
   BOT --- CONTROL
+  ROUTER --- CONTROL
+  ROUTER --- DATA
+  W1 --- EDGE
+  W1 --- DATA
+  W1 --- CONTROL
+  WN --- EDGE
+  WN --- DATA
+  WN --- CONTROL
   LLM --- EDGE
   LLM --- CONTROL
   PG --- DATA
   VK --- DATA
   TTS --- DATA
   MIG --- DATA
+  WT --- EDGE
 ```
 
-The bot is attached to `edge`, `data`, and `control`. It reaches Discord and external services through `edge`, durable services through `data`, and automation reaches it through the `bot-control` alias on `control`.
+The commander is attached to `edge`, `data`, and `control`. Workers need `edge` for the Discord gateway and voice, `data` for PostgreSQL and Valkey, and `control` so the router can reach their worker API. The router sits on `control` and `data` only. Watchtower attaches to `edge` and mounts the host Podman socket. Automation reaches the commander through the `bot-control` alias and the fleet through `voice-router`, both on `control`.
 
 See [deploy/podman/README.md](../deploy/podman/README.md) for service configuration and overlays.
 
@@ -168,4 +206,6 @@ To add durable state, update `packages/db/src/schema.ts`, generate a migration, 
 - The bot is single-guild by design. It binds to `GUILD_ID` or the only guild it can see and leaves other guilds.
 - Context-menu commands are not implemented. The registry supports slash and prefix commands.
 - Active Tambola games and blackjack hands are not persisted. A restart cancels them.
-- The bot container does not need GPU access. Only the vLLM container does.
+- The bot container does not need GPU access. The llama.cpp container runs on CPU.
+- Fleet voice-busy checks are per process, not per fleet. Two nodes can be told to join the same channel; the last writer wins.
+- Tambola, scheduled events, random VC drops, and activity tracking run on the commander only.

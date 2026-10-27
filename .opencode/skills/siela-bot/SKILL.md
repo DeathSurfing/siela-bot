@@ -19,29 +19,44 @@ Single-guild Discord bot with music, social features, temporary voice channels, 
 
 ## Architecture
 
-```text
-Discord users
-  │ prefix / slash / mention
-  ▼
-apps/bot (discord.js)
-  ├─ command registry + prefix/slash contexts + cooldowns
-  ├─ feature services
-  ├─ music/Tambola voice + yt-dlp/mpv/ffmpeg
-  ├─ Fastify control API :3001 (commander only)
-  ├─ Fastify worker API :3101 (every node)
-  ├─ Fastify health/metrics :3002
-  ├─ PostgreSQL via Drizzle
-  ├─ Valkey via Bun Redis client
-  ├─ optional local llama.cpp (delulu)
-  └─ optional local KittenTTS (tts)
+```mermaid
+flowchart TD
+  DG[Discord gateway and voice] --> CM
 
-apps/router (stateless gateway, no Discord or DB client)
-  ├─ music/tts by nodeId → node /internal/*, everything else → commander
-  ├─ semaphore over per-guild Valkey heartbeats (siela:fleet:node:*)
-  └─ Bearer MCP_TOKEN, :3100 on the control network
+  subgraph CM[Commander process]
+    CMD[command registry + cooldowns]
+    CF[feature services]
+    CAPI[control API :3001]
+    CW[worker API :3101]
+    CH[health :3002]
+    CMD --> CF
+    CAPI --> CF
+    CW --> CF
+  end
 
-See `docs/VOICE-FLEET.md` for the N-bot setup.
+  subgraph WK[Voice worker process]
+    WM[music service]
+    WT[tts service]
+    WW[worker API :3101]
+    WH[health :3002]
+    WW --> WM
+    WW --> WT
+  end
+
+  DG --> WM
+  CF --> PG[(PostgreSQL)]
+  CF --> VK[(Valkey)]
+  WM --> VK
+  CF --> LLM[llama.cpp delulu]
+  WT --> KTT[KittenTTS]
+  CF --> EXT[YouTube, Spotify,<br/>LRCLIB, Aladhan]
+
+  RT[router :3100] --> CW
+  RT --> WW
+  RT -->|other routes| CAPI
 ```
+
+`apps/router` is stateless: music and TTS route by `nodeId`, everything else proxies to the commander. See `docs/VOICE-FLEET.md`.
 
 ## Repository map
 
