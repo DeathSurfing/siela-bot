@@ -93,6 +93,21 @@ export class WorkerServer {
       return fn(music, this.guildId());
     };
 
+    // Cleanup ops are idempotent: "nothing playing" is success, not an
+    // error, so session preempt works on idle nodes.
+    const idempotentOp = (fn: (music: NonNullable<Services["music"]>, guildId: string) => Promise<unknown>) => async () => {
+      const music = this.options.services.music;
+      if (!music) throw new UserError("Music service is not ready.", "not_ready");
+      try {
+        return await fn(music, this.guildId());
+      } catch (error) {
+        if (error instanceof UserError && error.message === "The bot is not playing anything.") {
+          return { ok: true, idle: true };
+        }
+        throw error;
+      }
+    };
+
     this.app.post("/internal/music/pause", guildOp(async (music, guildId) => {
       await music.pause(guildId);
       return { ok: true };
@@ -101,11 +116,11 @@ export class WorkerServer {
       await music.resume(guildId);
       return { ok: true };
     }));
-    this.app.post("/internal/music/stop", guildOp(async (music, guildId) => {
+    this.app.post("/internal/music/stop", idempotentOp(async (music, guildId) => {
       await music.stop(guildId);
       return { ok: true };
     }));
-    this.app.post("/internal/music/disconnect", guildOp(async (music, guildId) => {
+    this.app.post("/internal/music/disconnect", idempotentOp(async (music, guildId) => {
       await music.disconnect(guildId);
       return { ok: true };
     }));
@@ -113,7 +128,7 @@ export class WorkerServer {
       await music.shuffle(guildId);
       return { ok: true };
     }));
-    this.app.post("/internal/music/clear", guildOp(async (music, guildId) => {
+    this.app.post("/internal/music/clear", idempotentOp(async (music, guildId) => {
       await music.clear(guildId);
       return { ok: true };
     }));
