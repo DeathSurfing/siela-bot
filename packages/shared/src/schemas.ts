@@ -141,91 +141,59 @@ export const nodeIdSchema = z
   .max(64)
   .regex(/^[A-Za-z0-9_-]+$/, "Node ID may only contain letters, numbers, dash, and underscore");
 
-export const musicPlaySchema = z
-  .object({
-    query: z.string().min(1).max(MAX_MUSIC_QUERY),
-    voiceChannelId: snowflakeSchema.optional(),
-    next: z.boolean().optional(),
-    nodeId: nodeIdSchema.optional(),
-  })
-  .strict();
+function withNodeId<T extends z.ZodRawShape>(shape: T) {
+  return z.object({ ...shape, nodeId: nodeIdSchema.optional() }).strict();
+}
 
-export const musicJoinSchema = z
-  .object({
-    voiceChannelId: snowflakeSchema.optional(),
-    nodeId: nodeIdSchema.optional(),
-  })
-  .strict();
+export const musicPlaySchema = withNodeId({
+  query: z.string().min(1).max(MAX_MUSIC_QUERY),
+  voiceChannelId: snowflakeSchema.optional(),
+  next: z.boolean().optional(),
+});
 
-export const musicVolumeSchema = z
-  .object({
+export const musicJoinSchema = withNodeId({
+    voiceChannelId: snowflakeSchema.optional(),
+  });
+
+export const musicVolumeSchema = withNodeId({
     volume: z.number().int().min(0).max(150),
-    nodeId: nodeIdSchema.optional(),
-  })
-  .strict();
+  });
 
-export const musicSeekSchema = z
-  .object({
+export const musicSeekSchema = withNodeId({
     positionMs: z.number().int().min(0),
-    nodeId: nodeIdSchema.optional(),
-  })
-  .strict();
+  });
 
-export const musicLoopSchema = z
-  .object({
+export const musicLoopSchema = withNodeId({
     mode: z.enum(["off", "track", "queue"]),
-    nodeId: nodeIdSchema.optional(),
-  })
-  .strict();
+  });
 
-export const musicRemoveSchema = z
-  .object({
+export const musicRemoveSchema = withNodeId({
     index: z.number().int().min(1),
-    nodeId: nodeIdSchema.optional(),
-  })
-  .strict();
+  });
 
-export const musicMoveSchema = z
-  .object({
+export const musicMoveSchema = withNodeId({
     from: z.number().int().min(1),
     to: z.number().int().min(1),
-    nodeId: nodeIdSchema.optional(),
-  })
-  .strict();
+  });
 
-export const musicJumpSchema = z
-  .object({
+export const musicJumpSchema = withNodeId({
     index: z.number().int().min(1),
-    nodeId: nodeIdSchema.optional(),
-  })
-  .strict();
+  });
 
-export const musicAutoplaySchema = z
-  .object({
+export const musicAutoplaySchema = withNodeId({
     enabled: z.boolean(),
-    nodeId: nodeIdSchema.optional(),
-  })
-  .strict();
+  });
 
-export const musicFilterSchema = z
-  .object({
+export const musicFilterSchema = withNodeId({
     preset: z.enum(["off", "bassboost", "nightcore", "vaporwave"]),
-    nodeId: nodeIdSchema.optional(),
-  })
-  .strict();
+  });
 
-export const musicSkipSchema = z
-  .object({
+export const musicSkipSchema = withNodeId({
     count: z.number().int().min(1).max(50).default(1),
-    nodeId: nodeIdSchema.optional(),
-  })
-  .strict();
+  });
 
-export const musicNodeSchema = z
-  .object({
-    nodeId: nodeIdSchema.optional(),
-  })
-  .strict();
+export const musicNodeSchema = withNodeId({
+  });
 
 export const welcomeTestSchema = z
   .object({
