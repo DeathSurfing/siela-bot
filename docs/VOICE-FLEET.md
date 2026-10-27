@@ -88,3 +88,13 @@ router for that.
   per-fleet. Two nodes can be told to join channels at the same time; the
   last writer wins per channel.
 - All nodes share one guild (`GUILD_ID`). Multi-guild fleets are out of scope.
+
+## Troubleshooting
+
+- `up -d` hangs after an image rebuild: `podman-compose` waits on the
+  one-shot `migrate` container, which never reaches "running". The
+  migrations themselves already exited 0 — start the long-lived services
+  with `./scripts/podman-stack.sh up -d --no-deps` instead.
+- `Error: ... depends on container ... not found in input list`: stale
+  dependency metadata from an interrupted compose run. Remove the stuck
+  `Created` container (`podman rm siela-router`) and run `up` again.
