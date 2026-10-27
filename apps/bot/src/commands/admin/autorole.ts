@@ -13,7 +13,7 @@ function bool(value: string | undefined): boolean {
 }
 
 function configCard(settings: Awaited<ReturnType<CommandContext["services"]["settings"]["getAutoRole"]>>) {
-  return card({
+  return card({ theme: "admin",
     title: "Auto-role",
     body: [
       `**Enabled** · ${settings.enabled ? "On" : "Off"}`,
@@ -79,7 +79,7 @@ export const autoRoleCommand: Command = {
       if (action === "validate") {
         const result = await ctx.services.autoRole.validateRoles(ctx.guild, before.roleIds, ctx.member);
         await ctx.reply(
-          card({
+          card({ theme: "admin",
             title: "Auto-role validation",
             body: [
               result.validRoleIds.length ? `**Valid** · ${result.validRoleIds.map((id) => `<@&${id}>`).join(", ")}` : "**Valid** · none",
@@ -110,7 +110,7 @@ export const autoRoleCommand: Command = {
           after: result,
         });
         await ctx.reply(
-          card({
+          card({ theme: "admin",
             title: dryRun ? "Auto-role sync preview" : "Auto-role sync complete",
             body: `**Total** · ${result.total}\n**${dryRun ? "Would assign" : "Assigned"}** · ${result.assigned}\n**Skipped** · ${result.skipped}\n**Failed** · ${result.failed}${dryRun ? "\n\n-# Run `autorole sync apply` to apply." : ""}`,
             ephemeral: true,

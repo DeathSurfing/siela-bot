@@ -1,3 +1,4 @@
+import { brandedContainer } from "./ui.js";
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -72,7 +73,7 @@ export function buildTambolaLobbyPayload(
   voiceChannelId: string | null,
   voiceNote?: string,
 ): ReplyPayload {
-  const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+  const container = brandedContainer("games", "TAMBOLA / GAME NIGHT");
   container.addTextDisplayComponents(text("## Tambola · Lobby"));
   container.addTextDisplayComponents(text(`Host · <@${game.hostId}>`));
   container.addTextDisplayComponents(
@@ -132,7 +133,7 @@ export function buildTambolaSettingsPayload(
   voiceChannelId: string | null,
   voiceNote?: string,
 ): ReplyPayload {
-  const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+  const container = brandedContainer("games", "TAMBOLA / GAME NIGHT");
   container.addTextDisplayComponents(text("## Tambola settings"));
   container.addTextDisplayComponents(
     text(`**Auto-marking** · ${game.autoMark ? "On" : "Off"}`),
@@ -176,7 +177,7 @@ export function buildTambolaGamePayload(
   voiceChannelId: string | null,
   voiceNote?: string,
 ): ReplyPayload {
-  const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+  const container = brandedContainer("games", "TAMBOLA / GAME NIGHT");
   const last = game.called.at(-1);
   container.addTextDisplayComponents(text("## Tambola · Live"));
   container.addTextDisplayComponents(text(`Host · <@${game.hostId}>`));
@@ -240,7 +241,7 @@ export function buildTambolaGamePayload(
 }
 
 export function buildTambolaFinalPayload(game: TambolaGame, note?: string): ReplyPayload {
-  const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+  const container = brandedContainer("games", "TAMBOLA / GAME NIGHT");
   const title = game.status === "cancelled" ? "Tambola · Cancelled" : "Tambola · Finished";
   container.addTextDisplayComponents(text(`## ${title}`));
   if (note) container.addTextDisplayComponents(text(note));
@@ -262,7 +263,8 @@ export function buildTambolaTicketPayload(
   player: TambolaPlayer,
   options?: { page?: number; focusNumber?: number },
 ): ReplyPayload {
-  const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+  // Keep a component slot free for multi-ticket page controls.
+  const container = brandedContainer("games", "TAMBOLA / GAME NIGHT", true);
   const playable = game.status !== "finished" && game.status !== "cancelled";
   const numbers = uniqueTicketNumbers(player);
   const totalPages = Math.max(1, Math.ceil(numbers.length / TICKET_PAGE_SIZE));
@@ -274,7 +276,7 @@ export function buildTambolaTicketPayload(
   }
   const currentPage = clampTicketPage(page, totalPages);
 
-  container.addTextDisplayComponents(text("## Your Tambola ticket"));
+  container.addTextDisplayComponents(text("-# ✧ SIELA / GAME NIGHT\n## Your Tambola ticket"));
   const pageNote = totalPages > 1 ? ` · Page ${currentPage}/${totalPages}` : "";
   container.addTextDisplayComponents(
     text(
@@ -366,7 +368,7 @@ export function buildTambolaTicketPayload(
 
 export function buildTambolaClaimPayload(game: TambolaGame, player: TambolaPlayer): ReplyPayload {
   const available = CLAIM_PATTERNS.filter((pattern) => !game.claims.has(pattern));
-  const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+  const container = brandedContainer("games", "TAMBOLA / GAME NIGHT");
   container.addTextDisplayComponents(text("## Claim a pattern"));
   container.addTextDisplayComponents(text(`${player.tickets.length} ticket${player.tickets.length === 1 ? "" : "s"} · ${player.marked.size} marked`));
   container.addTextDisplayComponents(
@@ -400,7 +402,7 @@ export function buildTambolaClaimPayload(game: TambolaGame, player: TambolaPlaye
 }
 
 export function buildTambolaBoardPayload(game: TambolaGame): ReplyPayload {
-  const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+  const container = brandedContainer("games", "TAMBOLA / GAME NIGHT");
   container.addTextDisplayComponents(text("## Called board"));
   container.addTextDisplayComponents(text(`**Called** · ${game.called.length}/90`));
   container.addTextDisplayComponents(text(`\`\`\`\n${calledBoard(game)}\n\`\`\``));
@@ -409,14 +411,14 @@ export function buildTambolaBoardPayload(game: TambolaGame): ReplyPayload {
 }
 
 export function buildTambolaPlayersPayload(game: TambolaGame): ReplyPayload {
-  const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+  const container = brandedContainer("games", "TAMBOLA / GAME NIGHT");
   container.addTextDisplayComponents(text(`## Players · ${game.players.size}`));
   container.addTextDisplayComponents(text(playerList(game)));
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
 export function buildTambolaEndConfirmPayload(game: TambolaGame): ReplyPayload {
-  const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+  const container = brandedContainer("games", "TAMBOLA / GAME NIGHT");
   container.addTextDisplayComponents(text("## End Tambola?"));
   container.addTextDisplayComponents(text("This stops the game and leaves voice."));
   container.addSeparatorComponents(separator());
@@ -436,7 +438,7 @@ export function buildTambolaEndConfirmPayload(game: TambolaGame): ReplyPayload {
 }
 
 export function buildTambolaRulesPayload(): ReplyPayload {
-  const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+  const container = brandedContainer("games", "TAMBOLA / GAME NIGHT");
   container.addTextDisplayComponents(text("## Tambola rules"));
   container.addTextDisplayComponents(
     text(

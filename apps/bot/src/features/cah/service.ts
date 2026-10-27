@@ -1,3 +1,5 @@
+import { styleMessage } from "../ui.js";
+import { brandedContainer } from "../ui.js";
 import { randomBytes } from "node:crypto";
 import {
   MessageFlags,
@@ -153,7 +155,7 @@ export class CahService {
 
     try {
       session.cardMessage = await options.channel.send(
-        messageOptions(this.buildLobbyPayload(game), false),
+        styleMessage(messageOptions(this.buildLobbyPayload(game), false)),
       );
     } catch (error) {
       this.byGuild.delete(game.guildId);
@@ -381,7 +383,7 @@ export class CahService {
       }
       if (action === "endcancel") {
         await interaction
-          .update(messageOptions(this.buildStatusPayload(session.game), false))
+          .update(styleMessage(messageOptions(this.buildStatusPayload(session.game), false)))
           .catch(() => undefined);
         return;
       }
@@ -566,7 +568,7 @@ export class CahService {
       ? this.buildFinalPayload(session.game, note)
       : this.buildStatusPayload(session.game);
     try {
-      await session.cardMessage.edit(messageOptions(payload, false));
+      await session.cardMessage.edit(styleMessage(messageOptions(payload, false)));
     } catch (error) {
       this.log("debug", "cah card update failed", { err: error, gameId: session.game.id });
     }
@@ -582,15 +584,15 @@ export class CahService {
   }
 
   private async editPrivate(interaction: ComponentInteraction, payload: ReplyPayload): Promise<void> {
-    await interaction.editReply(messageOptions(payload, false));
+    await interaction.editReply(styleMessage(messageOptions(payload, false)));
   }
 
   private async privateReply(interaction: ComponentInteraction, payload: ReplyPayload): Promise<void> {
     const data = messageOptions(payload, interaction.inGuild());
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(data).catch(() => undefined);
+      await interaction.followUp(styleMessage(data)).catch(() => undefined);
     } else {
-      await interaction.reply(data).catch(() => undefined);
+      await interaction.reply(styleMessage(data)).catch(() => undefined);
     }
   }
 
@@ -598,7 +600,7 @@ export class CahService {
     const message = error instanceof UserError ? error.message : "That CAH action failed.";
     this.log("warn", "cah interaction failed", { err: error, customId: interaction.customId });
     if (interaction.deferred) {
-      await interaction.editReply(messageOptions({ content: message }, false)).catch(() => undefined);
+      await interaction.editReply(styleMessage(messageOptions({ content: message }, false))).catch(() => undefined);
       return;
     }
     await this.privateReply(interaction, { content: message, ephemeral: true });
@@ -607,7 +609,7 @@ export class CahService {
   // ---------- payload builders ----------
 
   private buildLobbyPayload(game: CahGameState): ReplyPayload {
-    const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+    const container = brandedContainer("games", "CARDS AGAINST HUMANITY");
     container.addTextDisplayComponents(text("## CAH · Lobby"));
     container.addTextDisplayComponents(
       text(`Host · <@${game.hostId}> · Players ${game.players.size}/${game.maxPlayers} · Goal ${game.pointsGoal}`),
@@ -652,7 +654,7 @@ export class CahService {
 
   private buildRoundPayload(game: CahGameState): ReplyPayload {
     const round = game.round!;
-    const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+    const container = brandedContainer("games", "CARDS AGAINST HUMANITY");
     container.addTextDisplayComponents(text("## CAH · Round"));
     container.addTextDisplayComponents(text(`Black card · ${this.cardText(round.blackCardId, "black")}`));
     container.addTextDisplayComponents(text(`Judge · <@${round.judgeId}>`));
@@ -732,7 +734,7 @@ export class CahService {
   }
 
   private buildFinalPayload(game: CahGameState, note?: string): ReplyPayload {
-    const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+    const container = brandedContainer("games", "CARDS AGAINST HUMANITY");
     const title = game.status === "cancelled" ? "CAH · Cancelled" : "CAH · Finished";
     container.addTextDisplayComponents(text(`## ${title}`));
     if (note) container.addTextDisplayComponents(text(note));
@@ -753,7 +755,7 @@ export class CahService {
   private buildHandPayload(game: CahGameState, userId: string): ReplyPayload {
     const player = game.players.get(userId);
     if (!player) throw new UserError("You are not in this game.");
-    const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+    const container = brandedContainer("games", "CARDS AGAINST HUMANITY");
     container.addTextDisplayComponents(text("## Your hand"));
     const isJudge = game.round?.judgeId === userId;
     const alreadySubmitted = game.round
@@ -793,7 +795,7 @@ export class CahService {
   }
 
   private buildScoresPayload(game: CahGameState): ReplyPayload {
-    const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+    const container = brandedContainer("games", "CARDS AGAINST HUMANITY");
     container.addTextDisplayComponents(text("## CAH · Scores"));
     const rows = [...game.players.values()]
       .sort((a, b) => b.score - a.score)
@@ -803,7 +805,7 @@ export class CahService {
   }
 
   private buildEndConfirmPayload(game: CahGameState): ReplyPayload {
-    const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+    const container = brandedContainer("games", "CARDS AGAINST HUMANITY");
     container.addTextDisplayComponents(text("## End CAH?"));
     container.addTextDisplayComponents(text("This ends the game for everyone."));
     container.addSeparatorComponents(separator());
@@ -823,7 +825,7 @@ export class CahService {
   }
 
   private buildRulesPayload(): ReplyPayload {
-    const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+    const container = brandedContainer("games", "CARDS AGAINST HUMANITY");
     container.addTextDisplayComponents(text("## CAH · Rules"));
     container.addTextDisplayComponents(
       text(

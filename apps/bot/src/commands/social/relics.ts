@@ -117,7 +117,7 @@ function auctionUnavailable(settings: RelicSettingsRow) {
         : `Next window opens <t:${Math.floor(next.getTime() / 1000)}:R>.`,
     );
   }
-  return card({ title: "No relic is live", body: lines.join("\n") });
+  return card({ theme: "social", title: "No relic is live", body: lines.join("\n") });
 }
 
 export const relicsCommand: Command = {
@@ -483,7 +483,7 @@ export const relicsCommand: Command = {
           minIncrement: settings.minIncrement,
         });
         await ctx.reply({
-          ...card({
+          ...card({ theme: "social",
             title: "Relic vault configuration",
             body: [
               `**Status** · ${settings.enabled ? "Active" : "Paused"}`,

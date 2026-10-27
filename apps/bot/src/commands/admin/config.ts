@@ -24,7 +24,7 @@ export const configCommand: Command = {
       ctx.services.relics.getSettings(ctx.guild.id),
     ]);
     await ctx.reply(
-      card({
+      card({ theme: "admin",
         title: "Server configuration",
         body: [
           `**Prefix** · \`${prefix}\``,

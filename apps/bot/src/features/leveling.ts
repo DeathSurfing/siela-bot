@@ -1,3 +1,4 @@
+import { styleMessage } from "./ui.js";
 import { eq } from "drizzle-orm";
 import { memberActivity, type Database, type MemberActivityRow } from "@siela/db";
 import type { Client, Guild } from "discord.js";
@@ -112,10 +113,10 @@ export class LevelingService {
     if (!guild) return;
     const channel = guild.channels.cache.get(channelId) ?? (await guild.channels.fetch(channelId).catch(() => null));
     if (!channel?.isTextBased()) return;
-    await channel.send({
+    await channel.send(styleMessage({
       content: `🎉 <@${userId}> reached **Level ${level}**!`,
       allowedMentions: { parse: ["users"] },
-    });
+    }));
   }
 }
 

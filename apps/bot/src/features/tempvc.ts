@@ -1,3 +1,5 @@
+import { styleMessage } from "./ui.js";
+import { brandedContainer } from "./ui.js";
 import {
   ButtonBuilder,
   ButtonStyle,
@@ -138,8 +140,7 @@ export class TempVcService {
     const status = row.locked ? "Locked" : "Open";
     const limit = row.userLimit === 0 ? "unlimited" : String(row.userLimit);
     const memberCount = [...channel.members.values()].filter((member) => !member.user.bot).length;
-    const container = new ContainerBuilder()
-      .setAccentColor(UI_ACCENT)
+    const container = brandedContainer("voice", "YOUR PRIVATE CORNER")
       .addTextDisplayComponents(text(`## ${channel.name}`))
       .addTextDisplayComponents(
         text(`-# <@${row.ownerId}> · ${status} · ${memberCount}/${limit} members`),
@@ -198,13 +199,13 @@ export class TempVcService {
         message.components.some((component) => JSON.stringify(component.toJSON()).includes(marker)),
     );
     if (existing) {
-      await existing.edit(payload).catch((error) => {
+      await existing.edit(styleMessage(payload)).catch((error) => {
         this.logger.warn({ err: error, channelId }, "temp VC panel edit failed");
         throw error;
       });
       return;
     }
-    const sent = await channel.send(payload).catch((error) => {
+    const sent = await channel.send(styleMessage(payload)).catch((error) => {
       this.logger.warn({ err: error, channelId }, "temp VC panel send failed");
       throw error;
     });
@@ -228,7 +229,7 @@ export class TempVcService {
       if (member && !member.user.bot) {
         await this.ensureChannel(member, settings).catch((error) => {
           this.logger.warn({ err: error, userId: member.id }, "temp VC creation failed");
-          member.send({ content: "Could not create your temporary voice channel. Please try again." }).catch(() => undefined);
+          member.send(styleMessage({ content: "Could not create your temporary voice channel. Please try again." })).catch(() => undefined);
         });
       }
     }

@@ -243,7 +243,7 @@ describe("play command", () => {
     expect(service.pause).toBeUndefined();
     expect(bodies.some((b) => b.includes("/v1/music/pause") && b.includes('"nodeId":"voice-1"'))).toBe(true);
     const replied = (ctx.reply as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[0] as { content?: string };
-    expect(replied.content ?? "").toContain("Paused.");
+    expect(JSON.stringify(replied)).toContain("Paused.");
   });
 
   it("routes skip with count to the fleet node", async () => {

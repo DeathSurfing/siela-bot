@@ -155,7 +155,7 @@ export const cahCommand: Command = {
 
     if (action === "status") {
       const payload = cah.status(ctx.guild.id);
-      await ctx.reply(payload ?? card({ title: "CAH", body: "No CAH game is running." }));
+      await ctx.reply(payload ?? card({ theme: "social", title: "CAH", body: "No CAH game is running." }));
       return;
     }
 

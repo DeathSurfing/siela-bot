@@ -88,7 +88,7 @@ describe("Delulu first-use bias setup", () => {
     const interaction = makeInteraction({ button: true });
     await handleDeluluSetup(interaction as unknown as ButtonInteraction, services as unknown as Services);
     expect(interaction.showModal).toHaveBeenCalledOnce();
-    expect(interaction.message.edit).toHaveBeenCalledWith({ components: [] });
+    expect(JSON.stringify(interaction.message.edit.mock.calls[0]![0])).toContain("Bias setup opened");
     expect(services.bias.set).not.toHaveBeenCalled();
   });
 
@@ -110,7 +110,7 @@ describe("Delulu first-use bias setup", () => {
       expect(services.bias.set).not.toHaveBeenCalled();
       expect(services.economy.spend).not.toHaveBeenCalled();
       expect(interaction.reply.mock.calls[0]![0].ephemeral).toBe(true);
-      expect(interaction.reply.mock.calls[0]![0].components).toHaveLength(1);
+      expect(interaction.reply.mock.calls[0]![0].components).toHaveLength(2);
     }
   });
 
@@ -125,7 +125,7 @@ describe("Delulu first-use bias setup", () => {
   it("rejects expired setup submissions", async () => {
     const services = makeServices();
     const interaction = await submit(services, { timestamp: Date.now() - 6 * 60 * 1000 });
-    expect(interaction.reply.mock.calls[0]![0].content).toContain("expired");
+    expect(JSON.stringify(interaction.reply.mock.calls[0]![0])).toContain("expired");
     expect(services.bias.set).not.toHaveBeenCalled();
   });
 
@@ -135,7 +135,7 @@ describe("Delulu first-use bias setup", () => {
     const interaction = await submit(services);
     expect(services.bias.set).toHaveBeenCalledOnce();
     expect(services.economy.spend).not.toHaveBeenCalled();
-    expect(interaction.editReply.mock.calls[0]![0].content).toContain("Daily delulu limit reached");
+    expect(JSON.stringify(interaction.editReply.mock.calls[0]![0])).toContain("Daily delulu limit reached");
   });
 
   it("keeps the saved bias when the user cannot afford generation", async () => {
@@ -144,7 +144,7 @@ describe("Delulu first-use bias setup", () => {
     const interaction = await submit(services);
     expect(services.bias.set).toHaveBeenCalledOnce();
     expect(services.delulu.generate).not.toHaveBeenCalled();
-    expect(interaction.editReply.mock.calls[0]![0].content).toContain("You need 5 SC");
+    expect(JSON.stringify(interaction.editReply.mock.calls[0]![0])).toContain("You need 5 SC");
   });
 
   it("refunds a failed generation through the existing payment flow", async () => {
@@ -152,7 +152,7 @@ describe("Delulu first-use bias setup", () => {
     services.delulu.generate.mockRejectedValue(new Error("model unavailable"));
     const interaction = await submit(services);
     expect(services.economy.award).toHaveBeenCalledWith("guild-1", "user-1", 5, "delulu_refund", expect.stringContaining(":refund"));
-    expect(interaction.editReply.mock.calls[0]![0].content).toContain("refunded");
+    expect(JSON.stringify(interaction.editReply.mock.calls[0]![0])).toContain("refunded");
   });
 
   it("skips setup when a saved bias already exists", async () => {

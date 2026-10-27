@@ -1,3 +1,4 @@
+import { styleMessage } from "../../features/ui.js";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { success } from "../../features/ui.js";
 
@@ -24,11 +25,11 @@ export const testCommand: Command = {
     try {
       const result = await ctx.services.scheduledEvents.test(kind, ctx.guild);
       const file = result.audio.split("/").pop() ?? result.audio;
-      await message?.edit(success(`Test complete: **${result.phase}** in **${result.channel}** using \`${file}\`.`));
+      await message?.edit(styleMessage(success(`Test complete: **${result.phase}** in **${result.channel}** using \`${file}\`.`)));
     } catch (error) {
-      await message?.edit({
+      await message?.edit(styleMessage({
         content: error instanceof Error ? error.message : "That test phase failed.",
-      });
+      }));
     }
   },
 };

@@ -1,3 +1,4 @@
+import { styleMessage } from "../../features/ui.js";
 import { randomUUID } from "node:crypto";
 import {
   ActionRowBuilder,
@@ -37,7 +38,7 @@ async function requestConsent(
 
   const expiresAt = Math.floor((Date.now() + 15_000) / 1000);
   const message = await ctx.reply({
-    ...card({
+    ...card({ theme: "social",
       title: "Consent needed",
       body: `<@${target.id}>, **${ctx.member.displayName}** wants to ${action} you.\n\n-# Expires <t:${expiresAt}:R>`,
       rows: [row],
@@ -54,7 +55,7 @@ async function requestConsent(
 
     collector.on("collect", async (interaction) => {
       if (interaction.user.id !== target.id) {
-        await interaction.reply({ content: "This request is not for you.", ephemeral: true }).catch(() => undefined);
+        await interaction.reply(styleMessage({ content: "This request is not for you.", ephemeral: true })).catch(() => undefined);
         return;
       }
       const approved = interaction.customId.includes(":approve:");
@@ -66,11 +67,11 @@ async function requestConsent(
       const approved = reason === "approved";
       try {
         if (approved) {
-          await message.edit(card({ title: "Approved", body: `${target.displayName} approved the request.` }));
+          await message.edit(styleMessage(card({ theme: "social", title: "Approved", body: `${target.displayName} approved the request.` })));
         } else if (reason === "rejected") {
-          await message.edit(card({ title: "Rejected", body: `${target.displayName} rejected the request.` }));
+          await message.edit(styleMessage(card({ theme: "social", title: "Rejected", body: `${target.displayName} rejected the request.` })));
         } else {
-          await message.edit(card({ title: "Timed out", body: `${target.displayName} did not respond in time.` }));
+          await message.edit(styleMessage(card({ theme: "social", title: "Timed out", body: `${target.displayName} did not respond in time.` })));
         }
       } catch {
         // ignore edit failures
@@ -119,7 +120,7 @@ export const marryCommand: Command = {
       return;
     }
 
-    await ctx.followUp(card({ title: "Married", body: `**${ctx.member.displayName}** married **${target.displayName}**.` }));
+    await ctx.followUp(card({ theme: "social", title: "Married", body: `**${ctx.member.displayName}** married **${target.displayName}**.` }));
   },
 };
 
@@ -161,10 +162,10 @@ export const divorceCommand: Command = {
       cancelId,
       onConfirm: async () => {
         await ctx.services.family.divorce(ctx.guild.id, ctx.author.id);
-        await ctx.followUp(card({ title: "Divorced", body: `**${ctx.member.displayName}** divorced **${spouseName}**.` })).catch(() => undefined);
-        return card({ title: "Divorce finalized", body: "Your marriage has ended." });
+        await ctx.followUp(card({ theme: "social", title: "Divorced", body: `**${ctx.member.displayName}** divorced **${spouseName}**.` })).catch(() => undefined);
+        return card({ theme: "social", title: "Divorce finalized", body: "Your marriage has ended." });
       },
-      onCancel: () => card({ title: "Cancelled", body: "The marriage was not changed." }),
+      onCancel: () => card({ theme: "social", title: "Cancelled", body: "The marriage was not changed." }),
     });
   },
 };
@@ -204,7 +205,7 @@ export const adoptCommand: Command = {
       return;
     }
 
-    await ctx.followUp(card({ title: "Adopted", body: `**${ctx.member.displayName}** adopted **${target.displayName}**.` }));
+    await ctx.followUp(card({ theme: "social", title: "Adopted", body: `**${ctx.member.displayName}** adopted **${target.displayName}**.` }));
   },
 };
 
@@ -248,13 +249,13 @@ export const runawayCommand: Command = {
         onConfirm: async () => {
           const removed = await ctx.services.family.runaway(ctx.guild.id, ctx.author.id, target.id);
           const noun = removed === 1 ? "family relationship" : "family relationships";
-          return card({
+          return card({ theme: "social",
             title: "Ran away",
             body: `Ran away from ${removed} ${noun}.`,
             ephemeral: true,
           });
         },
-        onCancel: () => card({ title: "Cancelled", body: "No family relationship was changed." }),
+        onCancel: () => card({ theme: "social", title: "Cancelled", body: "No family relationship was changed." }),
       });
       return;
     }
@@ -280,13 +281,13 @@ export const runawayCommand: Command = {
       onConfirm: async () => {
         const removed = await ctx.services.family.runaway(ctx.guild.id, ctx.author.id);
         const noun = removed === 1 ? "family relationship" : "family relationships";
-        return card({
+        return card({ theme: "social",
           title: "Ran away",
           body: `Ran away from ${removed} ${noun}.`,
           ephemeral: true,
         });
       },
-      onCancel: () => card({ title: "Cancelled", body: "No family relationship was changed." }),
+      onCancel: () => card({ theme: "social", title: "Cancelled", body: "No family relationship was changed." }),
     });
   },
 };

@@ -1,3 +1,4 @@
+import { styleMessage } from "../ui.js";
 import { randomBytes } from "node:crypto";
 import { getVoiceConnection } from "@discordjs/voice";
 import {
@@ -172,10 +173,10 @@ export class TambolaService {
     this.byId.set(game.id, session);
     try {
       session.cardMessage = await options.channel.send(
-        messageOptions(
+        styleMessage(messageOptions(
           buildTambolaLobbyPayload(game, session.voiceChannelId, session.voiceNote ?? undefined),
           false,
-        ),
+        )),
       );
     } catch (error) {
       this.byGuild.delete(game.guildId);
@@ -398,14 +399,14 @@ export class TambolaService {
           this.logger.warn({ err: error, gameId: session.game.id }, "tambola ticket refresh failed"),
         );
         await interaction.editReply(
-          messageOptions(
+          styleMessage(messageOptions(
             buildTambolaSettingsPayload(
               session.game,
               session.voiceChannelId,
               session.voiceNote ?? (session.voice?.connected ? "Ready" : "Text only"),
             ),
             false,
-          ),
+          )),
         );
         return;
       }
@@ -421,14 +422,14 @@ export class TambolaService {
         this.music.unlockVoice(session.game.guildId);
         await this.updateCard(session);
         await interaction.editReply(
-          messageOptions(
+          styleMessage(messageOptions(
             buildTambolaSettingsPayload(
               session.game,
               session.voiceChannelId,
               session.voiceNote ?? (session.voice?.connected ? "Ready" : "Text only"),
             ),
             false,
-          ),
+          )),
         );
         return;
       }
@@ -447,14 +448,14 @@ export class TambolaService {
         }
         if (channelId === session.voiceChannelId && session.voice?.connected) {
           await interaction.update(
-            messageOptions(
+            styleMessage(messageOptions(
               buildTambolaSettingsPayload(
                 session.game,
                 session.voiceChannelId,
                 session.voiceNote ?? "Ready",
               ),
               false,
-            ),
+            )),
           );
           return;
         }
@@ -465,14 +466,14 @@ export class TambolaService {
         await this.ensureVoice(session);
         await this.updateCard(session);
         await interaction.editReply(
-          messageOptions(
+          styleMessage(messageOptions(
             buildTambolaSettingsPayload(
               session.game,
               session.voiceChannelId,
               session.voiceNote ?? (session.voice?.connected ? "Ready" : "Text only"),
             ),
             false,
-          ),
+          )),
         );
         return;
       }
@@ -531,7 +532,7 @@ export class TambolaService {
       if (action === "endcancel") {
         await interaction
           .update(
-            messageOptions(
+            styleMessage(messageOptions(
               {
                 components: [
                   new ContainerBuilder()
@@ -542,7 +543,7 @@ export class TambolaService {
                 flags: MessageFlags.IsComponentsV2,
               },
               false,
-            ),
+            )),
           )
           .catch(() => undefined);
         return;
@@ -562,7 +563,7 @@ export class TambolaService {
         if (!player) throw new UserError("You are not in this game.");
         const page = Number(parts[3]);
         await interaction.update(
-          messageOptions(buildTambolaTicketPayload(session.game, player, { page }), false),
+          styleMessage(messageOptions(buildTambolaTicketPayload(session.game, player, { page }), false)),
         );
         return;
       }
@@ -633,10 +634,10 @@ export class TambolaService {
           return;
         }
         await interaction.update(
-          messageOptions(
+          styleMessage(messageOptions(
             buildTambolaTicketPayload(session.game, player, { focusNumber: number }),
             false,
-          ),
+          )),
         );
         return;
       }
@@ -659,7 +660,7 @@ export class TambolaService {
       if (action === "refresh") {
         const player = session.game.player(interaction.user.id);
         if (!player) throw new UserError("You are not in this game.");
-        await interaction.update(messageOptions(buildTambolaTicketPayload(session.game, player), false));
+        await interaction.update(styleMessage(messageOptions(buildTambolaTicketPayload(session.game, player), false)));
         return;
       }
     } catch (error) {
@@ -994,7 +995,7 @@ export class TambolaService {
       ? buildTambolaFinalPayload(session.game, note)
       : this.cardPayload(session);
     try {
-      await session.cardMessage.edit(messageOptions(payload, false));
+      await session.cardMessage.edit(styleMessage(messageOptions(payload, false)));
     } catch (error) {
       this.logger.debug({ err: error, gameId: session.game.id }, "tambola card update failed");
     }
@@ -1018,7 +1019,7 @@ export class TambolaService {
 
   private async sendTicketDm(user: { send(options: OutgoingMessage): Promise<unknown> }, payload: ReplyPayload): Promise<boolean> {
     try {
-      await user.send(messageOptions(payload, false));
+      await user.send(styleMessage(messageOptions(payload, false)));
       return true;
     } catch (error) {
       this.logger.debug({ err: error }, "tambola ticket DM failed");
@@ -1077,15 +1078,15 @@ export class TambolaService {
   }
 
   private async editPrivate(interaction: ComponentInteraction, payload: ReplyPayload): Promise<void> {
-    await interaction.editReply(messageOptions(payload, false));
+    await interaction.editReply(styleMessage(messageOptions(payload, false)));
   }
 
   private async privateReply(interaction: ComponentInteraction, payload: ReplyPayload): Promise<void> {
     const data = messageOptions(payload, interaction.inGuild());
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(data).catch(() => undefined);
+      await interaction.followUp(styleMessage(data)).catch(() => undefined);
     } else {
-      await interaction.reply(data).catch(() => undefined);
+      await interaction.reply(styleMessage(data)).catch(() => undefined);
     }
   }
 
@@ -1093,7 +1094,7 @@ export class TambolaService {
     const message = error instanceof UserError ? error.message : "That Tambola action failed.";
     this.logger.warn({ err: error, customId: interaction.customId }, "tambola interaction failed");
     if (interaction.deferred) {
-      await interaction.editReply(messageOptions({ content: message }, false)).catch(() => undefined);
+      await interaction.editReply(styleMessage(messageOptions({ content: message }, false))).catch(() => undefined);
       return;
     }
     await this.privateReply(interaction, { content: message, ephemeral: true });

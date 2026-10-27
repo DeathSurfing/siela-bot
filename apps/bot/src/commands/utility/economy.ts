@@ -66,13 +66,16 @@ export const economyCommand: Command = {
       if (!target) throw new UserError("Choose a valid member.");
       const data = await economy.getBalance(ctx.guild.id, target.id);
       await ctx.reply(
-        card({
+        card({ theme: "economy",
           title: `${target.displayName}'s balance`,
-          body: [
-            `**Balance** · ${formatCoins(data.balance)}`,
-            `**Daily streak** · ${data.dailyStreak} day${data.dailyStreak === 1 ? "" : "s"}`,
-            `**Last daily** · ${data.lastDailyAt ? `<t:${Math.floor(data.lastDailyAt.getTime() / 1000)}:R>` : "never"}`,
-          ].join("\n"),
+          eyebrow: "THE WALLET / SIELA COINS",
+          subtitle: "Good things add up.",
+          fields: [
+            { label: "AVAILABLE BALANCE", value: formatCoins(data.balance) },
+            { label: "DAILY STREAK", value: `${data.dailyStreak} day${data.dailyStreak === 1 ? "" : "s"}` },
+          ],
+          body: `**Last daily** · ${data.lastDailyAt ? `<t:${Math.floor(data.lastDailyAt.getTime() / 1000)}:R>` : "Not claimed yet"}`,
+          footer: "Earn a little more with /economy daily or /economy work.",
         }),
       );
       return;
@@ -183,7 +186,7 @@ export const economyCommand: Command = {
           if (item.description) lines.push(`-# ${item.description}`);
         }
       }
-      await ctx.reply(card({ title: "Economy shop", body: lines.join("\n").trim() }));
+      await ctx.reply(card({ theme: "economy", title: "Economy shop", body: lines.join("\n").trim() }));
       return;
     }
 
@@ -349,7 +352,7 @@ export const economyCommand: Command = {
       if (winAmount > 0) {
         await economy.award(ctx.guild.id, ctx.author.id, winAmount, "slots_win", `${ctx.guild.id}:${ctx.author.id}:slots:${Date.now()}`);
       }
-      await ctx.reply(card({ title: "Slots", body: `${reels.join("  ")}\n\n${winAmount > 0 ? `You win ${formatCoins(winAmount)}!` : `You lose ${formatCoins(amount)}.`}` }));
+      await ctx.reply(card({ theme: "economy", title: "Slots", body: `${reels.join("  ")}\n\n${winAmount > 0 ? `You win ${formatCoins(winAmount)}!` : `You lose ${formatCoins(amount)}.`}` }));
       return;
     }
 
@@ -371,7 +374,7 @@ export const economyCommand: Command = {
 
     if (action === "premium") {
       const has = await economy.hasPremium(ctx.guild.id, ctx.author.id);
-      await ctx.reply(card({ title: "Premium", body: has ? "You have an active premium pass." : "You do not have an active premium pass." }));
+      await ctx.reply(card({ theme: "economy", title: "Premium", body: has ? "You have an active premium pass." : "You do not have an active premium pass." }));
       return;
     }
 
@@ -404,7 +407,7 @@ export const economyCommand: Command = {
       const body = rows
         .map((row) => `- \`${row.kind}\` · ${formatCoins(row.total)} · ${row.count} tx`)
         .join("\n");
-      await ctx.reply(card({ title: "Economy activity · 7 days", body }));
+      await ctx.reply(card({ theme: "economy", title: "Economy activity · 7 days", body }));
       return;
     }
 

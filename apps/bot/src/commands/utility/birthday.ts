@@ -35,7 +35,7 @@ function normalizeId(value: string | undefined): string | undefined {
 }
 
 function birthdayCard(displayName: string, month: number, day: number, birthYear?: number | null) {
-  return card({
+  return card({ theme: "primary",
     title: "Birthday",
     subtitle: displayName,
     body: [

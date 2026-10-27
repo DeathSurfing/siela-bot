@@ -1,3 +1,4 @@
+import { styleMessage } from "./ui.js";
 import { and, eq } from "drizzle-orm";
 import { userBirthdays, type Database, type UserBirthdayRow } from "@siela/db";
 import type { Client, TextChannel } from "discord.js";
@@ -106,12 +107,12 @@ export class BirthdayService {
       if (channelId) {
         const channel = await guild.channels.fetch(channelId).catch(() => null);
         if (channel && channel.isTextBased()) {
-          await (channel as TextChannel).send({ content, allowedMentions: { users: [row.userId] } });
+          await (channel as TextChannel).send(styleMessage({ content, allowedMentions: { users: [row.userId] } }));
         } else {
-          await user.send(content);
+          await user.send(styleMessage(content));
         }
       } else {
-        await user.send(content);
+        await user.send(styleMessage(content));
       }
     } catch (error) {
       this.logger.debug({ err: error, userId: row.userId }, "birthday wish failed");

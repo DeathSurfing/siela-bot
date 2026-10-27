@@ -1,10 +1,11 @@
+import { styleMessage } from "../../features/ui.js";
 import {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, LabelBuilder, ModalBuilder, SlashCommandBuilder,
   StringSelectMenuBuilder, type ButtonInteraction, type ModalSubmitInteraction,
 } from "discord.js";
 import { BTS_MEMBERS } from "@siela/shared";
 import type { Command, CommandContext, Services } from "../../framework/types.js";
-import { card } from "../../features/ui.js";
+import { buildDeluluPayload } from "../../features/delulu-ui.js";
 import { UserError } from "../../lib/errors.js";
 import { normalizeMember } from "./bias.js";
 
@@ -41,18 +42,18 @@ export async function handleDeluluSetup(
   const [namespace, feature, action, userId, mode, timestamp, extra] = interaction.customId.split(":");
   if (namespace !== "delulu" || feature !== "setup") return;
   if (!interaction.guild || interaction.user.id !== userId) {
-    await interaction.reply({ content: "This bias setup belongs to someone else.", ephemeral: true });
+    await interaction.reply(styleMessage({ content: "This bias setup belongs to someone else.", ephemeral: true }));
     return;
   }
   const age = Date.now() - Number(timestamp);
   if (extra !== undefined || !timestamp || !Number.isFinite(age) || age < 0 || age > SETUP_TTL_MS || !["sfw", "nsfw"].includes(mode ?? "")) {
-    await interaction.reply({ content: "This setup expired. Run Delulu again to open a fresh one.", ephemeral: true });
+    await interaction.reply(styleMessage({ content: "This setup expired. Run Delulu again to open a fresh one.", ephemeral: true }));
     return;
   }
   const nsfw = mode === "nsfw";
   if (interaction.isButton() && action === "open") {
     await interaction.showModal(setupModal(userId!, nsfw));
-    await interaction.message.edit({ components: [] }).catch(() => undefined);
+    await interaction.message.edit(styleMessage({ content: "Bias setup opened. Complete the form to continue.", components: [] })).catch(() => undefined);
     return;
   }
   if (!interaction.isModalSubmit() || action !== "submit") return;
@@ -62,14 +63,14 @@ export async function handleDeluluSetup(
     const message = !bias || !wrecker
       ? `Choose BTS members: ${BTS_MEMBERS.join(", ")}.`
       : "Your bias and bias wrecker must be different members.";
-    await interaction.reply({
+    await interaction.reply(styleMessage({
       content: message,
       ephemeral: true,
       components: [new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId(setupId("open", userId!, nsfw))
           .setLabel("Try bias setup again").setStyle(ButtonStyle.Primary),
       )],
-    });
+    }));
     return;
   }
   await interaction.deferReply();
@@ -78,13 +79,13 @@ export async function handleDeluluSetup(
     await runDelulu({
       services, guild: interaction.guild, author: interaction.user,
       defer: async () => {},
-      edit: (payload) => interaction.editReply({ ...payload, allowedMentions: { parse: [], repliedUser: false } }),
+      edit: (payload) => interaction.editReply(styleMessage({ ...payload, allowedMentions: { parse: [], repliedUser: false } })),
     }, bias, nsfw);
   } catch (error) {
-    await interaction.editReply({
+    await interaction.editReply(styleMessage({
       content: error instanceof UserError ? error.message : "Could not save your bias or run Delulu. Please try again.",
       allowedMentions: { parse: [] },
-    });
+    }));
   }
 }
 
@@ -164,11 +165,7 @@ async function runDelulu(ctx: DeluluContext, bias: string, nsfw: boolean): Promi
     try {
       const scenario = await ctx.services.delulu.generate(bias, nsfw);
       await ctx.edit(
-        card({
-          title: `${bias} notices you`,
-          subtitle: nsfw ? "NSFW delulu scenario" : "Delulu scenario",
-          body: scenario,
-        }),
+        buildDeluluPayload({ bias, scenario, nsfw, cost, use: used + 1 }),
       );
     } catch (error) {
       try {

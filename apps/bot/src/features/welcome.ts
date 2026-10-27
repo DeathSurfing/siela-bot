@@ -1,3 +1,4 @@
+import { styleMessage } from "./ui.js";
 import {
   AttachmentBuilder,
   EmbedBuilder,
@@ -97,7 +98,7 @@ export class WelcomeService {
               }
             : { content, allowedMentions };
         }
-        await channel.send(payload).catch((error) => {
+        await channel.send(styleMessage(payload)).catch((error) => {
           this.logger.warn({ err: error, guildId: member.guild.id }, "welcome message failed");
         });
       }
@@ -105,7 +106,7 @@ export class WelcomeService {
 
     if (settings.dmEnabled && settings.dmMessage) {
       const content = renderTemplate(settings.dmMessage, this.values(member));
-      await member.send({ content, allowedMentions: { parse: [] } }).catch((error) => {
+      await member.send(styleMessage({ content, allowedMentions: { parse: [] } })).catch((error) => {
         this.logger.debug({ err: error, userId: member.id }, "welcome DM failed");
       });
     }
@@ -124,7 +125,7 @@ export class WelcomeService {
       this.values(member),
     );
     await channel
-      .send({ content, allowedMentions: { parse: [] } })
+      .send(styleMessage({ content, allowedMentions: { parse: [] } }))
       .catch((error) => this.logger.warn({ err: error }, "goodbye message failed"));
   }
 
@@ -150,16 +151,16 @@ export class WelcomeService {
           message: content,
         });
         embed.setImage("attachment://welcome.png");
-        await channel.send({
+        await channel.send(styleMessage({
           embeds: [embed],
           files: [new AttachmentBuilder(card, { name: "welcome.png" })],
           allowedMentions: { parse: [] },
-        });
+        }));
         return;
       } catch (error) {
         this.logger.warn({ err: error }, "welcome card preview failed; falling back to embed");
       }
     }
-    await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+    await channel.send(styleMessage({ embeds: [embed], allowedMentions: { parse: [] } }));
   }
 }

@@ -45,15 +45,15 @@ export const privacyCommand: Command = {
             targetType: "user",
             targetId: ctx.author.id,
           });
-          return card({ title: "Deleted", body: "Your counter and opt-out data has been deleted." });
+          return card({ theme: "primary", title: "Deleted", body: "Your counter and opt-out data has been deleted." });
         },
-        onCancel: () => card({ title: "Cancelled", body: "No data was deleted." }),
+        onCancel: () => card({ theme: "primary", title: "Cancelled", body: "No data was deleted." }),
       });
       return;
     }
 
     await ctx.reply(
-      card({
+      card({ theme: "primary",
         title: "Privacy",
         body: [
           "Siela stores your Discord user ID, interaction counters, opt-outs, and temporary-VC ownership while it is active.",

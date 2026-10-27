@@ -3,6 +3,10 @@ import { GlobalFonts } from "@napi-rs/canvas";
 
 const FONT_CANDIDATES = [
   {
+    regular: "C:/Windows/Fonts/segoeui.ttf",
+    bold: "C:/Windows/Fonts/segoeuib.ttf",
+  },
+  {
     regular: "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     bold: "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
   },

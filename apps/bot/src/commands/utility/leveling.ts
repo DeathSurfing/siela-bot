@@ -68,6 +68,6 @@ export const levelCommand: Command = {
       `-# Next level at ${nextThreshold} XP`,
     ].join("\n");
 
-    await ctx.reply(card({ title: "Level", subtitle: member.displayName, body }));
+    await ctx.reply(card({ theme: "primary", title: "Level", subtitle: member.displayName, body }));
   },
 };

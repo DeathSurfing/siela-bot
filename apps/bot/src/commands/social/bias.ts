@@ -30,7 +30,7 @@ function normalizeId(value: string | undefined): string | undefined {
 }
 
 function biasCard(displayName: string, bias: string, wrecker: string) {
-  return card({
+  return card({ theme: "social",
     title: `${displayName}'s bias`,
     body: `**Bias** · ${bias}\n**Bias wrecker** · ${wrecker}`,
   });

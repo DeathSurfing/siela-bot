@@ -1,3 +1,4 @@
+import { styleMessage } from "./ui.js";
 import { and, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import {
   economyAccounts,
@@ -1205,7 +1206,7 @@ export class EconomyService {
     const action = parts[2];
     const userId = parts[3];
     if (!userId || interaction.user.id !== userId) {
-      await interaction.reply({ content: "This is not your hand.", ephemeral: true }).catch(() => undefined);
+      await interaction.reply(styleMessage({ content: "This is not your hand.", ephemeral: true })).catch(() => undefined);
       return;
     }
     const guildId = interaction.guild?.id;
@@ -1215,10 +1216,10 @@ export class EconomyService {
       if (action === "hit") game = await this.blackjackHit(guildId, userId);
       else if (action === "stand") game = await this.blackjackStand(guildId, userId);
       else return;
-      await interaction.update(this.blackjackPayload(game));
+      await interaction.update(styleMessage(this.blackjackPayload(game)));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Blackjack failed.";
-      await interaction.reply({ content: message, ephemeral: true }).catch(() => undefined);
+      await interaction.reply(styleMessage({ content: message, ephemeral: true })).catch(() => undefined);
     }
   }
 
