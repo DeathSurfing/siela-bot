@@ -6,23 +6,25 @@ Production stack for Siela Bot. All services run under one compose project (`-p 
 
 - Linux host with Podman 5 or newer and a compose provider.
 - cgroups v2.
-- NVIDIA GPU with the driver devices available for the local vLLM service.
-- `/opt/nvidia-libs` populated with the driver userspace libraries.
 - About 25 GB of free disk for images and model weights.
 - Outbound access to container registries, Hugging Face, Discord, and the music providers.
 
-The bot container does not require GPU access. Only the `llm` service receives the NVIDIA devices.
+Every service runs on CPU. The local `llm` service is llama.cpp with a small quantized model, so no GPU passthrough is needed.
 
 ## Services
 
 ```mermaid
 flowchart LR
-  BOT[bot]
+  BOT[bot, commander]
+  ROUTER[router]
+  W1[bot-voice-1]
+  WN[bot-voice-N]
   LLM[llama.cpp :8000]
   PG[(PostgreSQL)]
   VK[(Valkey)]
   TTS[KittenTTS]
   MIG[migrate, one-shot]
+  WT[watchtower, optional]
 
   EDGE((edge, routable))
   DATA((data, internal))
@@ -31,13 +33,30 @@ flowchart LR
   BOT --- EDGE
   BOT --- DATA
   BOT --- CONTROL
+  ROUTER --- CONTROL
+  ROUTER --- DATA
+  W1 --- EDGE
+  W1 --- DATA
+  W1 --- CONTROL
+  WN --- EDGE
+  WN --- DATA
+  WN --- CONTROL
   LLM --- EDGE
   LLM --- CONTROL
   PG --- DATA
   VK --- DATA
   TTS --- DATA
   MIG --- DATA
+  WT --- EDGE
+
+  subgraph NT[Networks]
+    EDGE
+    DATA
+    CONTROL
+  end
 ```
+
+Workers only exist when `scripts/make-voice-overlay.sh <N>` has generated the overlay. `router` always runs; without workers its only node is the commander, so the fleet is a semaphore of one.
 
 | Service | Image | Notes |
 |---|---|---|
@@ -177,4 +196,4 @@ WATCHTOWER_ENABLED=true ./scripts/podman-stack.sh up -d --build watchtower
 - The `migrate` service is one-shot and idempotent. The bot is ordered after the container starts, not after it exits.
 - The compose files avoid `profiles`, `secrets`, `build.target`, and `depends_on.condition` so they work with both `podman compose` providers.
 - Updates: `git pull --ff-only`, rebuild, run `migrate`, then start the stack. See [docs/RUNBOOK.md](../../docs/RUNBOOK.md). The optional `watchtower` container automates this flow.
-- The production compose stack targets a GPU host because it runs vLLM. For a no-GPU environment, use local development and the Delulu fallback chain.
+- The compose stack runs on CPU. The Delulu model is a small quantized llama.cpp build with a fallback chain when the service is unavailable.

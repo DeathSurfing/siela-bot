@@ -160,7 +160,7 @@ Test files are colocated as `*.test.ts` and use Vitest. There is no separate tes
 
 Covered today: pure game rules, parsers, UI payload builders, URL and lyric helpers, stock and relic logic, and shared utilities. Examples include `apps/bot/src/features/tambola/game.test.ts`, `apps/bot/src/framework/prefix.test.ts`, and `packages/shared/src/relics/logic.test.ts`.
 
-Not covered: Discord gateway events, command registration, `bot.ts` wiring, component routing, database migrations and queries, live voice and music playback, vLLM and TTS calls, and the control API. Changes in those areas need manual verification in a test guild or a new test harness.
+Not covered: Discord gateway events, command registration, `bot.ts` wiring, component routing, database migrations and queries, live voice and music playback, llama.cpp and TTS calls, and the control API. Changes in those areas need manual verification in a test guild or a new test harness.
 
 Manual check: run the bot in a test guild, then use `!ping`, `/ping`, and the command or component you changed. Check the logs for unexpected errors. Do not test destructive admin commands against a production guild.
 
