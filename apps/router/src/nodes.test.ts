@@ -24,9 +24,12 @@ describe("parseNodes", () => {
 
 describe("MUSIC_OPS", () => {
   it("covers the worker endpoints", () => {
-    for (const op of ["join", "play", "pause", "resume", "skip", "stop", "disconnect", "state-all"]) {
-      if (op === "state-all") continue;
+    for (const op of ["join", "play", "pause", "resume", "skip", "stop", "disconnect"]) {
       expect(MUSIC_OPS.has(op)).toBe(true);
     }
+  });
+
+  it("does not include aggregate routes", () => {
+    expect(MUSIC_OPS.has("state-all")).toBe(false);
   });
 });

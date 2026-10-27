@@ -46,10 +46,6 @@ export class FleetPool {
     private readonly fetchState: FetchNodeState,
   ) {}
 
-  async size(): Promise<number> {
-    return (await this.listNodes()).length;
-  }
-
   reservedCount(): number {
     return this.reserved.size;
   }
