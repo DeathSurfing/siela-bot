@@ -1,3 +1,4 @@
+import { slotsPayload } from "../../features/slots-ui.js";
 import { SlashCommandBuilder } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { isAdmin } from "../../framework/permissions.js";
@@ -352,7 +353,7 @@ export const economyCommand: Command = {
       if (winAmount > 0) {
         await economy.award(ctx.guild.id, ctx.author.id, winAmount, "slots_win", `${ctx.guild.id}:${ctx.author.id}:slots:${Date.now()}`);
       }
-      await ctx.reply(card({ theme: "economy", title: "Slots", body: `${reels.join("  ")}\n\n${winAmount > 0 ? `You win ${formatCoins(winAmount)}!` : `You lose ${formatCoins(amount)}.`}` }));
+      await ctx.reply(slotsPayload({ reels, wager: amount, payout: winAmount }));
       return;
     }
 
@@ -438,3 +439,4 @@ export const economyCommand: Command = {
     throw new UserError("Use `economy balance`, `daily`, `work`, `coinflip`, `slots`, `blackjack`, `transfer`, `top`, `shop`, `buy`, `premium`, `grant`, `stats`, `adjust`, `shopadd`, or `shopremove`. Use `stocks` for the exchange.");
   },
 };
+
