@@ -1,0 +1,42 @@
+[package]
+name = "siela-voice-worker"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+
+[[bin]]
+name = "voice-worker"
+path = "src/main.rs"
+
+[dependencies]
+serenity = { version = "0.12", default-features = false, features = [
+  "client",
+  "gateway",
+  "rustls_backend",
+  "model",
+  "cache",
+] }
+songbird = { version = "0.4", features = ["serenity", "rustls"] }
+# songbird depends on symphonia with default features off, so the codecs have to
+# be turned on here. Feature unification then gives its decoder AAC and MP4.
+symphonia = { version = "0.5", features = ["aac", "isomp4", "mp3", "ogg", "vorbis", "flac", "wav", "alac"] }
+
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "sync", "time", "signal"] }
+axum = { version = "0.8", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = "0.10"
+redis = { version = "0.32", features = ["tokio-comp", "connection-manager"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+anyhow = "1"
+thiserror = "2"
+async-trait = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

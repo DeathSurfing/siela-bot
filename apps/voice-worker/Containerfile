@@ -1,0 +1,40 @@
+# Siela voice worker (Rust).
+#
+# Build from the repository root:
+#   podman build -f apps/voice-worker/Containerfile -t localhost/siela-voice-worker .
+#
+# The runtime image keeps ffmpeg and yt-dlp because yt-dlp shells out to
+# ffmpeg for HLS downloads. Playback itself decodes in process.
+
+FROM rust:1-slim-bookworm AS build
+WORKDIR /src
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends cmake build-essential pkg-config ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# Ogg/Opus support for songbird is built from source by audiopus_sys, so the
+# build stage needs cmake and a C toolchain, both installed above.
+COPY apps/voice-worker/Cargo.toml ./
+COPY apps/voice-worker/src ./src
+RUN cargo build --release
+
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    ffmpeg python3 python3-pip ca-certificates \
+  && pip3 install --no-cache-dir --break-system-packages yt-dlp \
+  && rm -rf /var/lib/apt/lists/* /root/.cache
+
+ENV XDG_CACHE_HOME=/tmp
+ENV AUDIO_DECODER=inprocess
+
+COPY --from=build /src/target/release/voice-worker /usr/local/bin/voice-worker
+
+RUN useradd --system --create-home --uid 1000 worker
+USER worker
+WORKDIR /home/worker
+
+# The container is read-only in compose; /tmp is a tmpfs for the audio cache.
+ENTRYPOINT ["/usr/local/bin/voice-worker"]
