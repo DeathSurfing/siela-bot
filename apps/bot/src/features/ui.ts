@@ -138,6 +138,8 @@ export function card(options: {
   footer?: string | false;
   fields?: Array<{ label: string; value: string }>;
   hero?: { title: string; kicker: string };
+  /** Reference an attachment the caller already sends under `files`. */
+  image?: { name: string; description?: string };
   rows?: ActionRowBuilder<MessageActionRowComponentBuilder>[];
   ephemeral?: boolean;
 }): ReplyPayload {
@@ -151,6 +153,13 @@ export function card(options: {
     files.push(new AttachmentBuilder(art, { name }));
     container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
       new MediaGalleryItemBuilder().setURL(`attachment://${name}`).setDescription(options.hero.title),
+    ));
+  }
+  if (options.image) {
+    container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
+      new MediaGalleryItemBuilder()
+        .setURL(`attachment://${options.image.name}`)
+        .setDescription(options.image.description ?? options.image.name),
     ));
   }
   const heading = [options.title ? `## ${options.title}` : "", options.subtitle ? `-# ${options.subtitle}` : ""].filter(Boolean).join("\n");
@@ -229,6 +238,7 @@ export function styleMessage<T>(input: T): T {
     }
   };
   if (data.content) addText(data.content);
+  let hasMedia = false;
   for (const source of data.embeds ?? []) {
     const embed = typeof source.toJSON === "function" ? source.toJSON() : source;
     if (embed.color !== undefined) container.setAccentColor(embed.color);
@@ -237,8 +247,25 @@ export function styleMessage<T>(input: T): T {
     if (embed.description) addText(embed.description);
     for (const field of embed.fields ?? []) addText(`**${field.name}**\n${field.value}`);
     const image = embed.image?.url ?? embed.thumbnail?.url;
-    if (image) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(image)));
+    if (image) {
+      hasMedia = true;
+      container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(image)));
+    }
     if (embed.footer?.text) addText(`-# ${embed.footer.text}`);
+  }
+  // An attachment the caller sends but nothing references never renders, so
+  // surface image files that have no gallery yet.
+  if (!hasMedia) {
+    const images = (Array.isArray(data.files) ? data.files : [])
+      .map((file: { name?: unknown }) => (typeof file?.name === "string" ? file.name : null))
+      .filter((name: string | null): name is string => Boolean(name && /\.(png|jpe?g|webp|gif)$/i.test(name)));
+    if (images.length) {
+      container.addMediaGalleryComponents(
+        new MediaGalleryBuilder().addItems(
+          ...images.map((name: string) => new MediaGalleryItemBuilder().setURL(`attachment://${name}`)),
+        ),
+      );
+    }
   }
   // Keep original rows outside the container, preserving every custom ID and collector.
   const { content, embeds, ...rest } = data;
