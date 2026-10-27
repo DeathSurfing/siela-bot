@@ -1,0 +1,21 @@
+# Siela Router — voice fleet gateway image
+# Build from the repository root:
+#   podman build -f deploy/podman/Containerfile.router -t siela-router .
+
+FROM oven/bun:1 AS build
+WORKDIR /app
+COPY package.json bun.lock bunfig.toml tsconfig.base.json ./
+COPY apps/router/package.json apps/router/package.json
+COPY packages/config/package.json packages/config/package.json
+COPY packages/shared/package.json packages/shared/package.json
+RUN bun install --frozen-lockfile
+COPY . .
+RUN bun run --cwd apps/router build
+RUN mkdir -p /out && cp -Lr /app/apps/router/dist /out/dist && cp -Lr /app/node_modules /out/node_modules
+
+FROM oven/bun:1 AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build /out/ ./
+USER bun
+CMD ["bun", "dist/index.js"]

@@ -26,12 +26,19 @@ apps/bot (discord.js)
   ├─ command registry + prefix/slash contexts + cooldowns
   ├─ feature services
   ├─ music/Tambola voice + yt-dlp/mpv/ffmpeg
-  ├─ Fastify control API :3001
+  ├─ Fastify control API :3001 (commander only)
+  ├─ Fastify worker API :3101 (every node)
   ├─ Fastify health/metrics :3002
   ├─ PostgreSQL via Drizzle
   ├─ Valkey via Bun Redis client
   ├─ optional local llama.cpp (delulu)
   └─ optional local KittenTTS (tts)
+
+apps/router (stateless gateway, no Discord or DB client)
+  └─ music by nodeId → node /internal/*, everything else → commander
+  └─ Bearer MCP_TOKEN, :3100 on the control network
+
+See `docs/VOICE-FLEET.md` for the N-bot setup.
 ```
 
 ## Repository map
@@ -180,6 +187,7 @@ Required:
 Common optional:
 
 - `GUILD_ID`, `DISCORD_CLIENT_ID`
+- `NODE_ROLE`, `NODE_ID`, `WORKER_INTERNAL_*` (fleet; see `docs/VOICE-FLEET.md`)
 - `MUSIC_BACKEND`, `YTDLP_PATH`, `MPV_PATH`, `FFMPEG_PATH`
 - `CONTROL_API_HOST/PORT`, `HEALTH_HOST/PORT`
 - `DEFAULT_PREFIX`, `ADMIN_ROLE_IDS`, `BOT_OWNER_ID`
@@ -244,7 +252,9 @@ The init script prints the invite URL.
 - `llm` — llama.cpp server (`DeathSurfing/tinyTanLLM-delulu-gemma` Q4_K_M, ctx 1024) for delulu, `llmcache` volume.
 - `tts` — KittenTTS Nano ONNX service (voice Bruno), Edge TTS fallback in bot.
 - `migrate` — one-shot `node dist/scripts/migrate.js`.
-- `bot` — Discord bot + control API + health/metrics.
+- `bot` — Discord bot (commander: control API + health/metrics; every node: worker API).
+- `router` — voice fleet gateway `:3100`. Music by `nodeId`, everything else proxied to the commander.
+- voice workers — generated `bot-voice-<i>` services via `scripts/make-voice-overlay.sh <N>`. See `docs/VOICE-FLEET.md`.
 
 Bot container is read-only with `/tmp` tmpfs, drops all caps, and includes ffmpeg, mpv, python3, yt-dlp, edge-tts, fonts, and canvas runtime.
 

@@ -37,6 +37,8 @@ export interface MusicServiceOptions {
   mpvPath: string;
   ffmpegPath: string;
   settings: SettingsService;
+  /** Fleet node ID. Namespaces the persisted Valkey queue per node. */
+  nodeId?: string;
 }
 
 export interface QueueTrack {
@@ -676,7 +678,8 @@ export class MusicService extends EventEmitter {
   }
 
   private queueStoreKey(guildId: string): string {
-    return `siela:music:queue:${guildId}`;
+    const node = this.options.nodeId?.trim() || "commander";
+    return `siela:music:queue:${node}:${guildId}`;
   }
 
   private async loadQueue(guildId: string): Promise<QueueTrack[]> {

@@ -16,6 +16,8 @@ __pycache__/
 deploy/podman/.env
 deploy/podman/.env.*
 !deploy/podman/.env.example
+!deploy/podman/.env.voice.example
+deploy/podman/compose.voice.generated.yaml
 apps/bot/.env
 apps/bot/.env.*
 !apps/bot/.env.example

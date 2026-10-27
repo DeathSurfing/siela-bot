@@ -134,41 +134,54 @@ export const auditQuerySchema = z
   })
   .strict();
 
+export const nodeIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9_-]+$/, "Node ID may only contain letters, numbers, dash, and underscore");
+
 export const musicPlaySchema = z
   .object({
     query: z.string().min(1).max(MAX_MUSIC_QUERY),
     voiceChannelId: snowflakeSchema.optional(),
     next: z.boolean().optional(),
+    nodeId: nodeIdSchema.optional(),
   })
   .strict();
 
 export const musicJoinSchema = z
   .object({
     voiceChannelId: snowflakeSchema.optional(),
+    nodeId: nodeIdSchema.optional(),
   })
   .strict();
 
 export const musicVolumeSchema = z
   .object({
     volume: z.number().int().min(0).max(150),
+    nodeId: nodeIdSchema.optional(),
   })
   .strict();
 
 export const musicSeekSchema = z
   .object({
     positionMs: z.number().int().min(0),
+    nodeId: nodeIdSchema.optional(),
   })
   .strict();
 
 export const musicLoopSchema = z
   .object({
     mode: z.enum(["off", "track", "queue"]),
+    nodeId: nodeIdSchema.optional(),
   })
   .strict();
 
 export const musicRemoveSchema = z
   .object({
     index: z.number().int().min(1),
+    nodeId: nodeIdSchema.optional(),
   })
   .strict();
 
@@ -176,30 +189,41 @@ export const musicMoveSchema = z
   .object({
     from: z.number().int().min(1),
     to: z.number().int().min(1),
+    nodeId: nodeIdSchema.optional(),
   })
   .strict();
 
 export const musicJumpSchema = z
   .object({
     index: z.number().int().min(1),
+    nodeId: nodeIdSchema.optional(),
   })
   .strict();
 
 export const musicAutoplaySchema = z
   .object({
     enabled: z.boolean(),
+    nodeId: nodeIdSchema.optional(),
   })
   .strict();
 
 export const musicFilterSchema = z
   .object({
     preset: z.enum(["off", "bassboost", "nightcore", "vaporwave"]),
+    nodeId: nodeIdSchema.optional(),
   })
   .strict();
 
 export const musicSkipSchema = z
   .object({
     count: z.number().int().min(1).max(50).default(1),
+    nodeId: nodeIdSchema.optional(),
+  })
+  .strict();
+
+export const musicNodeSchema = z
+  .object({
+    nodeId: nodeIdSchema.optional(),
   })
   .strict();
 

@@ -34,6 +34,23 @@
         "vitest": "^5.0.5",
       },
     },
+    "apps/router": {
+      "name": "@siela/router",
+      "version": "0.1.0",
+      "dependencies": {
+        "@siela/config": "workspace:*",
+        "fastify": "^5.12.7",
+        "pino": "^10.4.0",
+        "zod": "^4.6.7",
+      },
+      "devDependencies": {
+        "@types/node": "^26.6.5",
+        "bun-types": "^1.4.4",
+        "tsup": "^9.0.0",
+        "typescript": "7.0.2",
+        "vitest": "^5.0.5",
+      },
+    },
     "apps/watchtower": {
       "name": "@siela/watchtower",
       "version": "0.1.0",
@@ -318,6 +335,8 @@
     "@siela/config": ["@siela/config@workspace:packages/config"],
 
     "@siela/db": ["@siela/db@workspace:packages/db"],
+
+    "@siela/router": ["@siela/router@workspace:apps/router"],
 
     "@siela/shared": ["@siela/shared@workspace:packages/shared"],
 

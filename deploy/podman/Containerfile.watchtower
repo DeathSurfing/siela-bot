@@ -11,7 +11,6 @@ FROM oven/bun:1 AS build
 WORKDIR /app
 COPY package.json bun.lock bunfig.toml tsconfig.base.json ./
 COPY apps/bot/package.json apps/bot/package.json
-COPY apps/mcp/package.json apps/mcp/package.json
 COPY apps/watchtower/package.json apps/watchtower/package.json
 COPY packages/config/package.json packages/config/package.json
 COPY packages/db/package.json packages/db/package.json

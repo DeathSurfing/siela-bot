@@ -84,6 +84,7 @@ import {
   HELP_SEARCH_MODAL_ID,
 } from "./features/help.js";
 import { ControlServer } from "./control/server.js";
+import { WorkerServer } from "./control/worker.js";
 import { HealthServer } from "./control/health.js";
 import type { Logger } from "./lib/logger.js";
 import { UserError } from "./lib/errors.js";
@@ -96,6 +97,9 @@ export class SielaBot {
   private readonly unknownCommandNotices = new Map<string, number>();
   private readonly controlServer: ControlServer;
   private readonly healthServer: HealthServer;
+  private readonly workerServer: WorkerServer;
+  private readonly isVoiceWorker: boolean;
+  private readonly nodeId: string;
   private readonly valkey: ValkeyService;
   private readonly randomVc: RandomVcService;
   private readonly scheduledEvents: ScheduledEventService;
@@ -109,6 +113,8 @@ export class SielaBot {
     private readonly dbHandle: DatabaseHandle,
     private readonly logger: Logger,
   ) {
+    this.isVoiceWorker = config.NODE_ROLE === "voice";
+    this.nodeId = config.NODE_ID;
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -140,6 +146,7 @@ export class SielaBot {
         mpvPath: this.config.MPV_PATH,
         ffmpegPath: this.config.FFMPEG_PATH,
         settings,
+        nodeId: this.nodeId,
       },
       this.logger,
       this.valkey,
@@ -213,6 +220,16 @@ export class SielaBot {
       getStatus: () => this.status(),
       getGuildId: () => this.guildId,
     });
+    // Every node (commander and voice workers) serves the internal worker
+    // API so the router can treat the fleet uniformly. Only the commander
+    // serves the public control API (see start()).
+    this.workerServer = new WorkerServer({
+      services: this.services,
+      client: this.client,
+      token: this.config.MCP_TOKEN,
+      logger: this.logger,
+      getGuildId: () => this.guildId,
+    });
     this.healthServer = new HealthServer({
       host: this.config.HEALTH_HOST,
       port: this.config.HEALTH_PORT,
@@ -228,13 +245,16 @@ export class SielaBot {
   async start(): Promise<void> {
     this.registerEvents();
     await this.valkey.start();
-    this.services.friendship.start();
+    if (!this.isVoiceWorker) this.services.friendship.start();
     await Promise.all([
-      this.controlServer.start(this.config.CONTROL_API_HOST, this.config.CONTROL_API_PORT),
+      // Only the commander serves the public control API. Voice workers
+      // serve only the internal worker API so there is a single writer.
+      ...(this.isVoiceWorker ? [] : [this.controlServer.start(this.config.CONTROL_API_HOST, this.config.CONTROL_API_PORT)]),
       this.healthServer.start(),
+      this.workerServer.start(this.config.WORKER_INTERNAL_HOST, this.config.WORKER_INTERNAL_PORT),
     ]);
     await this.client.login(this.config.DISCORD_TOKEN);
-    this.logger.info({ user: this.client.user?.tag }, "bot logged in");
+    this.logger.info({ user: this.client.user?.tag, nodeId: this.nodeId, role: this.config.NODE_ROLE }, "bot logged in");
   }
 
   private registerEvents(): void {
@@ -303,6 +323,10 @@ export class SielaBot {
     if (this.initializedGuildId === guild.id) return;
     this.guildId = guild.id;
     this.initializedGuildId = guild.id;
+    if (this.isVoiceWorker) {
+      this.logger.info({ guildId: guild.id, nodeId: this.nodeId }, "voice worker bound (commands and schedulers disabled)");
+      return;
+    }
     await this.services.settings.ensure(guild.id);
     await this.registerCommands(guild);
     await this.services.tempVc.reconcile(guild).catch((error) => this.logger.warn({ err: error }, "temp VC reconcile failed"));
@@ -329,6 +353,7 @@ export class SielaBot {
 
   private async onMessage(message: Message): Promise<void> {
     try {
+      if (this.isVoiceWorker) return;
       if (message.author.bot || !message.inGuild() || message.webhookId) return;
       if (!this.guildId || message.guild.id !== this.guildId) return;
       this.services.activity.recordMessage(message.guild.id, message.author.id);
@@ -409,6 +434,7 @@ export class SielaBot {
 
   private async onInteraction(interaction: Interaction): Promise<void> {
     try {
+      if (this.isVoiceWorker) return;
       if (interaction.isChatInputCommand()) {
         await this.onChatInput(interaction);
         return;
@@ -1087,7 +1113,7 @@ export class SielaBot {
   }
 
   private async onMemberAdd(member: GuildMember): Promise<void> {
-    if (member.guild.id !== this.guildId) return;
+    if (this.isVoiceWorker || member.guild.id !== this.guildId) return;
     await Promise.allSettled([
       this.services.welcome.onMemberJoin(member),
       this.services.autoRole.onMemberJoin(member),
@@ -1105,7 +1131,7 @@ export class SielaBot {
   }
 
   private async onVoiceState(oldState: VoiceState, newState: VoiceState): Promise<void> {
-    if (oldState.guild.id !== this.guildId) return;
+    if (this.isVoiceWorker || oldState.guild.id !== this.guildId) return;
     await this.services.activity.handleVoiceState(oldState, newState).catch((error) => {
       this.logger.warn({ err: error }, "activity voice handling failed");
     });
@@ -1134,7 +1160,7 @@ export class SielaBot {
   async stop(): Promise<void> {
     if (this.stopping) return;
     this.stopping = true;
-    await Promise.allSettled([this.controlServer.stop(), this.healthServer.stop()]);
+    await Promise.allSettled([this.controlServer.stop(), this.healthServer.stop(), this.workerServer.stop()]);
     if (this.music) await this.music.shutdown().catch(() => undefined);
     this.services.tambola.stop();
     this.services.cah.stop();

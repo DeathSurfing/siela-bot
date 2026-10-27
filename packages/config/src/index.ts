@@ -70,6 +70,10 @@ const botSchema = z.object({
   VALKEY_URL: z.string().url().optional(),
   EVENT_SCHEDULE_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   EVENT_PRAYER: z.enum(["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]).default("Dhuhr"),
+  NODE_ROLE: z.enum(["commander", "voice"]).default("commander"),
+  NODE_ID: z.string().min(1).max(64).default("commander"),
+  WORKER_INTERNAL_HOST: z.string().default("0.0.0.0"),
+  WORKER_INTERNAL_PORT: z.coerce.number().int().min(1).max(65535).default(3101),
 
   LOG_LEVEL: logLevel.default("info"),
   AUDIT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
@@ -114,6 +118,35 @@ export type BotConfig = z.infer<typeof botSchema> & {
 };
 
 export type WatchtowerConfig = z.infer<typeof watchtowerSchema>;
+
+const routerSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  MCP_TOKEN: z.string().min(16, "MCP_TOKEN must be at least 16 characters"),
+  ROUTER_HOST: z.string().default("0.0.0.0"),
+  ROUTER_PORT: z.coerce.number().int().min(1).max(65535).default(3100),
+  COMMANDER_URL: z.string().url().default("http://bot-control:3001"),
+  // Fleet nodes as id=url pairs, including the commander, e.g.
+  // commander=http://bot-control:3101,voice-1=http://bot-voice-1:3101
+  NODES: z.string().optional(),
+  LOG_LEVEL: logLevel.default("info"),
+  TZ: z.string().default("UTC"),
+});
+
+export type RouterConfig = z.infer<typeof routerSchema>;
+
+export function loadRouterConfig(env: NodeJS.ProcessEnv = process.env): RouterConfig {
+  const parsed = routerSchema.safeParse({
+    ...env,
+    MCP_TOKEN: readSecret("MCP_TOKEN", env) ?? env.MCP_TOKEN,
+  });
+  if (!parsed.success) {
+    const details = parsed.error.issues
+      .map((issue) => `${issue.path.join(".") || "env"}: ${issue.message}`)
+      .join("\n");
+    throw new Error(`Invalid router environment:\n${details}`);
+  }
+  return parsed.data;
+}
 
 export function loadBotConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
   const parsed = botSchema.safeParse({

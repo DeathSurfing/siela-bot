@@ -8,6 +8,7 @@ flowchart TD
   GET --> ARCH[docs/ARCHITECTURE]
   START --> CONTRIB[CONTRIBUTING]
   ARCH --> RUN[docs/RUNBOOK]
+  ARCH --> FLEET[docs/VOICE-FLEET]
   ARCH --> ECON[docs/ECONOMY]
   ARCH --> RELICS[docs/RELICS]
   ARCH --> TTS[docs/TTS]
@@ -28,6 +29,7 @@ flowchart TD
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Repository layout, command flow, extension recipes, tests, debugging |
 | [RELEASE.md](RELEASE.md) | Branch and pull request expectations, pre-merge checks, deployment, verification, rollback |
 | [RUNBOOK.md](RUNBOOK.md) | Deployment, updates, backups, health checks, troubleshooting |
+| [VOICE-FLEET.md](VOICE-FLEET.md) | N-bot voice fleet: router, workers, setup, routing contract |
 | [ECONOMY.md](ECONOMY.md) | Siela Coins, earning, spending, shop, premium, admin operations |
 | [ECONOMY_V2.md](ECONOMY_V2.md) | Earning and AI-gating rationale, exchange model, balance targets |
 | [RELICS.md](RELICS.md) | Relic card catalog, daily auctions, bidding, vaults, yield, trades |

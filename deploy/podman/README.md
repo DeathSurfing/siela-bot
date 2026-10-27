@@ -46,13 +46,15 @@ flowchart LR
 | `llm` | `ghcr.io/ggml-org/llama.cpp:server` (CPU) | Model `DeathSurfing/tinyTanLLM-delulu-gemma` (`delulu-gemma-q4_k_m.gguf`, ctx 1024); weights cached in `llmcache`. GPU offload dropped: host driver 535 predates the CUDA 13 kernels in current images. |
 | `tts` | `localhost/siela-tts:latest` | CPU; KittenTTS model baked at build; `/healthz`, `/synthesize`, `/synthesize-stream` |
 | `migrate` | `localhost/siela-bot:latest` | One-shot migration runner; exits after the schema is current |
-| `bot` | `localhost/siela-bot:latest` | `oven/bun` image with yt-dlp, mpv, and ffmpeg |
+| `bot` | `localhost/siela-bot:latest` | `oven/bun` image with yt-dlp, mpv, and ffmpeg; commander by default (`NODE_ROLE=commander`) |
+| `router` | `localhost/siela-router:latest` | Voice fleet gateway `:3100`; fans music out by `nodeId`, proxies everything else to the commander |
 | `watchtower` | `localhost/siela-watchtower:latest` | Optional auto-deploy sidecar; mounts the host Podman socket |
 
 Health endpoints:
 
 - Bot health and metrics: `127.0.0.1:3002` (`/healthz`, `/readyz`, `/metrics`). The port is not published to the host.
 - Control API: `:3001` with Bearer `MCP_TOKEN`, on the internal `control` network.
+- Voice router: `:3100` with Bearer `MCP_TOKEN`, on the internal `control` network. See [docs/VOICE-FLEET.md](../../docs/VOICE-FLEET.md).
 - TTS: `:8000` with `/healthz`, `/synthesize`, and `/synthesize-stream`.
 
 ## Quickstart
@@ -87,9 +89,10 @@ When the flag is off, `up` and `down` remove a leftover `siela-mcp` container fr
 
 | File | Purpose |
 |---|---|
+| `compose.voice.generated.yaml` | Generated voice workers. Created by `scripts/make-voice-overlay.sh <N>`; auto-included when present |
 | `compose.watchtower.yaml` | Optional auto-deploy sidecar. Enabled with `WATCHTOWER_ENABLED=true` |
 | `compose.fast.yaml` | Fast code-only deploy. Bind-mounts `apps/bot/dist` over `/app/dist` |
-| `.env.example` | Configuration reference. Prefer `scripts/podman-init.sh` |
+| `.env.example` / `.env.voice.example` | Configuration references. Prefer `scripts/podman-init.sh` |
 
 ## Watchtower (automatic updates)
 

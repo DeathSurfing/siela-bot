@@ -133,6 +133,8 @@ services:
       VALKEY_URL: ${VALKEY_URL:-redis://valkey:6379}
       TTS_SERVICE_URL: ${TTS_SERVICE_URL:-http://tts:8000}
       TTS_STREAM: "true"
+      NODE_ROLE: commander
+      NODE_ID: commander
     restart: unless-stopped
     init: true
     read_only: true
@@ -147,5 +149,41 @@ services:
       timeout: 5s
       retries: 10
     mem_limit: 8g
+
+  # Voice fleet gateway. Single HTTP entrypoint for music across N nodes:
+  # POST /v1/music/<op> with {"nodeId": ...} fans out to that node's
+  # internal worker API; everything else proxies to the commander.
+  # NODES lists every node including the commander, e.g.
+  # NODES=commander=http://bot-control:3101,voice-1=http://bot-voice-1:3101
+  router:
+    image: localhost/siela-router:latest
+    build:
+      context: ../..
+      dockerfile: deploy/podman/Containerfile.router
+    container_name: siela-router
+    env_file: .env
+    networks:
+      control:
+        aliases: [voice-router]
+    depends_on:
+      - bot
+    environment:
+      COMMANDER_URL: ${COMMANDER_URL:-http://bot-control:3001}
+      NODES: ${NODES:-commander=http://bot-control:3101}
+      ROUTER_PORT: 3100
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD-SHELL", "bun -e \"fetch('http://127.0.0.1:3100/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    mem_limit: 128m
 
 
