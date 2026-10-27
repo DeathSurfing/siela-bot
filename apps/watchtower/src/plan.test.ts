@@ -12,6 +12,11 @@ describe("planDeploy", () => {
     ).toBe("fast");
   });
 
+  it("uses the fast path for router sources", () => {
+    expect(planDeploy(["apps/router/src/server.ts"])).toBe("fast");
+    expect(planDeploy(["apps/bot/src/index.ts", "apps/router/src/pool.ts"])).toBe("fast");
+  });
+
   it("falls back to a full build for mixed changes", () => {
     expect(planDeploy(["apps/bot/src/index.ts", "docs/RUNBOOK.md"])).toBe("full");
   });
