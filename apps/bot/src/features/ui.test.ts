@@ -121,6 +121,29 @@ describe("outgoing message styling", () => {
     expect(Array.isArray(styled.components)).toBe(true);
   });
 
+  it("references caller-supplied image attachments so they render", () => {
+    const payload = card({ title: "Family tree", body: "caption", image: { name: "family-tree.png" }, footer: false });
+    const json = JSON.stringify((payload.components ?? []).map((component) => (component as any).toJSON()));
+    expect(json).toContain("attachment://family-tree.png");
+  });
+
+  it("surfaces image files that nothing referenced", () => {
+    const file = { name: "family-tree.png", attachment: Buffer.from("png") };
+    const styled = styleMessage({ content: "caption", files: [file] }) as { components?: unknown[] };
+    const json = JSON.stringify((styled.components ?? []).map((component) => (component as any).toJSON()));
+    expect(json).toContain("attachment://family-tree.png");
+  });
+
+  it("does not add a second gallery when an embed already shows the image", () => {
+    const file = { name: "welcome.png", attachment: Buffer.from("png") };
+    const styled = styleMessage({
+      embeds: [{ title: "Welcome", image: { url: "attachment://welcome.png" } }],
+      files: [file],
+    }) as { components?: unknown[] };
+    const json = JSON.stringify((styled.components ?? []).map((component) => (component as any).toJSON()));
+    expect(json.split("attachment://welcome.png").length - 1).toBe(1);
+  });
+
   it("does not double-wrap rich panels or erase component-only edits", () => {
     const rich = card({ title: "Help", body: "Choose a category" });
     expect(styleMessage(rich)).toBe(rich);

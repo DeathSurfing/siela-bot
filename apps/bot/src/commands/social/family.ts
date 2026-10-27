@@ -322,10 +322,18 @@ export const familyTreeCommand: Command = {
       throw new ServiceUnavailableError("Could not render the family tree.");
     }
     const attachment = new AttachmentBuilder(buffer, { name: "family-tree.png" });
+    const note = tree.truncated
+      ? "Marriage links connect partners, parent links point from parent to child. Truncated for size."
+      : "Marriage links connect partners, parent links point from parent to child.";
     await ctx.reply({
-      content: [`-# Marriage links connect partners. Parent links point from parent to child.`, tree.truncated ? "Family tree truncated for size." : null]
-        .filter(Boolean)
-        .join("\n"),
+      ...card({
+        theme: "social",
+        eyebrow: "THE FAMILY ARCHIVE",
+        title: "Family tree",
+        body: note,
+        image: { name: "family-tree.png", description: "Family tree" },
+        footer: false,
+      }),
       files: [attachment],
     });
   },
