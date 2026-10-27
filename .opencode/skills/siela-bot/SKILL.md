@@ -1,6 +1,6 @@
 ---
 name: siela-bot
-description: Use when working in, extending, debugging, testing, or deploying the siela-nogseuui-seobeo-bot repository. Covers the Bun/TypeScript monorepo, single-guild discord.js bot, hybrid command framework, music/lyrics/Tambola voice features, PostgreSQL/Drizzle schema, Valkey, control API, Podman deployment, and runbook gotchas.
+description: Use when working in, extending, debugging, testing, or deploying the siela-nogseuui-seobeo-bot repository. Covers the Bun/TypeScript monorepo, single-guild discord.js bot, hybrid command framework, music/lyrics/Tambola voice features, the N-bot voice fleet (router, workers, sticky TTS), PostgreSQL/Drizzle schema, Valkey, control API, Podman deployment, and runbook gotchas.
 ---
 
 # Siela Bot
@@ -14,6 +14,7 @@ Single-guild Discord bot with music, social features, temporary voice channels, 
 - **Hybrid commands.** Most commands work as prefix, slash, and mention-prefix. Context-menu commands are not implemented.
 - **Runtime authorization.** Admin checks use `Manage Guild`, server owner, `BOT_OWNER_ID`, or `ADMIN_ROLE_IDS`; never rely only on slash-command permissions.
 - **Optional features degrade gracefully.** Missing Valkey, LLM, music binaries, TTS, or event audio must not take down the bot.
+- **One interface, one writer.** The commander owns Discord commands, cards, and the public control API. Voice workers stay silent; the router is the only fleet entrypoint.
 - **No secrets in the repo.** `deploy/podman/.env` is generated and must stay untracked.
 
 ## Architecture
@@ -35,7 +36,8 @@ apps/bot (discord.js)
   └─ optional local KittenTTS (tts)
 
 apps/router (stateless gateway, no Discord or DB client)
-  └─ music by nodeId → node /internal/*, everything else → commander
+  ├─ music/tts by nodeId → node /internal/*, everything else → commander
+  ├─ semaphore over per-guild Valkey heartbeats (siela:fleet:node:*)
   └─ Bearer MCP_TOKEN, :3100 on the control network
 
 See `docs/VOICE-FLEET.md` for the N-bot setup.
@@ -47,6 +49,9 @@ See `docs/VOICE-FLEET.md` for the N-bot setup.
 |---|---|
 | `apps/bot/src/index.ts` | Process entrypoint: config, DB, logger, signals. |
 | `apps/bot/src/bot.ts` | Bot lifecycle, event wiring, interaction routing, command registration, service composition. |
+| `apps/bot/src/workerEntry.ts`, `workerNode.ts` | Slim voice-worker entrypoint (`dist/worker.js`) and its node class. Workers boot only voice, music, TTS, the internal API, health, and the fleet heartbeat. |
+| `apps/bot/src/control/worker.ts` | Internal worker API (`/internal/music/*`, `/internal/tts/*`) on `:3101`. |
+| `apps/router/` | Stateless fleet gateway: one HTTP entrypoint for N bots. |
 | `apps/bot/src/commands/` | Command definitions grouped by category. Register every new command in `commands/index.ts`. |
 | `apps/bot/src/framework/` | Command interface, registry, cooldowns, prefix/slash contexts, permissions. |
 | `apps/bot/src/features/` | Feature services and UI builders. |
@@ -85,7 +90,8 @@ Categories: `music`, `social`, `voice`, `utility`, `admin`.
 
 | Feature | Main files | Notes |
 |---|---|---|
-| Music | `features/music.ts`, `features/music-ui.ts`, `commands/music/music.ts` | yt-dlp + mpv (ffmpeg fallback), queue, filters, Spotify, cache, now-playing V2 card. |
+| Music | `features/music.ts`, `features/music-ui.ts`, `commands/music/music.ts` | yt-dlp + mpv (ffmpeg fallback), queue, filters, Spotify, cache, now-playing V2 card. Every voice channel is its own instance, sticky to a node. |
+| Voice fleet | `features/fleetClient.ts`, `features/fleetHeartbeat.ts`, `apps/router/*` | Commander plus N workers act as one bot. Every VC routes to its own sticky node; text commands and cards follow the author's channel. Semaphore per guild from Valkey heartbeats; `429 all_nodes_busy` when full. See `docs/VOICE-FLEET.md`. |
 | Voice SFX | `features/voiceSfx.ts` | Chat trigger `gay` joins the author's VC when the bot is idle, plays a cached 384 kbps clip once, then leaves. 60s guild cooldown. |
 | Lyrics | `features/lyrics.ts`, `features/lyrics-ui.ts` | LRCLIB, `/lyrics` and now-playing button, in-memory cache, long lyrics attach `.txt`. |
 | Tambola | `features/tambola/*`, `features/tambola-ui.ts`, `commands/social/tambola.ts` | 90-ball game, DM tickets, auto/manual marking, claims, KittenTTS calls with Edge TTS fallback, lobby settings. Ticket 25 SC, automark 10 SC. Rewards 5 SC participation, 10 SC per line, 40 SC Full House. |
@@ -103,8 +109,8 @@ Categories: `music`, `social`, `voice`, `utility`, `admin`.
 | Random VC | `features/randomVc.ts` | Rare 2–6h drop, synthetic SFX, skips when voice is busy. |
 | Economy | `features/economy.ts`, `features/stocks.ts`, `features/stocks-ui.ts`, economy/stocks commands | Siela Coins wallet, 50 SC starting balance, voice income, Tambola rewards, a six-stock bot market maker with a 1% fee, gambling sinks, shop, premium 2000 SC/30d. See `docs/ECONOMY.md`. |
 | Relics | `features/relics/*`, `commands/social/relics.ts` | Daily 4–5 PM IST one-of-one card auction, escrowed SC bids, weekend rarity boost, vaults, yield, showcases, trades. See `docs/RELICS.md`. |
-| TTS | `features/tts.ts`, `/tts on\|off` | Standalone TTS via local KittenTTS Nano ONNX (Bruno), Edge TTS fallback. See `docs/TTS.md`. |
-| Scheduled events | `features/scheduledEvents.ts`, `commands/utility/test.ts` | Aladhan Delhi prayer, three phases, admin-supplied audio. |
+| TTS | `features/tts.ts`, `/tts on\|off` | Standalone TTS via local KittenTTS Nano ONNX (Bruno), Edge TTS fallback. Session is sticky to one node and ends after 30s with no texts. See `docs/TTS.md`. |
+| Scheduled events | `features/scheduledEvents.ts`, `commands/utility/test.ts` | Aladhan Delhi prayer, phases for azan/anthem/hanuman-chalisa/church/monastery/gurudwara. Preempts the fleet session through the router. |
 | Privacy/audit | `features/privacy.ts`, `features/audit.ts`, `commands/utility/privacy.ts` | Data deletion, audit log. |
 | Control API | `control/server.ts` | Bearer `MCP_TOKEN`, typed routes, partial audit coverage. |
 | Health | `control/health.ts` | `/healthz`, `/readyz`, `/metrics`. |
@@ -117,10 +123,13 @@ Categories: `music`, `social`, `voice`, `utility`, `admin`.
   - Track links use public oEmbed metadata + search.
   - Playlists/albums use Spotify's public embed `__NEXT_DATA__` (first 50 tracks), then YouTube search.
   - No Spotify credentials required.
-- Queue is in-memory, persisted to Valkey per guild.
+- Queue is in-memory, persisted to Valkey per node and guild (`siela:music:queue:{node}:{guild}`).
   - `stop` clears the stored queue.
   - `disconnect` preserves it.
   - Current playback position is not resumed.
+- Every voice channel is its own instance. `/play` resolves the VC→node binding, else the commander if its voice is free for that channel, else a free fleet node; the binding sticks.
+- Every card button and control command carries the VC so two simultaneous streams stay independent.
+- Workers auto-leave ~30s after their queue drains; new playback cancels it, and sticky TTS blocks it.
 - Local cache keeps current/next/previous tracks under `/tmp/siela-music-cache` (cap ~250 MB), audio bitrate capped at 312 kbps.
 - Filters apply live through mpv IPC without restarting the track.
 - Now-playing V2 card buttons: pause/resume, lyrics, seek ±10s, skip, stop/disconnect, shuffle, loop, filter select.
@@ -197,6 +206,16 @@ Common optional:
 
 Current deployed server uses `EVENT_SCHEDULE_ENABLED=true` and `EVENT_PRAYER=Dhuhr`; event audio lives only on the server.
 
+Fleet env (commander and workers):
+
+- `NODE_ROLE` (`commander` | `voice`), `NODE_ID` (default `commander`)
+- `NODE_ADVERTISE_URL` — worker API URL published in the Valkey heartbeat
+- `WORKER_INTERNAL_HOST` / `WORKER_INTERNAL_PORT` (default `:3101`)
+- `ROUTER_URL` — lets `/play` fall back to the fleet and events preempt it
+- Router: `NODES` (static fallback), `VALKEY_URL`, `GUILD_ID`, `COMMANDER_URL`, `ROUTER_PORT` (default `3100`)
+
+Workers are generated: `scripts/make-voice-overlay.sh <N>` writes `deploy/podman/compose.voice.generated.yaml` from `.env.voice-1..N`. The wrapper auto-includes it. Never bind-mount host `dist` into workers, the server checkout has no local build and an empty mount shadows the image bundle.
+
 ## Development workflow
 
 Bun 1.x (`packageManager bun@1.4.2`).
@@ -256,19 +275,24 @@ The init script prints the invite URL.
 - `router` — voice fleet gateway `:3100`. Music by `nodeId`, everything else proxied to the commander.
 - voice workers — generated `bot-voice-<i>` services via `scripts/make-voice-overlay.sh <N>`. See `docs/VOICE-FLEET.md`.
 
-Bot container is read-only with `/tmp` tmpfs, drops all caps, and includes ffmpeg, mpv, python3, yt-dlp, edge-tts, fonts, and canvas runtime.
+Bot container is read-only with `/tmp` tmpfs, drops all caps, and includes ffmpeg, mpv, python3, yt-dlp, edge-tts, fonts, and canvas runtime. Voice workers reuse the bot image with `bun --smol dist/worker.js` and a 1 GB cap.
 
 Optional overlays:
 
-- `compose.watchtower.yaml` — auto-deploy sidecar.
+- `compose.watchtower.yaml` — auto-deploy sidecar. Rebuild its image by hand after watchtower changes; it never redeploys itself.
 
 ### Updates
 
+Prefer the watchtower sidecar, or:
+
 ```bash
 git pull --ff-only
-podman compose -p siela -f deploy/podman/compose.yaml build
-podman compose -p siela -f deploy/podman/compose.yaml up -d --force-recreate bot
+podman build --network=host -f deploy/podman/Containerfile.bot -t localhost/siela-bot:latest .
+podman build --network=host -f deploy/podman/Containerfile.router -t localhost/siela-router:latest .
+./scripts/podman-stack.sh up -d --no-deps
 ```
+
+`up -d --no-deps` avoids podman-compose hanging on the one-shot `migrate` container. Full deploys must not recreate `siela-watchtower`, or the deploy kills itself.
 
 Migrations run when the `migrate` service runs. If needed:
 
@@ -304,16 +328,24 @@ Server-only, gitignored under `apps/bot/assets/events/`:
 - `anthem.ogg` → `parliament`
 - `hanuman-chalisa.ogg` → `mandir`
 
-Supported extensions: `.ogg`, `.mp3`, `.wav`, `.m4a`, `.flac`. See `apps/bot/assets/events/README.md`. The owner-only prefix command `!test azan|anthem|hanumanchalisa` runs the full workflow; `test` is restricted to user ID `197768227936403458`.
+Streamed from YouTube, no file needed:
+
+- `church` (Dhuhr+3h) → `church`
+- `monastery` (Dhuhr+4h) → `monastery`
+- `gurudwara` (Dhuhr+5h) → `gurudwara`
+
+Supported extensions: `.ogg`, `.mp3`, `.wav`, `.m4a`, `.flac`. See `apps/bot/assets/events/README.md`. The owner-only prefix command `!test azan|anthem|hanumanchalisa|church|monastery|gurudwara` runs the full workflow; `test` is restricted to user ID `197768227936403458`. With a fleet, each phase first calls `POST /v1/session/preempt` on the router (skipping TTS-active nodes), then plays.
 
 ## Control API
 
 Control API (`apps/bot/src/control/server.ts`):
 
-- Listens on `CONTROL_API_PORT` (default 3001), internal network.
+- Listens on `CONTROL_API_PORT` (default 3001), internal network, commander only.
 - Requires `Authorization: Bearer <MCP_TOKEN>`.
 - Routes include status, commands, prefix, welcome, autorole, tempvc, music, counters, audit, message send, privacy delete.
 - Some mutations are audited.
+
+Fleet router (`apps/router`, `:3100`, same bearer): `GET /v1/music/nodes`, `GET /v1/music/state?nodeId=`, `GET /v1/music/state-all`, `POST /v1/music/<op>` (auto-routes `play` when `nodeId` is omitted), `POST /v1/session/preempt`, `/v1/tts/*`. Non-music `/v1/*` proxies to the commander.
 
 ## Common operations
 
@@ -358,6 +390,11 @@ podman exec siela-postgres pg_dump -U siela -Fc siela \
 - **Slash command says “Something went wrong”**: check logs; `UserError`s now return friendly messages. If the bot restarted, active Tambola games are gone.
 - **Build fails on current server**: use `podman build --network=host`.
 - **Read-only container write failure**: write only to `/tmp` (tmpfs) or a mounted volume.
+- **Worker crash-loops with `Module not found dist/worker.js`**: a host `dist` bind-mount shadows the image bundle. Regenerate the overlay (`scripts/make-voice-overlay.sh <N>`); it must have no `volumes:` block.
+- **Whole stack restarts in a loop after a push**: watchtower recreated itself mid-deploy. Pin the recreate list to `bot tts router bot-voice-*` and rebuild the watchtower image by hand.
+- **`up -d` hangs after a rebuild**: podman-compose waits on the one-shot `migrate` container. Use `up -d --no-deps`.
+- **`depends on container ... not found`**: stale metadata from an interrupted run. `podman rm` the stuck `Created` container and retry.
+- **Router says all nodes busy**: that is the semaphore working. Add workers or stop a stream.
 
 ## Change checklist
 
@@ -369,11 +406,13 @@ podman exec siela-postgres pg_dump -U siela -Fc siela \
 6. Add/update unit tests; run `typecheck`, `test`, `build`.
 7. Deploy with Podman; verify command count, health, and logs.
 8. Update `README.md` and relevant `docs/` for user-visible behavior.
+9. Fleet change: update `workerNode.ts`/`worker.ts`/router together, run `scripts/make-voice-overlay.sh <N>`, and verify `GET /v1/music/state-all` returns every node `ok:true`.
 
 ## Key docs
 
 - `README.md` and `GET_STARTED.md` — project overview and first-run setup.
 - `docs/ARCHITECTURE.md` — process model, command lifecycle, boot order, persistence, deployment diagrams.
+- `docs/VOICE-FLEET.md` — N-bot voice fleet: router, workers, per-VC instances, sticky TTS, sessions, updates.
 - `docs/PLAN.md` — historical planning doc (Draft v0.2), not current architecture.
 - `docs/ECONOMY.md` — Siela Coins, pricing, premium.
 - `docs/RELICS.md` — relic cards, daily auction, bidding, vaults, yield, trades.
