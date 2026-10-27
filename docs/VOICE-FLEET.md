@@ -202,6 +202,11 @@ TTS binds to exactly one node until `/tts off`:
   sticky TTS off. Disabling TTS tells the owning worker to stand down.
 - While TTS sits on a worker, the commander is unlocked and `/play` works
   locally again.
+- The Rust worker mixes TTS over music on its single voice connection, so a
+  worker can carry a stream and speech at once. It advertises `ttsMix` in its
+  heartbeat, and when no node is idle the router may attach TTS to it instead
+  of returning `429`. The commander does not mix, so the router never picks it
+  for that.
 - Any TTS session ends itself after 30s with no texts to speak — workers
   never idle in voice forever. The music auto-leave never fires while TTS
   is active; TTS idle timeout is the only thing that clears it.

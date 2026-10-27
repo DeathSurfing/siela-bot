@@ -40,6 +40,24 @@ describe("FleetRegistry", () => {
     expect(await registry.list("g1")).toEqual([{ id: "commander", baseUrl: "http://commander:3101" }]);
   });
 
+  it("carries the ttsMix capability from the heartbeat", async () => {
+    const registry = new FleetRegistry(
+      store({
+        "siela:fleet:node:commander": live("commander", "g1"),
+        "siela:fleet:node:voice-1": JSON.stringify({
+          nodeId: "voice-1",
+          baseUrl: "http://voice-1:3101",
+          guildId: "g1",
+          ttsMix: true,
+        }),
+      }),
+      [],
+    );
+    const nodes = await registry.list("g1");
+    expect(nodes.find((node) => node.id === "voice-1")?.ttsMix).toBe(true);
+    expect(nodes.find((node) => node.id === "commander")?.ttsMix).toBeUndefined();
+  });
+
   it("falls back to static nodes when Valkey is unreachable", async () => {
     const failing: RegistryStore = {
       scanKeys: async () => {

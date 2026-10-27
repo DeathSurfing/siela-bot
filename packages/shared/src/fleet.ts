@@ -15,6 +15,12 @@ export interface FleetNodeRecord {
   guildId: string | null;
   role: "commander" | "voice";
   startedAt: string;
+  /**
+   * True when the node can mix TTS over music on one voice connection.
+   * The Rust worker sets this; the TypeScript commander does not, because it
+   * has to stop music to give TTS a voice connection.
+   */
+  ttsMix?: boolean;
 }
 
 export function fleetNodeKey(nodeId: string): string {

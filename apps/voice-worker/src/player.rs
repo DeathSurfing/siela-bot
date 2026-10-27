@@ -97,6 +97,12 @@ impl PlayerHandle {
         rx.await.unwrap_or_default()
     }
 
+    /// Channel this node is currently connected to, if any. A bot can hold one
+    /// voice connection per guild, so TTS has to share this channel.
+    pub async fn current_channel(&self) -> Option<String> {
+        self.state().await.channel_id
+    }
+
     pub async fn join(&self, channel_id: Option<String>) -> Result<String, PlayerError> {
         self.call(|reply| Command::Join { channel_id, reply }).await
     }
@@ -240,16 +246,24 @@ enum Command {
     LockTts { reply: oneshot::Sender<Result<(), PlayerError>> },
     UnlockTts { reply: oneshot::Sender<Result<(), PlayerError>> },
     IdleLeave { token: u64 },
-    TrackEnded,
+    /// A music track ended. Carries the sequence so a replaced track cannot
+    /// advance the queue twice.
+    MusicEnded { seq: u64 },
 }
 
-/// Bridges songbird's track-end event into the player actor.
-struct TrackEndNotifier(mpsc::Sender<Command>);
+/// Bridges one music track's end event into the player actor.
+///
+/// Track events are attached per track rather than globally, so a TTS clip
+/// ending never advances the music queue and vice versa.
+struct MusicEndNotifier {
+    seq: u64,
+    tx: mpsc::Sender<Command>,
+}
 
 #[async_trait::async_trait]
-impl songbird::EventHandler for TrackEndNotifier {
+impl songbird::EventHandler for MusicEndNotifier {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        let _ = self.0.send(Command::TrackEnded).await;
+        let _ = self.tx.send(Command::MusicEnded { seq: self.seq }).await;
         None
     }
 }
@@ -274,13 +288,18 @@ pub struct Player {
     current_handle: Option<TrackHandle>,
     events: mpsc::Sender<Command>,
     max_queue: usize,
-    /// Set before a manual stop so the resulting End event does not advance twice.
-    ignore_next_end: bool,
     /// Guard so the persisted queue is restored only on the first join.
     restored: bool,
-    /// True while a TTS session owns the voice channel. Music is blocked and
-    /// the idle-leave timer is suspended, matching the TypeScript lock.
+    /// True while a TTS session is open. It no longer blocks music: TTS is
+    /// mixed on top of whatever is playing. It only suspends idle-leave.
     tts_active: bool,
+    /// Handle to the clip currently being spoken, so a new utterance replaces
+    /// the previous one without touching the music track.
+    tts_handle: Option<TrackHandle>,
+    /// Bumped whenever music playback starts or is replaced. A track-end event
+    /// carrying an older sequence is ignored, so a replaced track cannot
+    /// advance the queue.
+    music_seq: u64,
     /// Bumped whenever playback starts, so a stale idle timer cannot fire.
     idle_token: u64,
 }
@@ -314,9 +333,10 @@ impl Player {
             current_handle: None,
             events: tx.clone(),
             max_queue: 1000,
-            ignore_next_end: false,
             restored: false,
             tts_active: false,
+            tts_handle: None,
+            music_seq: 0,
             idle_token: 0,
         };
         tokio::spawn(player.run(rx));
@@ -400,13 +420,10 @@ impl Player {
                 Command::IdleLeave { token } => {
                     self.idle_leave(token).await;
                 }
-                Command::TrackEnded => {
-                    // A TTS clip ending must not advance the music queue.
-                    if self.tts_active {
-                        self.ignore_next_end = false;
-                    } else if self.ignore_next_end {
-                        self.ignore_next_end = false;
-                    } else {
+                Command::MusicEnded { seq } => {
+                    // Only the track that is still current may advance the
+                    // queue. A replaced track's end event carries an old seq.
+                    if seq == self.music_seq {
                         self.advance().await;
                     }
                 }
@@ -470,13 +487,8 @@ impl Player {
             // every driver failure to "establishing connection failed".
             .map_err(|error| PlayerError::Internal(format!("join failed: {error:?}")))?;
 
-        if self.call.is_none() {
-            let mut locked = call.lock().await;
-            locked.add_global_event(
-                Event::Track(TrackEvent::End),
-                TrackEndNotifier(self.events.clone()),
-            );
-        }
+        // No global event: track-end handlers are attached per music track so
+        // TTS clips never advance the queue.
 
         // The TypeScript worker restores the persisted queue but does not
         // resume playback, so do the same once, on first join.
@@ -505,12 +517,6 @@ impl Player {
     ) -> Result<PlayOutcome, PlayerError> {
         let channel = self.ensure_call(channel_id).await?;
         let _ = channel;
-
-        if self.tts_active {
-            return Err(PlayerError::Invalid(
-                "TTS is using the voice channel. Turn it off before playing music.".into(),
-            ));
-        }
 
         let available = self
             .max_queue
@@ -541,11 +547,6 @@ impl Player {
     }
 
     async fn advance(&mut self) {
-        // TTS owns the channel; never start music underneath it.
-        if self.tts_active {
-            return;
-        }
-
         if self.loop_mode == LoopMode::Track {
             if let Some(track) = self.current.clone() {
                 let _ = self.start(track, 0).await;
@@ -597,12 +598,29 @@ impl Player {
         };
 
         let input = build_input(&track, start_ms, self.filter, &self.audio).await?;
+
+        // Bump the sequence first so the outgoing track's end event is stale.
+        self.music_seq = self.music_seq.wrapping_add(1);
+        let seq = self.music_seq;
+
         let handle = {
             let mut locked = call.lock().await;
-            // play_only_input replaces whatever is playing instead of queueing
-            // behind it; the queue is owned by this actor, not by songbird.
-            let handle = locked.play_only_input(input);
+            // Stop only the previous music track. TTS clips are separate
+            // tracks on the same mixer and must keep playing.
+            if let Some(previous) = &self.current_handle {
+                let _ = previous.stop();
+            }
+            let handle = locked.play_input(input);
             handle.set_volume(self.volume as f32 / 100.0).ok();
+            handle
+                .add_event(
+                    Event::Track(TrackEvent::End),
+                    MusicEndNotifier {
+                        seq,
+                        tx: self.events.clone(),
+                    },
+                )
+                .ok();
             handle
         };
 
@@ -645,6 +663,8 @@ impl Player {
         self.queue.clear();
         self.current = None;
         self.current_handle = None;
+        self.tts_handle = None;
+        self.music_seq = self.music_seq.wrapping_add(1);
         self.started_at = None;
         self.paused = false;
         if let Some(call) = &self.call {
@@ -669,6 +689,8 @@ impl Player {
         self.queue.clear();
         self.current = None;
         self.current_handle = None;
+        self.tts_handle = None;
+        self.music_seq = self.music_seq.wrapping_add(1);
         self.started_at = None;
         Ok(())
     }
@@ -682,7 +704,7 @@ impl Player {
             self.queue.pop_front();
         }
         if let Some(handle) = &self.current_handle {
-            self.ignore_next_end = true;
+            self.music_seq = self.music_seq.wrapping_add(1);
             let _ = handle.stop();
         }
         self.current = None;
@@ -750,7 +772,7 @@ impl Player {
             return Err(PlayerError::Invalid("Invalid queue index.".into()));
         }
         if let Some(handle) = &self.current_handle {
-            self.ignore_next_end = true;
+            self.music_seq = self.music_seq.wrapping_add(1);
             let _ = handle.stop();
         }
         let track = self.queue.remove(position).expect("index checked");
@@ -767,36 +789,33 @@ impl Player {
         }
     }
 
-    /// Play a prepared local file without touching the queue or the now-playing
-    /// state. TTS uses this so speech never rewrites the music session.
+    /// Speak a prepared clip. Music keeps playing underneath: the clip is
+    /// added to the mixer rather than replacing the call's tracks. A new
+    /// utterance stops the previous clip so two do not talk over each other.
     async fn play_file(&mut self, path: String) -> Result<(), PlayerError> {
         let Some(call) = self.call.clone() else {
             return Err(PlayerError::NoVoice);
         };
         let input: songbird::input::Input = songbird::input::File::new(path).into();
-        let mut locked = call.lock().await;
-        // Replace the previous clip rather than mixing two utterances.
-        let handle = locked.play_only_input(input);
-        handle.set_volume(self.volume as f32 / 100.0).ok();
+        let handle = {
+            let mut locked = call.lock().await;
+            if let Some(previous) = &self.tts_handle {
+                let _ = previous.stop();
+            }
+            let handle = locked.play_input(input);
+            handle.set_volume(self.volume as f32 / 100.0).ok();
+            handle
+        };
+        self.tts_handle = Some(handle);
         Ok(())
     }
 
-    /// Take the channel for TTS: stop music, keep the queue for later, and
-    /// suspend the idle-leave timer.
+    /// Open a TTS session. Music keeps playing: TTS clips are mixed on top of
+    /// it, so a worker can carry music and speech at the same time. Only the
+    /// idle-leave timer is suspended while the session is open.
     async fn lock_tts(&mut self) -> Result<(), PlayerError> {
         self.tts_active = true;
         self.idle_token = self.idle_token.wrapping_add(1);
-        if self.current.is_some() {
-            self.persist().await;
-        }
-        if let Some(handle) = &self.current_handle {
-            self.ignore_next_end = true;
-            let _ = handle.stop();
-        }
-        self.current = None;
-        self.current_handle = None;
-        self.started_at = None;
-        self.position_base_ms = 0;
         Ok(())
     }
 

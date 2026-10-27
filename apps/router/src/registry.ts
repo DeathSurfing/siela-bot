@@ -69,7 +69,11 @@ function parseRecord(raw: string): FleetNode | null {
   try {
     const record = JSON.parse(raw) as Partial<FleetNodeRecord>;
     if (typeof record.nodeId === "string" && typeof record.baseUrl === "string" && record.baseUrl) {
-      return { id: record.nodeId, baseUrl: record.baseUrl };
+      return {
+        id: record.nodeId,
+        baseUrl: record.baseUrl,
+        ...(record.ttsMix === true ? { ttsMix: true } : {}),
+      };
     }
   } catch {
     // ignore corrupt entries; TTL clears them

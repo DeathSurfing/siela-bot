@@ -114,13 +114,21 @@ impl TtsHandle {
     }
 
     pub async fn enable(&self, channel_id: String) -> Result<(), PlayerError> {
-        self.player.join(Some(channel_id.clone())).await?;
-        // TTS takes the channel; music stops but keeps its queue.
+        // One voice connection per bot per guild. When music is already
+        // playing, TTS shares that channel instead of moving the bot and
+        // cutting the music off.
+        let target = self
+            .player
+            .current_channel()
+            .await
+            .unwrap_or(channel_id);
+        self.player.join(Some(target.clone())).await?;
+        // Music keeps playing; TTS clips are mixed on top of it.
         self.player.lock_tts().await?;
 
         let mut inner = self.inner.lock().await;
         inner.session = Some(Session {
-            channel_id,
+            channel_id: target,
             node_id: (*self.node_id).clone(),
             enabled: true,
         });

@@ -130,6 +130,22 @@ export class RouterServer {
     }
   }
 
+  /**
+   * Voice channel a node's music is playing in, or null when it is not
+   * connected. TTS can only share a channel, never move a bot that is
+   * already streaming somewhere else.
+   */
+  private async musicChannel(node: FleetNode): Promise<string | null> {
+    try {
+      const state = (await this.nodeJson(node, "/internal/music/state")) as {
+        channelId?: unknown;
+      } | null;
+      return typeof state?.channelId === "string" ? state.channelId : null;
+    } catch {
+      return null;
+    }
+  }
+
   private async ttsEnabled(node: FleetNode): Promise<boolean> {
     try {
       const state = (await this.nodeJson(node, "/internal/tts/state")) as { enabled?: unknown } | null;
@@ -269,12 +285,33 @@ export class RouterServer {
         return { nodeId };
       }
       const nodes = await this.listNodes();
-      for (const node of nodes) {
-        const [busy, tts] = await Promise.all([this.musicBusy(node), this.ttsEnabled(node)]);
+
+      // First pass: an idle node with no TTS session, so speech does not have
+      // to share a channel when it does not need to.
+      const states = await Promise.all(
+        nodes.map(async (node) => {
+          const [busy, tts] = await Promise.all([this.musicBusy(node), this.ttsEnabled(node)]);
+          return { node, busy, tts };
+        }),
+      );
+
+      for (const { node, busy, tts } of states) {
         if (busy || tts) continue;
         await this.forward(node, "/internal/tts/enable", { channelId }, DEFAULT_TIMEOUT_MS);
         return { nodeId: node.id };
       }
+
+      // Second pass: every node is busy with music. Nodes that can mix TTS
+      // over music take the session, but only if their music is already in
+      // the requested channel; otherwise the bot would have to move.
+      for (const { node, tts } of states) {
+        if (tts || !node.ttsMix) continue;
+        const current = await this.musicChannel(node);
+        if (current && current !== channelId) continue;
+        await this.forward(node, "/internal/tts/enable", { channelId }, DEFAULT_TIMEOUT_MS);
+        return { nodeId: node.id, mixed: true };
+      }
+
       throw Object.assign(
         new Error("All voice nodes are busy. Add more worker nodes for more concurrent streams."),
         { statusCode: 429, code: "all_nodes_busy" },

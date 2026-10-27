@@ -26,6 +26,10 @@ pub struct FleetNodeRecord {
     pub role: String,
     #[serde(rename = "startedAt")]
     pub started_at: String,
+    /// This worker mixes TTS over music on one voice connection, so the
+    /// router may attach a TTS session to a node that is already playing.
+    #[serde(rename = "ttsMix")]
+    pub tts_mix: bool,
 }
 
 pub fn fleet_node_key(node_id: &str) -> String {
@@ -87,6 +91,7 @@ impl Store {
             guild_id: guild_id.map(str::to_string),
             role: "voice".into(),
             started_at: self.started_at.clone(),
+            tts_mix: true,
         };
         let payload = serde_json::to_string(&record)?;
         client

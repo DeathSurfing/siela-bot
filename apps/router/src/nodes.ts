@@ -1,6 +1,8 @@
 export interface FleetNode {
   id: string;
   baseUrl: string;
+  /** Node can play TTS over music on the same voice connection. */
+  ttsMix?: boolean;
 }
 
 export function parseNodes(raw: string | undefined): FleetNode[] {

@@ -76,6 +76,23 @@ Identical to the TypeScript worker: `DISCORD_TOKEN`, `MCP_TOKEN`, `GUILD_ID`,
 `HEALTH_PORT`, `YTDLP_PATH`, `FFMPEG_PATH`, `TTS_SERVICE_URL`, `LOG_LEVEL`.
 Adds `AUDIO_DECODER` (`inprocess` or `ffmpeg`).
 
+## Music and TTS together
+
+A worker holds one voice connection per guild, so TTS shares it. Clips go into
+songbird's mixer with `play_input`, which means speech plays over the music
+instead of replacing it. A new utterance stops only the previous clip. Track
+end events are attached per music track with a sequence number, so a finished
+TTS clip never advances the queue and a replaced track cannot advance it twice.
+
+The router can therefore attach a TTS session to a worker that is already
+playing, as long as the music is in the same channel and no idle node exists.
+That lets a three-node fleet carry three music streams plus speech.
+
+The commander does not mix. `@discordjs/voice` needs a second voice connection
+for TTS there, which Discord does not allow, so it still stops music. The
+router only mixes on nodes that advertise `ttsMix` in their heartbeat, and
+only Rust workers set it.
+
 ## Status
 
 Feature-complete against the worker contract. Implemented: login, guild bind,
