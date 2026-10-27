@@ -44,6 +44,8 @@ describe("play command", () => {
       play: vi.fn().mockResolvedValue({ added: 1 }),
       isVoiceLocked: vi.fn().mockReturnValue(false),
       setNowPlayingMessage: vi.fn(),
+      setFleetNode: vi.fn(),
+      getFleetNode: vi.fn().mockReturnValue(null),
     } as unknown as MusicService;
 
     const edited: ReplyPayload[] = [];
@@ -103,6 +105,8 @@ describe("play command", () => {
       play: vi.fn().mockResolvedValue({ added: 1 }),
       isVoiceLocked: vi.fn().mockReturnValue(false),
       setNowPlayingMessage: vi.fn(),
+      setFleetNode: vi.fn(),
+      getFleetNode: vi.fn().mockReturnValue(null),
     } as unknown as MusicService;
 
     const edited: ReplyPayload[] = [];
@@ -141,6 +145,8 @@ describe("play command", () => {
       state: vi.fn().mockReturnValue(null),
       play: vi.fn().mockRejectedValue(new Error("secret message")),
       setNowPlayingMessage: vi.fn(),
+      setFleetNode: vi.fn(),
+      getFleetNode: vi.fn().mockReturnValue(null),
       isVoiceLocked: vi.fn().mockReturnValue(false),
     } as unknown as MusicService;
 
@@ -181,15 +187,32 @@ describe("play command", () => {
       state: vi.fn().mockReturnValue(null),
       play: vi.fn().mockRejectedValue(new Error("locked")),
       setNowPlayingMessage: vi.fn(),
+      setFleetNode: vi.fn(),
+      getFleetNode: vi.fn().mockReturnValue(null),
       isVoiceLocked: vi.fn().mockReturnValue(true),
       logger: { info: () => undefined, warn: () => undefined },
     } as unknown as MusicService;
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify({ nodeId: "voice-1", result: { added: 1, first: { title: "Fleet Song" } } }), {
+    const fetchMock = vi.fn(async (url: unknown) => {
+      if (String(url).includes("/v1/music/state")) {
+        return new Response(
+          JSON.stringify({
+            playing: true,
+            paused: false,
+            volume: 80,
+            loop: "off",
+            position: 0,
+            current: { title: "Fleet Song", author: "A", length: 1, uri: "u", artworkUrl: null, isStream: false },
+            upcoming: [],
+            channelId: "voice-9",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ nodeId: "voice-1", result: { added: 1, first: { title: "Fleet Song" } } }), {
         status: 200,
         headers: { "content-type": "application/json" },
-      }),
-    );
+      });
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const edited: ReplyPayload[] = [];

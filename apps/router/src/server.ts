@@ -83,7 +83,7 @@ export class RouterServer {
     const nodes = await this.registry.list(this.guildId());
     const node = nodes.find((candidate) => candidate.id === nodeId);
     if (!node) throw Object.assign(new Error(`Unknown voice node: ${nodeId}.`), { statusCode: 400 });
-    return `${node.baseUrl}${path}`;
+    return `${node.baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
   }
 
   private async readPlaybackState(node: FleetNode): Promise<NodePlaybackState> {
@@ -138,11 +138,16 @@ export class RouterServer {
 
     // Session preempt: one guild is one session. Scheduled events call this
     // before playing so worker playback never overlaps event audio. Clears
-    // every node's queue, disconnects voice, and drops pool reservations.
+    // every idle node's queue, disconnects voice, and drops pool
+    // reservations. Nodes with an active TTS session are skipped so sticky
+    // TTS keeps speaking.
     this.app.post("/v1/session/preempt", async () => {
       const nodes = await this.registry.list(this.guildId());
       const settled = await Promise.allSettled(
         nodes.map(async (node) => {
+          if (await this.ttsEnabled(node).catch(() => false)) {
+            return { nodeId: node.id, ok: true as const, skipped: "tts" as const };
+          }
           for (const op of ["clear", "disconnect"] as const) {
             const response = await fetch(`${node.baseUrl}/internal/music/${op}`, {
               method: "POST",
@@ -164,6 +169,27 @@ export class RouterServer {
           ? entry.value
           : { nodeId: nodes[index]!.id, ok: false as const, error: entry.reason instanceof Error ? entry.reason.message : String(entry.reason) },
       );
+    });
+
+    this.app.get("/v1/music/state", async (request: FastifyRequest) => {
+      const query = (request.query ?? {}) as { nodeId?: unknown };
+      if (typeof query.nodeId !== "string" || !query.nodeId) {
+        throw Object.assign(new Error("nodeId query parameter is required."), { statusCode: 400 });
+      }
+      const nodes = await this.registry.list(this.guildId());
+      const node = nodes.find((candidate) => candidate.id === query.nodeId);
+      if (!node) throw Object.assign(new Error(`Unknown voice node: ${query.nodeId}.`), { statusCode: 400 });
+      const response = await fetch(`${node.baseUrl}/internal/music/state`, {
+        headers: { authorization: `Bearer ${this.options.token}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+      const text = await response.text().catch(() => "");
+      if (!response.ok) throw Object.assign(new Error(`Node ${node.id} returned ${response.status}.`), { statusCode: 502 });
+      try {
+        return text ? JSON.parse(text) : null;
+      } catch {
+        throw Object.assign(new Error(`Node ${node.id} returned invalid state.`), { statusCode: 502 });
+      }
     });
 
     this.app.get("/v1/music/state-all", async () => {
@@ -222,6 +248,102 @@ export class RouterServer {
 
     // Everything else goes straight to the commander.
     this.app.all("/v1/*", async (request) => this.proxy(request));
+    this.registerTtsRoutes();
+  }
+
+  /** Sticky TTS: enable/disable/speak fan out by node. Auto-enable picks the
+   * first node with idle music and no TTS session, so TTS binds to one bot
+   * until it is turned off. */
+  private registerTtsRoutes(): void {
+    this.app.post("/v1/tts/enable", async (request: FastifyRequest) => {
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      const channelId = typeof body.channelId === "string" ? body.channelId : undefined;
+      if (!channelId) throw Object.assign(new Error("channelId is required."), { statusCode: 400 });
+      const nodeId = typeof body.nodeId === "string" ? body.nodeId : undefined;
+      if (nodeId) {
+        await this.forward(await this.nodeUrl(nodeId, "internal/tts/enable"), { channelId }, DEFAULT_TIMEOUT_MS);
+        return { nodeId };
+      }
+      const nodes = await this.registry.list(this.guildId());
+      for (const node of nodes) {
+        const [musicBusy, ttsOn] = await Promise.all([
+          this.musicBusy(node).catch(() => true),
+          this.ttsEnabled(node).catch(() => true),
+        ]);
+        if (musicBusy || ttsOn) continue;
+        await this.forward(`${node.baseUrl}/internal/tts/enable`, { channelId }, DEFAULT_TIMEOUT_MS);
+        return { nodeId: node.id };
+      }
+      throw Object.assign(
+        new Error("All voice nodes are busy. Add more worker nodes for more concurrent streams."),
+        { statusCode: 429, code: "all_nodes_busy" },
+      );
+    });
+
+    this.app.post("/v1/tts/disable", async (request: FastifyRequest) => {
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      const nodeId = typeof body.nodeId === "string" ? body.nodeId : undefined;
+      if (!nodeId) throw Object.assign(new Error("nodeId is required."), { statusCode: 400 });
+      await this.forward(await this.nodeUrl(nodeId, "internal/tts/disable"), {}, DEFAULT_TIMEOUT_MS);
+      return { ok: true };
+    });
+
+    this.app.post("/v1/tts/speak", async (request: FastifyRequest) => {
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      const nodeId = typeof body.nodeId === "string" ? body.nodeId : undefined;
+      const utterance = typeof body.utterance === "string" ? body.utterance : undefined;
+      if (!nodeId || !utterance) throw Object.assign(new Error("nodeId and utterance are required."), { statusCode: 400 });
+      await this.forward(
+        await this.nodeUrl(nodeId, "internal/tts/speak"),
+        { utterance, speakerId: typeof body.speakerId === "string" ? body.speakerId : undefined },
+        DEFAULT_TIMEOUT_MS,
+      );
+      return { ok: true };
+    });
+
+    this.app.get("/v1/tts/state", async (request: FastifyRequest) => {
+      const query = (request.query ?? {}) as { nodeId?: unknown };
+      if (typeof query.nodeId !== "string" || !query.nodeId) {
+        throw Object.assign(new Error("nodeId query parameter is required."), { statusCode: 400 });
+      }
+      const nodes = await this.registry.list(this.guildId());
+      const node = nodes.find((candidate) => candidate.id === query.nodeId);
+      if (!node) throw Object.assign(new Error(`Unknown voice node: ${query.nodeId}.`), { statusCode: 400 });
+      const response = await fetch(`${node.baseUrl}/internal/tts/state`, {
+        headers: { authorization: `Bearer ${this.options.token}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+      const text = await response.text().catch(() => "");
+      if (!response.ok) throw Object.assign(new Error(`Node ${node.id} returned ${response.status}.`), { statusCode: 502 });
+      try {
+        return text ? JSON.parse(text) : null;
+      } catch {
+        throw Object.assign(new Error(`Node ${node.id} returned invalid state.`), { statusCode: 502 });
+      }
+    });
+  }
+
+  private async musicBusy(node: FleetNode): Promise<boolean> {
+    try {
+      const state = await this.readPlaybackState(node);
+      return state.playing || state.hasCurrent;
+    } catch {
+      return true;
+    }
+  }
+
+  private async ttsEnabled(node: FleetNode): Promise<boolean> {
+    try {
+      const response = await fetch(`${node.baseUrl}/internal/tts/state`, {
+        headers: { authorization: `Bearer ${this.options.token}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) return true;
+      const state = (await response.json().catch(() => null)) as { enabled?: unknown } | null;
+      return state?.enabled === true;
+    } catch {
+      return true;
+    }
   }
 
   /** Transparent proxy for non-music control routes. */

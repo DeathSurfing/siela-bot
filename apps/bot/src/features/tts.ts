@@ -4,6 +4,7 @@ import type { BotConfig } from "@siela/config";
 import { UserError } from "../lib/errors.js";
 import type { Logger } from "../lib/logger.js";
 import type { MusicService } from "./music.js";
+import { FleetClient } from "./fleetClient.js";
 import { TambolaVoice } from "./tambola/voice.js";
 import {
   buildAttachmentUtterance,
@@ -19,9 +20,11 @@ const MAX_MENTION_LOOKUPS = 10;
 
 interface TtsSession {
   channelId: string;
-  voice: TambolaVoice;
+  voice: TambolaVoice | null;
   enabled: boolean;
   lastSpeakerId: string | null;
+  /** Node holding the voice connection. Sticky until disabled. */
+  nodeId: string;
 }
 
 export class TtsService {
@@ -30,12 +33,18 @@ export class TtsService {
   constructor(
     private readonly music: MusicService | null,
     private readonly config: BotConfig,
-    private readonly logger: Logger,
+    readonly logger: Logger,
   ) {}
+
+  private fleet(): FleetClient {
+    return new FleetClient(this.config.ROUTER_URL ?? null, this.config.MCP_TOKEN, this.logger);
+  }
 
   private cleanupIfDisconnected(guildId: string): void {
     const session = this.sessions.get(guildId);
     if (!session) return;
+    // Remote sessions live on the worker; only the local voice can drop.
+    if (!session.voice) return;
     if (!session.voice.connected) {
       session.voice.leave();
       this.sessions.delete(guildId);
@@ -54,6 +63,32 @@ export class TtsService {
     return Boolean(session?.enabled && session.channelId === channelId);
   }
 
+  /** Node holding this guild's TTS voice, or null when TTS is off. */
+  sessionNode(guildId: string): string | null {
+    return this.sessions.get(guildId)?.nodeId ?? null;
+  }
+
+  /** Voice channel this guild's TTS is speaking into, or null when off. */
+  sessionChannel(guildId: string): string | null {
+    return this.sessions.get(guildId)?.channelId ?? null;
+  }
+
+  /** True when this process holds the TTS voice connection. */
+  isLocal(guildId: string): boolean {
+    const session = this.sessions.get(guildId);
+    return Boolean(session?.enabled && session.voice && session.nodeId === this.config.NODE_ID);
+  }
+
+  /** Record a session owned by another fleet node (commander-side only). */
+  recordRemoteSession(guildId: string, nodeId: string, channelId: string): void {
+    this.sessions.set(guildId, { channelId, voice: null, enabled: true, lastSpeakerId: null, nodeId });
+  }
+
+  forgetSession(guildId: string): void {
+    this.sessions.delete(guildId);
+    this.music?.unlockVoice(guildId);
+  }
+
   async enable(guildId: string, member: GuildMember, channelId: string | null): Promise<void> {
     const voiceChannelId = channelId ?? member.voice.channelId;
     if (!voiceChannelId) throw new UserError("Join a voice channel first.");
@@ -67,7 +102,7 @@ export class TtsService {
     if (!joined) throw new UserError("Could not join that voice channel. Check Connect and Speak permissions.");
 
     this.logger.info({ guildId, channelId: channel.id }, "TTS enabled");
-    this.sessions.set(guildId, { channelId: channel.id, voice, enabled: true, lastSpeakerId: null });
+    this.sessions.set(guildId, { channelId: channel.id, voice, enabled: true, lastSpeakerId: null, nodeId: this.config.NODE_ID });
     if (this.music) {
       try { await this.music.disconnect(guildId); } catch { /* ignore */ }
       this.music.lockVoice(guildId);
@@ -76,7 +111,18 @@ export class TtsService {
 
   async disable(guildId: string): Promise<void> {
     const session = this.sessions.get(guildId);
-    if (session) {
+    if (session && !session.voice && session.nodeId !== this.config.NODE_ID) {
+      // Remote session: tell the owning worker to stand down, then forget it.
+      try {
+        await this.fleet().ttsDisable(session.nodeId);
+      } catch (error) {
+        this.logger.warn({ err: error, guildId, nodeId: session.nodeId }, "remote TTS disable failed");
+      }
+      this.sessions.delete(guildId);
+      this.music?.unlockVoice(guildId);
+      return;
+    }
+    if (session?.voice) {
       session.voice.leave();
       this.sessions.delete(guildId);
     }
@@ -93,10 +139,33 @@ export class TtsService {
     const isNewSpeaker = opts.speakerId ? session.lastSpeakerId !== opts.speakerId : true;
     const utterance = buildTtsUtterance(trimmed, opts.speakerName ?? null, isNewSpeaker);
     if (!utterance) return;
+    if (!session.voice) {
+      await this.forwardUtterance(guildId, session.nodeId, utterance, opts.speakerId);
+      if (opts.speakerId) session.lastSpeakerId = opts.speakerId;
+      return;
+    }
     this.logger.info({ guildId, channelId: session.channelId, text: utterance }, "TTS speaking");
     await session.voice.speak(utterance);
     if (opts.speakerId) {
       session.lastSpeakerId = opts.speakerId;
+    }
+  }
+
+  /** Speak a prebuilt utterance on this process's voice connection (worker path). */
+  async speakUtterance(guildId: string, utterance: string, speakerId?: string): Promise<void> {
+    const session = this.sessions.get(guildId);
+    if (!session?.enabled || !session.voice) return;
+    if (!utterance) return;
+    this.logger.info({ guildId, channelId: session.channelId, text: utterance }, "TTS speaking");
+    await session.voice.speak(utterance);
+    if (speakerId) session.lastSpeakerId = speakerId;
+  }
+
+  private async forwardUtterance(guildId: string, nodeId: string, utterance: string, speakerId?: string): Promise<void> {
+    try {
+      await this.fleet().ttsSpeak(nodeId, utterance, speakerId);
+    } catch (error) {
+      this.logger.warn({ err: error, guildId, nodeId }, "remote TTS speak failed");
     }
   }
 
@@ -138,6 +207,11 @@ export class TtsService {
     }
 
     if (!utterance) return;
+    if (!session.voice) {
+      await this.forwardUtterance(guildId, session.nodeId, utterance, speakerId);
+      session.lastSpeakerId = speakerId;
+      return;
+    }
     this.logger.info({ guildId, channelId: session.channelId, text: utterance }, "TTS speaking");
     await session.voice.speak(utterance);
     session.lastSpeakerId = speakerId;

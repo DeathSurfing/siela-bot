@@ -59,6 +59,7 @@ const playCommand: Command = {
     }
     try {
       const service = music(ctx);
+      service.setFleetNode(ctx.guild.id, null);
       const wasPlaying = Boolean(service.state(ctx.guild.id)?.current);
       const result = await service.play(ctx.member, query, ctx.args[1]);
       const state = service.state(ctx.guild.id);
@@ -82,12 +83,14 @@ const playCommand: Command = {
       if (locked && fleet.enabled && channelId) {
         try {
           const routed = await fleet.autoPlay(query, channelId);
-          const extra = routed.added > 1 ? ` · ${routed.added - 1} more queued` : "";
-          await ctx
-            .edit(card({ title: `Playing on ${routed.nodeId}`, body: `**${routed.title}**${extra}\n<@${ctx.author.id}> is in <#${channelId}>. Commander voice is busy, so the fleet picked it up.` }))
-            .catch(() => undefined);
+          service.setFleetNode(ctx.guild.id, routed.nodeId);
+          const { state } = await fleet.nodeState(routed.nodeId);
+          const notice = `Playing on ${routed.nodeId} · commander voice is busy`;
+          const message = await ctx.edit(buildMusicPayload(ctx.guild.id, state, notice));
+          if (message) service.setNowPlayingMessage(ctx.guild.id, message);
           return;
         } catch (fleetError) {
+          service.setFleetNode(ctx.guild.id, null);
           const message = fleetError instanceof UserError ? fleetError.message : "Fleet playback failed.";
           await ctx.edit(card({ title: "Could not play", body: message })).catch(() => undefined);
           return;
@@ -116,6 +119,7 @@ const joinCommand: Command = {
   async execute(ctx) {
     const channelId = ctx.args[0]?.replace(/^<#|>$/g, "");
     const joined = await music(ctx).join(ctx.member, channelId);
+    music(ctx).setFleetNode(ctx.guild.id, null);
     await ctx.reply(success(`Joined <#${joined}>.`));
   },
 };
@@ -269,6 +273,14 @@ const nowPlayingCommand: Command = {
   slash: new SlashCommandBuilder().setName("nowplaying").setDescription("Show the current track"),
   async execute(ctx) {
     const service = music(ctx);
+    const fleetNode = service.getFleetNode(ctx.guild.id);
+    if (fleetNode && ctx.services.config.ROUTER_URL) {
+      const fleet = new FleetClient(ctx.services.config.ROUTER_URL, ctx.services.config.MCP_TOKEN, service.logger);
+      const { state } = await fleet.nodeState(fleetNode).catch(() => ({ state: null, channelId: null }));
+      const message = await ctx.reply(buildMusicPayload(ctx.guild.id, state));
+      if (message) service.setNowPlayingMessage(ctx.guild.id, message);
+      return;
+    }
     const message = await ctx.reply(buildMusicPayload(ctx.guild.id, service.state(ctx.guild.id)));
     if (message) service.setNowPlayingMessage(ctx.guild.id, message);
   },

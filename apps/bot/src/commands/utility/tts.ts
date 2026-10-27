@@ -2,6 +2,7 @@ import { SlashCommandBuilder } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { UserError } from "../../lib/errors.js";
 import { success } from "../../features/ui.js";
+import { FleetClient } from "../../features/fleetClient.js";
 
 export const ttsCommand: Command = {
   name: "tts",
@@ -18,6 +19,24 @@ export const ttsCommand: Command = {
   async execute(ctx) {
     const action = (ctx.args[0] ?? "status").toLowerCase();
     if (action === "on" || action === "enable" || action === "start") {
+      const voiceChannelId = ctx.member.voice?.channelId ?? undefined;
+      if (!voiceChannelId) throw new UserError("Join a voice channel first.");
+      const music = ctx.services.music;
+      const commanderBusy =
+        !music || music.isVoiceLocked(ctx.guild.id) || music.isConnected(ctx.guild.id);
+      const fleet = new FleetClient(
+        ctx.services.config.ROUTER_URL ?? null,
+        ctx.services.config.MCP_TOKEN,
+        ctx.services.tts.logger,
+      );
+      if (commanderBusy && fleet.enabled) {
+        // Commander's voice is taken: bind sticky TTS to a free fleet node
+        // instead of stealing the commander's connection.
+        const nodeId = await fleet.ttsEnable(voiceChannelId);
+        ctx.services.tts.recordRemoteSession(ctx.guild.id, nodeId, voiceChannelId);
+        await ctx.reply(success(`TTS enabled on **${nodeId}** for <#${voiceChannelId}>. It stays there until you turn TTS off.`));
+        return;
+      }
       await ctx.services.tts.enable(ctx.guild.id, ctx.member, null);
       await ctx.reply(success("TTS enabled for this voice channel."));
       return;

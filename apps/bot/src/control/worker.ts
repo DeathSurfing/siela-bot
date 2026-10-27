@@ -68,10 +68,51 @@ export class WorkerServer {
   }
 
   private registerRoutes(): void {
+    this.app.get("/internal/tts/state", async () => {
+      const tts = this.options.services.tts;
+      if (!tts) throw new UserError("TTS service is not ready.", "not_ready");
+      const guildId = this.guildId();
+      return {
+        enabled: tts.isEnabled(guildId),
+        channelId: tts.sessionChannel(guildId),
+        nodeId: tts.sessionNode(guildId),
+      };
+    });
+
+    this.app.post("/internal/tts/enable", async (request) => {
+      const body = (request.body ?? {}) as { channelId?: unknown };
+      if (typeof body.channelId !== "string" || !body.channelId) {
+        throw new UserError("channelId is required.", "validation_error");
+      }
+      const member = await this.selfMember();
+      await this.options.services.tts!.enable(this.guildId(), member, body.channelId);
+      return { ok: true };
+    });
+
+    this.app.post("/internal/tts/disable", async () => {
+      await this.options.services.tts!.disable(this.guildId());
+      return { ok: true };
+    });
+
+    this.app.post("/internal/tts/speak", async (request) => {
+      const body = (request.body ?? {}) as { utterance?: unknown; speakerId?: unknown };
+      if (typeof body.utterance !== "string" || !body.utterance) {
+        throw new UserError("utterance is required.", "validation_error");
+      }
+      await this.options.services.tts!.speakUtterance(
+        this.guildId(),
+        body.utterance,
+        typeof body.speakerId === "string" ? body.speakerId : undefined,
+      );
+      return { ok: true };
+    });
+
     this.app.get("/internal/music/state", async () => {
       const music = this.options.services.music;
       if (!music) throw new UserError("Music service is not ready.", "not_ready");
-      return music.state(this.guildId()) ?? { playing: false, paused: false, volume: 0, loop: "off", position: 0, current: null, upcoming: [] };
+      const guildId = this.guildId();
+      const state = music.state(guildId) ?? { playing: false, paused: false, volume: 0, loop: "off", position: 0, current: null, upcoming: [] };
+      return { ...state, channelId: music.channelId(guildId) };
     });
 
     this.app.post("/internal/music/join", async (request) => {

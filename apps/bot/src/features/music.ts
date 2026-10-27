@@ -852,6 +852,22 @@ export class MusicService extends EventEmitter {
     return this.players.size;
   }
 
+  /**
+   * Fleet node driving this guild's playback, set when the commander
+   * auto-routes `/play` to a worker. The commander owns the interface
+   * (now-playing card + buttons) while audio plays on the worker.
+   */
+  private readonly fleetNodes = new Map<string, string>();
+
+  setFleetNode(guildId: string, nodeId: string | null): void {
+    if (nodeId) this.fleetNodes.set(guildId, nodeId);
+    else this.fleetNodes.delete(guildId);
+  }
+
+  getFleetNode(guildId: string): string | null {
+    return this.fleetNodes.get(guildId) ?? null;
+  }
+
   isConnected(guildId: string): boolean {
     return this.players.has(guildId);
   }

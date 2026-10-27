@@ -108,8 +108,23 @@ control network), not at individual nodes:
 Discord `!music`/`/music` commands normally drive the commander's queue in the
 author's channel. If the commander's voice is locked (Tambola game, TTS
 session) and `ROUTER_URL` is set, `/play` auto-routes to a free fleet node
-instead of failing, replying with the node that picked it up. Fleet playback
-has no chat buttons; use the router for further control.
+instead of failing, replying with the full now-playing card for that node.
+All interface — the card and its pause/skip/stop/loop/shuffle/filter/lyrics
+buttons — is owned by the commander and forwarded through the router, so
+there is exactly one place to read and control playback.
+
+## Sticky TTS
+
+TTS binds to exactly one node until `/tts off`:
+
+- `/tts on` uses the commander when its voice is free, otherwise a free
+  fleet node. The binding (node + channel) is recorded as the session.
+- Chat in the TTS channel is spoken on the bound node; every other node
+  stays silent. TTS never migrates mid-session.
+- Session preempt skips TTS-active nodes, so scheduled events never cut
+  sticky TTS off. Disabling TTS tells the owning worker to stand down.
+- While TTS sits on a worker, the commander is unlocked and `/play` works
+  locally again.
 
 ## Known limitations
 

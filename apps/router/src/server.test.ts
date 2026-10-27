@@ -28,6 +28,9 @@ describe("RouterServer session + semaphore", () => {
         if (target.endsWith("/internal/music/state")) {
           return jsonResponse({ playing: busy, current: busy ? { title: "t" } : null });
         }
+        if (target.endsWith("/internal/tts/state")) {
+          return jsonResponse({ enabled: false, channelId: null });
+        }
         if (target.endsWith("/internal/music/clear") || target.endsWith("/internal/music/disconnect")) {
           return jsonResponse({ ok: true });
         }
