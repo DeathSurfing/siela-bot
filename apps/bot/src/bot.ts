@@ -33,6 +33,7 @@ import { APP_VERSION, DEFAULTS, type BotStatus } from "@siela/shared";
 import { pingDatabase, type DatabaseHandle, type TempVoiceChannelRow } from "@siela/db";
 import type { BotConfig } from "@siela/config";
 import { commands } from "./commands/index.js";
+import { DELULU_SETUP_PREFIX, handleDeluluSetup } from "./commands/social/delulu.js";
 import { CommandRegistry } from "./framework/registry.js";
 import { CooldownManager } from "./framework/cooldowns.js";
 import { parsePrefixCommand } from "./framework/prefix.js";
@@ -460,6 +461,11 @@ export class SielaBot {
       if (this.isVoiceWorker) return;
       if (interaction.isChatInputCommand()) {
         await this.onChatInput(interaction);
+        return;
+      }
+      if ((interaction.isButton() || interaction.isModalSubmit()) && interaction.customId.startsWith(DELULU_SETUP_PREFIX)) {
+        if (!this.guildId || interaction.guildId !== this.guildId) return;
+        await handleDeluluSetup(interaction, this.services);
         return;
       }
       if (
