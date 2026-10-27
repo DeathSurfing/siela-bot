@@ -35,8 +35,16 @@ environment, internal API, health endpoints, and Valkey heartbeat, so the
 router cannot tell it apart. It exists because the TypeScript worker holds
 about 53 MB of private memory idle and keeps a decoder process alive for each
 track, while the Rust worker measured 3 MB of private memory and 16 MB total
-while playing a normal track, with no decoder process. It is not part of the
-deployed stack yet; see `apps/voice-worker/README.md`.
+while playing a normal track, with no decoder process.
+
+Select it when generating the overlay:
+
+```bash
+WORKER_RUNTIME=rust ./scripts/make-voice-overlay.sh 2
+```
+
+The default is still `WORKER_RUNTIME=bun`. Both runtimes can be mixed across
+nodes, because each node registers itself through the same heartbeat key.
 
 Discord requires the DAVE encryption protocol on voice connections, so any
 voice client must support it. `@discordjs/voice` 0.19.2 ships `davey`, and the

@@ -77,6 +77,7 @@ Workers only exist when `scripts/make-voice-overlay.sh <N>` has generated the ov
 | `bot` | `localhost/siela-bot:latest` | `oven/bun` image with yt-dlp, mpv, and ffmpeg; commander by default (`NODE_ROLE=commander`) |
 | `router` | `localhost/siela-router:latest` | Voice fleet gateway `:3100`; fans music out by `nodeId`, proxies everything else to the commander |
 | `bot-voice-*` | `localhost/siela-bot:latest` | Generated workers (`scripts/make-voice-overlay.sh <N>`). Slim `dist/worker.js` entrypoint under `bun --smol`, 1 GB cap: voice + music/TTS + worker API only, no commands or schedulers |
+| `bot-voice-*` (Rust) | `localhost/siela-voice-worker:latest` | Same slots with `WORKER_RUNTIME=rust`. `apps/voice-worker`, 512 MB cap, decodes in process so no mpv or ffmpeg runs during playback |
 | `watchtower` | `localhost/siela-watchtower:latest` | Optional auto-deploy sidecar; mounts the host Podman socket |
 
 Health endpoints:
@@ -118,7 +119,7 @@ When the flag is off, `up` and `down` remove a leftover `siela-mcp` container fr
 
 | File | Purpose |
 |---|---|
-| `compose.voice.generated.yaml` | Generated voice workers. Created by `scripts/make-voice-overlay.sh <N>`; auto-included when present |
+| `compose.voice.generated.yaml` | Generated voice workers. Created by `scripts/make-voice-overlay.sh <N>`; auto-included when present. Set `WORKER_RUNTIME=rust` to emit Rust workers instead of Bun |
 | `compose.watchtower.yaml` | Optional auto-deploy sidecar. Enabled with `WATCHTOWER_ENABLED=true` |
 | `compose.fast.yaml` | Fast code-only deploy. Bind-mounts `apps/bot/dist` over `/app/dist` |
 | `.env.example` / `.env.voice.example` | Configuration references. Prefer `scripts/podman-init.sh` |

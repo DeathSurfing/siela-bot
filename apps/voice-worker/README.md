@@ -78,8 +78,13 @@ Adds `AUDIO_DECODER` (`inprocess` or `ffmpeg`).
 
 ## Status
 
-Verified in a live voice channel on the production host, using worker 2's
-Discord token in place of the TypeScript worker:
+Feature-complete against the worker contract. Implemented: login, guild bind,
+heartbeat, queue persistence and restore, resolve and play, pause, resume,
+skip, seek, volume, loop, shuffle, remove, move, jump, autoplay, filters,
+TTS session with warmup and clip cache, the TTS voice lock, and idle
+auto-leave 30 seconds after the queue drains.
+
+Verified live in a real voice channel on the production host:
 
 | Case | Result |
 |---|---|
@@ -88,5 +93,15 @@ Discord token in place of the TypeScript worker:
 | Normal track (in-process decode) | played; **3 MB anon, 16 MB total, one process** |
 | Comparable TypeScript worker | 53 MB idle, plus mpv at about 45 MB while playing |
 
-Not yet wired into compose. The TypeScript worker remains the deployed one
-until this is switched over in `scripts/make-voice-overlay.sh` and rolled out.
+Not yet exercised live: TTS playback, the queue-edit operations, autoplay,
+and more than one channel at once. They are implemented and compile; they
+need a pass in a live guild.
+
+To deploy, generate the overlay with the Rust runtime:
+
+```bash
+WORKER_RUNTIME=rust ./scripts/make-voice-overlay.sh 2
+```
+
+The TypeScript worker remains the default (`WORKER_RUNTIME=bun`) until this is
+switched over.

@@ -24,6 +24,10 @@ use crate::fleet::Store;
 use crate::model::{FilterPreset, LoopMode, MusicState, Track};
 use crate::resolve::{ResolveError, Resolver};
 
+/// Leave voice this long after the queue drains, matching
+/// `IDLE_LEAVE_GRACE_MS` in the TypeScript worker.
+pub const IDLE_LEAVE_GRACE_MS: u64 = 30_000;
+
 #[derive(Debug, thiserror::Error)]
 pub enum PlayerError {
     #[error("invalid worker token")]
@@ -190,6 +194,16 @@ impl PlayerHandle {
         self.call(|reply| Command::PlayFile { path, reply }).await
     }
 
+    /// Take the voice channel for a TTS session, stopping music.
+    pub async fn lock_tts(&self) -> Result<(), PlayerError> {
+        self.call(|reply| Command::LockTts { reply }).await
+    }
+
+    /// Release the channel back to music.
+    pub async fn unlock_tts(&self) -> Result<(), PlayerError> {
+        self.call(|reply| Command::UnlockTts { reply }).await
+    }
+
     async fn call<T>(
         &self,
         make: impl FnOnce(oneshot::Sender<Result<T, PlayerError>>) -> Command,
@@ -223,6 +237,9 @@ enum Command {
     SetAutoplay { enabled: bool, reply: oneshot::Sender<Result<(), PlayerError>> },
     SetFilter { preset: FilterPreset, reply: oneshot::Sender<Result<(), PlayerError>> },
     PlayFile { path: String, reply: oneshot::Sender<Result<(), PlayerError>> },
+    LockTts { reply: oneshot::Sender<Result<(), PlayerError>> },
+    UnlockTts { reply: oneshot::Sender<Result<(), PlayerError>> },
+    IdleLeave { token: u64 },
     TrackEnded,
 }
 
@@ -261,6 +278,11 @@ pub struct Player {
     ignore_next_end: bool,
     /// Guard so the persisted queue is restored only on the first join.
     restored: bool,
+    /// True while a TTS session owns the voice channel. Music is blocked and
+    /// the idle-leave timer is suspended, matching the TypeScript lock.
+    tts_active: bool,
+    /// Bumped whenever playback starts, so a stale idle timer cannot fire.
+    idle_token: u64,
 }
 
 impl Player {
@@ -294,6 +316,8 @@ impl Player {
             max_queue: 1000,
             ignore_next_end: false,
             restored: false,
+            tts_active: false,
+            idle_token: 0,
         };
         tokio::spawn(player.run(rx));
         PlayerHandle { tx }
@@ -367,8 +391,20 @@ impl Player {
                 Command::PlayFile { path, reply } => {
                     let _ = reply.send(self.play_file(path).await);
                 }
+                Command::LockTts { reply } => {
+                    let _ = reply.send(self.lock_tts().await);
+                }
+                Command::UnlockTts { reply } => {
+                    let _ = reply.send(self.unlock_tts().await);
+                }
+                Command::IdleLeave { token } => {
+                    self.idle_leave(token).await;
+                }
                 Command::TrackEnded => {
-                    if self.ignore_next_end {
+                    // A TTS clip ending must not advance the music queue.
+                    if self.tts_active {
+                        self.ignore_next_end = false;
+                    } else if self.ignore_next_end {
                         self.ignore_next_end = false;
                     } else {
                         self.advance().await;
@@ -470,6 +506,12 @@ impl Player {
         let channel = self.ensure_call(channel_id).await?;
         let _ = channel;
 
+        if self.tts_active {
+            return Err(PlayerError::Invalid(
+                "TTS is using the voice channel. Turn it off before playing music.".into(),
+            ));
+        }
+
         let available = self
             .max_queue
             .saturating_sub(self.queue.len() + usize::from(self.current.is_some()));
@@ -499,6 +541,11 @@ impl Player {
     }
 
     async fn advance(&mut self) {
+        // TTS owns the channel; never start music underneath it.
+        if self.tts_active {
+            return;
+        }
+
         if self.loop_mode == LoopMode::Track {
             if let Some(track) = self.current.clone() {
                 let _ = self.start(track, 0).await;
@@ -519,6 +566,21 @@ impl Player {
             }
         }
 
+        // Autoplay pulls one related track before the queue is declared empty.
+        if self.autoplay {
+            if let Some(previous) = self.current.clone() {
+                let query = format!("{} {}", previous.author, previous.title);
+                if let Ok(tracks) = self.resolver.resolve(&query, 1).await {
+                    if let Some(next) = tracks.into_iter().next() {
+                        if self.start(next, 0).await.is_ok() {
+                            self.persist().await;
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
         self.current = None;
         self.current_handle = None;
         self.started_at = None;
@@ -526,6 +588,7 @@ impl Player {
         if let Ok(guild) = self.guild().await {
             self.store.clear_queue(&guild).await;
         }
+        self.schedule_idle_leave();
     }
 
     async fn start(&mut self, track: Track, start_ms: i64) -> Result<(), PlayerError> {
@@ -548,6 +611,8 @@ impl Player {
         self.started_at = Some(std::time::Instant::now());
         self.position_base_ms = start_ms;
         self.paused = false;
+        // Cancel any pending idle leave.
+        self.idle_token = self.idle_token.wrapping_add(1);
         Ok(())
     }
 
@@ -710,9 +775,58 @@ impl Player {
         };
         let input: songbird::input::Input = songbird::input::File::new(path).into();
         let mut locked = call.lock().await;
-        let handle = locked.play_input(input);
+        // Replace the previous clip rather than mixing two utterances.
+        let handle = locked.play_only_input(input);
         handle.set_volume(self.volume as f32 / 100.0).ok();
         Ok(())
+    }
+
+    /// Take the channel for TTS: stop music, keep the queue for later, and
+    /// suspend the idle-leave timer.
+    async fn lock_tts(&mut self) -> Result<(), PlayerError> {
+        self.tts_active = true;
+        self.idle_token = self.idle_token.wrapping_add(1);
+        if self.current.is_some() {
+            self.persist().await;
+        }
+        if let Some(handle) = &self.current_handle {
+            self.ignore_next_end = true;
+            let _ = handle.stop();
+        }
+        self.current = None;
+        self.current_handle = None;
+        self.started_at = None;
+        self.position_base_ms = 0;
+        Ok(())
+    }
+
+    async fn unlock_tts(&mut self) -> Result<(), PlayerError> {
+        self.tts_active = false;
+        Ok(())
+    }
+
+    /// Disconnect after a grace period with nothing playing. Bumped tokens
+    /// make stale timers harmless when playback or TTS starts in between.
+    fn schedule_idle_leave(&mut self) {
+        if self.tts_active {
+            return;
+        }
+        self.idle_token = self.idle_token.wrapping_add(1);
+        let token = self.idle_token;
+        let events = self.events.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(IDLE_LEAVE_GRACE_MS)).await;
+            let _ = events.send(Command::IdleLeave { token }).await;
+        });
+    }
+
+    async fn idle_leave(&mut self, token: u64) {
+        if token != self.idle_token || self.current.is_some() || self.tts_active {
+            return;
+        }
+        if let Err(error) = self.disconnect().await {
+            tracing::debug!(%error, "idle leave failed");
+        }
     }
 }
 
