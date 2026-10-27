@@ -286,9 +286,7 @@ export async function generateFamilyTreeCard(
     ctx.strokeStyle = LINE;
     ctx.lineWidth = 1.25;
     ctx.beginPath();
-    ctx.moveTo(first.x + NODE_WIDTH, y);
-    ctx.lineTo(second.x, y);
-    ctx.stroke();
+    // Leave the partner gap empty so the heart floats between the cards.
     ctx.fillStyle = HEART;
     // Geometry is centered on the connector; font baselines vary across platforms.
     const cx = (first.x + NODE_WIDTH + second.x) / 2;
@@ -348,3 +346,4 @@ export async function generateFamilyTreeCard(
 
   return Buffer.from(canvas.toBuffer("image/png"));
 }
+
