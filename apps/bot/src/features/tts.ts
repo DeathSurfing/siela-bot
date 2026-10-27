@@ -34,12 +34,34 @@ interface TtsSession {
 export class TtsService {
   private readonly sessions = new Map<string, TtsSession>();
   private readonly idleTimers = new Map<string, NodeJS.Timeout>();
+  /** Other features that synthesize speech, such as an active Tambola game. */
+  private consumerChecker: ((guildId: string) => boolean) | null = null;
 
   constructor(
     private readonly music: MusicService | null,
     private readonly config: BotConfig,
     readonly logger: Logger,
   ) {}
+
+  /** Register another feature that may be synthesizing speech right now. */
+  setConsumerChecker(checker: ((guildId: string) => boolean) | null): void {
+    this.consumerChecker = checker;
+  }
+
+  /** True while any standalone TTS session is enabled. */
+  hasActiveSession(): boolean {
+    return [...this.sessions.values()].some((session) => session.enabled);
+  }
+
+  /**
+   * Drop the synthesis model only when nothing is using it. A live Tambola
+   * game or an enabled TTS session keeps it resident.
+   */
+  async maybeUnload(guildId: string): Promise<void> {
+    if (this.hasActiveSession()) return;
+    if (this.consumerChecker?.(guildId)) return;
+    await unloadTtsService(this.logger);
+  }
 
   private fleet(): FleetClient {
     return new FleetClient(this.config.ROUTER_URL ?? null, this.config.MCP_TOKEN, this.logger);
@@ -158,8 +180,8 @@ export class TtsService {
       this.sessions.delete(guildId);
     }
     this.music?.unlockVoice(guildId);
-    // Release the model. Synthesis loads it again on demand.
-    if (!options.keepModel) await unloadTtsService(this.logger);
+    // Release the model only when no other session is speaking.
+    if (!options.keepModel) await this.maybeUnload(guildId);
   }
 
   async speak(guildId: string, text: string, opts: { speakerId?: string; speakerName?: string } = {}): Promise<void> {

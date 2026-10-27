@@ -101,6 +101,13 @@ export class TambolaService {
     private readonly economy: EconomyService | null = null,
   ) {}
 
+  private sessionEndHook: ((guildId: string) => void) | null = null;
+
+  /** Notified when a game ends so idle consumers can release shared resources. */
+  setSessionEndHook(hook: ((guildId: string) => void) | null): void {
+    this.sessionEndHook = hook;
+  }
+
   get(guildId: string): TambolaSession | null {
     return this.byGuild.get(guildId) ?? null;
   }
@@ -925,6 +932,7 @@ export class TambolaService {
       this.music.unlockVoice(session.game.guildId);
     }
     this.detach(session);
+    this.sessionEndHook?.(session.game.guildId);
   }
 
   private async cancel(session: TambolaSession, note: string): Promise<void> {
@@ -935,6 +943,7 @@ export class TambolaService {
     session.voice = null;
     this.music.unlockVoice(session.game.guildId);
     this.detach(session);
+    this.sessionEndHook?.(session.game.guildId);
   }
 
   private detach(session: TambolaSession): void {

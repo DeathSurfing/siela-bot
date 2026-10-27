@@ -28,7 +28,10 @@ ENV MODEL_PATH=/models/kitten_tts_nano_v0_8.onnx \
     TTS_SPEED=1.0 \
     HOST=0.0.0.0 \
     PORT=8000 \
-    RUST_LOG=warn
+    RUST_LOG=warn \
+    # Large ORT allocations go through mmap so unloading returns them.
+    MALLOC_MMAP_THRESHOLD_=131072 \
+    MALLOC_TRIM_THRESHOLD_=0
 WORKDIR /app
 COPY --from=build /app/target/release/siela-tts /app/siela-tts
 # Bake the model into the image, mirroring deploy/podman/tts/Containerfile.tts.

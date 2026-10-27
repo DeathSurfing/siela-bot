@@ -174,6 +174,9 @@ export class SielaBot {
     const cah = new CahService(this.client, this.config, this.logger);
     const tts = new TtsService(music, this.config, this.logger);
     ttsRef = tts;
+    // The synthesis model stays loaded while TTS or Tambola is active.
+    tts.setConsumerChecker((guildId) => Boolean(tambola.get(guildId)));
+    tambola.setSessionEndHook((guildId) => void tts.maybeUnload(guildId));
     music.setVoiceBusyChecker((guildId) => tambola.isUsingVoice(guildId) || tts.isLocal(guildId));
     const isBotInVoice = (guildId: string): boolean =>
       Boolean(
