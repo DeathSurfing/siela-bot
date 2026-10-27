@@ -154,18 +154,13 @@ TTS binds to exactly one node until `/tts off`:
 ## Updates (watchtower)
 
 The server runs the watchtower sidecar (overlay + `WATCHTOWER_ENABLED=true`),
-so pushes to `main` auto-deploy after CI passes:
-
-- Full deploys rebuild the bot, TTS, **and router** images, run migrations,
-  then recreate the whole stack except the watchtower itself (recreating
-  it mid-deploy would SIGTERM the deploy) — including generated voice
-  workers.
-- Fast (bot/router-source-only) deploys rebuild `apps/bot/dist` and
-  `apps/router/dist`, bind-mount them into the running `bot`/`router`
-  containers (`compose.fast.yaml`), and recreate `bot`, `router`, and
-  every `bot-voice-*` service from their images. Voice workers always run
-  the image's `dist/worker.js`; the generated overlay intentionally has no
-  host bind-mounts, since server checkouts never build `dist` locally and
-  an empty host dir would shadow the image.
-- Code changes to the slim worker entrypoint (`apps/bot/src/worker*.ts`,
-  bundled into `dist/worker.js`) apply through either path.
+so pushes to `main` auto-deploy after CI passes. Full deploys rebuild the
+bot, TTS, **and router** images, run migrations, then recreate the whole
+fleet (bot, TTS, router, generated voice workers — never the watchtower
+itself, which would kill the deploy mid-run). Fast deploys
+(bot/router-source-only changes) rebuild `apps/bot/dist` and
+`apps/router/dist`, bind-mount them into the running `bot`/`router`
+containers, and recreate just those two; voice worker code changes always
+need a full deploy since workers run the image bundle. Rebuild the
+watchtower image by hand after watchtower code changes — it deploys
+everything except itself.
