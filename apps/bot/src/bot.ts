@@ -151,6 +151,7 @@ export class SielaBot {
     const lyrics = new LyricsService(this.logger);
     const confession = new ConfessionService(this.dbHandle.db, settings, this.client, this.logger);
     const tempVc = new TempVcService(this.client, this.dbHandle.db, settings, this.logger, this.config.adminRoleIds);
+    let ttsRef: TtsService | null = null;
     const music = new MusicService(
       this.client,
       {
@@ -160,6 +161,8 @@ export class SielaBot {
         ffmpegPath: this.config.FFMPEG_PATH,
         settings,
         nodeId: this.nodeId,
+        leaveOnQueueEnd: this.config.NODE_ROLE === "voice",
+        stayConnected: (guildId) => ttsRef?.isEnabled(guildId) ?? false,
       },
       this.logger,
       this.valkey,
@@ -168,6 +171,7 @@ export class SielaBot {
     const tambola = new TambolaService(this.client, music, this.config, this.logger, economy);
     const cah = new CahService(this.client, this.config, this.logger);
     const tts = new TtsService(music, this.config, this.logger);
+    ttsRef = tts;
     music.setVoiceBusyChecker((guildId) => tambola.isUsingVoice(guildId) || tts.isLocal(guildId));
     const isBotInVoice = (guildId: string): boolean =>
       Boolean(

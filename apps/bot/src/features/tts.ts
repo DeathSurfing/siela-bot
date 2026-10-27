@@ -18,6 +18,9 @@ import {
 const MAX_TTS_CHARS = 200;
 const MAX_MENTION_LOOKUPS = 10;
 
+/** Drop a silent TTS session so the bot doesn't idle in voice forever. */
+export const TTS_IDLE_MS = 30_000;
+
 interface TtsSession {
   channelId: string;
   voice: TambolaVoice | null;
@@ -29,6 +32,7 @@ interface TtsSession {
 
 export class TtsService {
   private readonly sessions = new Map<string, TtsSession>();
+  private readonly idleTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly music: MusicService | null,
@@ -38,6 +42,26 @@ export class TtsService {
 
   private fleet(): FleetClient {
     return new FleetClient(this.config.ROUTER_URL ?? null, this.config.MCP_TOKEN, this.logger);
+  }
+
+  /** Reset the 30s no-text idle timer. Any spoken text keeps the session. */
+  private pokeActivity(guildId: string): void {
+    const existing = this.idleTimers.get(guildId);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      this.idleTimers.delete(guildId);
+      void this.disable(guildId).catch(() => undefined);
+    }, TTS_IDLE_MS);
+    timer.unref?.();
+    this.idleTimers.set(guildId, timer);
+  }
+
+  private clearIdleTimer(guildId: string): void {
+    const timer = this.idleTimers.get(guildId);
+    if (timer) {
+      clearTimeout(timer);
+      this.idleTimers.delete(guildId);
+    }
   }
 
   private cleanupIfDisconnected(guildId: string): void {
@@ -82,9 +106,11 @@ export class TtsService {
   /** Record a session owned by another fleet node (commander-side only). */
   recordRemoteSession(guildId: string, nodeId: string, channelId: string): void {
     this.sessions.set(guildId, { channelId, voice: null, enabled: true, lastSpeakerId: null, nodeId });
+    this.pokeActivity(guildId);
   }
 
   forgetSession(guildId: string): void {
+    this.clearIdleTimer(guildId);
     this.sessions.delete(guildId);
     this.music?.unlockVoice(guildId);
   }
@@ -103,6 +129,7 @@ export class TtsService {
 
     this.logger.info({ guildId, channelId: channel.id }, "TTS enabled");
     this.sessions.set(guildId, { channelId: channel.id, voice, enabled: true, lastSpeakerId: null, nodeId: this.config.NODE_ID });
+    this.pokeActivity(guildId);
     if (this.music) {
       try { await this.music.disconnect(guildId); } catch { /* ignore */ }
       this.music.lockVoice(guildId);
@@ -110,6 +137,7 @@ export class TtsService {
   }
 
   async disable(guildId: string): Promise<void> {
+    this.clearIdleTimer(guildId);
     const session = this.sessions.get(guildId);
     if (session && !session.voice && session.nodeId !== this.config.NODE_ID) {
       // Remote session: tell the owning worker to stand down, then forget it.
@@ -139,6 +167,7 @@ export class TtsService {
     const isNewSpeaker = opts.speakerId ? session.lastSpeakerId !== opts.speakerId : true;
     const utterance = buildTtsUtterance(trimmed, opts.speakerName ?? null, isNewSpeaker);
     if (!utterance) return;
+    this.pokeActivity(guildId);
     if (!session.voice) {
       await this.forwardUtterance(guildId, session.nodeId, utterance, opts.speakerId);
       if (opts.speakerId) session.lastSpeakerId = opts.speakerId;
@@ -156,6 +185,7 @@ export class TtsService {
     const session = this.sessions.get(guildId);
     if (!session?.enabled || !session.voice) return;
     if (!utterance) return;
+    this.pokeActivity(guildId);
     this.logger.info({ guildId, channelId: session.channelId, text: utterance }, "TTS speaking");
     await session.voice.speak(utterance);
     if (speakerId) session.lastSpeakerId = speakerId;
@@ -207,6 +237,7 @@ export class TtsService {
     }
 
     if (!utterance) return;
+    this.pokeActivity(guildId);
     if (!session.voice) {
       await this.forwardUtterance(guildId, session.nodeId, utterance, speakerId);
       session.lastSpeakerId = speakerId;
@@ -295,5 +326,6 @@ export class TtsService {
 
   stop(): void {
     for (const guildId of this.sessions.keys()) void this.disable(guildId);
+    for (const guildId of [...this.idleTimers.keys()]) this.clearIdleTimer(guildId);
   }
 }

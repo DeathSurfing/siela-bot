@@ -39,7 +39,13 @@ export interface MusicServiceOptions {
   settings: SettingsService;
   /** Fleet node ID. Namespaces the persisted Valkey queue per node. */
   nodeId?: string;
+  /** Leave voice when the queue drains (workers). Commander stays put. */
+  leaveOnQueueEnd?: boolean;
+  /** Keep the connection even when idle (e.g. sticky TTS is speaking). */
+  stayConnected?: (guildId: string) => boolean;
 }
+
+export const IDLE_LEAVE_GRACE_MS = 30_000;
 
 export interface QueueTrack {
   url: string;
@@ -514,6 +520,7 @@ class GuildPlayer {
   async playNow(track: QueueTrack, startAtMs = 0): Promise<void> {
     this.beginRestart();
     try {
+      this.service.cancelIdleLeave(this.guildId);
       this.killProcesses();
       if (this.current && this.current.url !== track.url) {
         this.history.push(this.current);
@@ -583,6 +590,7 @@ class GuildPlayer {
         }
       }
       this.service.emit("queueEnd", { guildId: this.guildId });
+      this.service.scheduleIdleLeave(this.guildId);
     } finally {
       this.advancing = false;
     }
@@ -611,6 +619,7 @@ export class MusicService extends EventEmitter {
   readonly logger: Logger;
   private readonly players = new Map<string, GuildPlayer>();
   private readonly voiceLocks = new Set<string>();
+  private readonly idleLeaveTimers = new Map<string, NodeJS.Timeout>();
   private voiceBusy: ((guildId: string) => boolean) | null = null;
   private readonly cacheDir = "/tmp/siela-music-cache";
   private readonly cacheMaxBytes = 250 * 1024 * 1024;
@@ -850,6 +859,36 @@ export class MusicService extends EventEmitter {
 
   activePlayers(): number {
     return this.players.size;
+  }
+
+  /**
+   * Workers leave voice shortly after their queue drains so fleet slots
+   * free up on their own. New playback cancels the pending leave.
+   * Skipped while a stayConnected guard holds (e.g. sticky TTS).
+   */
+  scheduleIdleLeave(guildId: string): void {
+    this.cancelIdleLeave(guildId);
+    if (!this.options.leaveOnQueueEnd) return;
+    if (this.options.stayConnected?.(guildId)) {
+      this.logger.debug({ guildId }, "keeping voice connection while guarded");
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.idleLeaveTimers.delete(guildId);
+      void this.disconnect(guildId).catch((error) =>
+        this.logger.debug({ err: error, guildId }, "idle leave failed"),
+      );
+    }, IDLE_LEAVE_GRACE_MS);
+    timer.unref?.();
+    this.idleLeaveTimers.set(guildId, timer);
+  }
+
+  cancelIdleLeave(guildId: string): void {
+    const timer = this.idleLeaveTimers.get(guildId);
+    if (timer) {
+      clearTimeout(timer);
+      this.idleLeaveTimers.delete(guildId);
+    }
   }
 
   /**
@@ -1398,6 +1437,7 @@ export class MusicService extends EventEmitter {
   }
 
   async disconnect(guildId: string): Promise<void> {
+    this.cancelIdleLeave(guildId);
     const gp = this.players.get(guildId);
     if (gp) gp.endRestart();
     if (gp) {
@@ -1500,6 +1540,7 @@ export class MusicService extends EventEmitter {
   }
 
   async shutdown(): Promise<void> {
+    for (const guildId of [...this.idleLeaveTimers.keys()]) this.cancelIdleLeave(guildId);
     for (const guildId of [...this.players.keys()]) {
       await this.disconnect(guildId).catch(() => undefined);
     }

@@ -125,6 +125,9 @@ TTS binds to exactly one node until `/tts off`:
   sticky TTS off. Disabling TTS tells the owning worker to stand down.
 - While TTS sits on a worker, the commander is unlocked and `/play` works
   locally again.
+- Any TTS session ends itself after 30s with no texts to speak — workers
+  never idle in voice forever. The music auto-leave never fires while TTS
+  is active; TTS idle timeout is the only thing that clears it.
 
 ## Known limitations
 
