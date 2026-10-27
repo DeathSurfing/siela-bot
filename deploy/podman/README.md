@@ -97,7 +97,7 @@ When the flag is off, `up` and `down` remove a leftover `siela-mcp` container fr
 
 ## Watchtower (automatic updates)
 
-The optional `watchtower` container makes the configured branch the source of truth. It polls every 60 seconds, waits for CI on the new commit, fast-forwards the checkout, rebuilds, runs migrations, and recreates the bot. When the bot fails its health gate, it resets to the previous commit, redeploys it, and blocks the bad commit.
+The optional `watchtower` container makes the configured branch the source of truth. It polls every 60 seconds, waits for CI on the new commit, fast-forwards the checkout, rebuilds, runs migrations, and recreates the stack (bot, TTS, router, voice workers — never itself). When the bot fails its health gate, it resets to the previous commit, redeploys it, and blocks the bad commit. Rebuild the watchtower image by hand after watchtower code changes; it never redeploys itself.
 
 ```bash
 # One-time: build the watchtower image and start it with the stack.
