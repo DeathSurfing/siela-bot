@@ -21,19 +21,33 @@ fi
 
 REMOTE="${REMOTE:-root@192.168.1.3}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/siela_podman_ed25519}"
-SSH=(ssh -i "${SSH_KEY}" "${REMOTE}")
+if [ "${REMOTE}" = "local" ]; then
+  # Running on the stack host already; skip the SSH hop.
+  SSH=(bash -c)
+else
+  SSH=(ssh -i "${SSH_KEY}" "${REMOTE}")
+fi
 REPO="${REPO:-/root/siela-nogseuui-seobeo-bot}"
 WORKER="siela-voice-${N}"
 IMAGE="${IMAGE:-localhost/siela-voice-worker:latest}"
 TEST_CONTAINER="siela-voice-${N}-rust"
 
-echo "=== building the Rust worker image on the host ==="
-"${SSH[@]}" "cd ${REPO} && podman build -q -f apps/voice-worker/Containerfile -t ${IMAGE} ." >/dev/null
+if [ "${SKIP_BUILD:-0}" = "1" ]; then
+  echo "=== skipping image build (SKIP_BUILD=1) ==="
+else
+  echo "=== building the Rust worker image on the host ==="
+  "${SSH[@]}" "cd ${REPO} && podman build -q -f apps/voice-worker/Containerfile -t ${IMAGE} ." >/dev/null
+fi
 
 echo "=== reading the token and guild for ${WORKER} ==="
-TOKEN=$("${SSH[@]}" "grep -E '^DISCORD_TOKEN=' ${REPO}/deploy/podman/.env.voice-${N} | tail -1 | cut -d= -f2- | tr -d '\"\\r'")
-GUILD=$("${SSH[@]}" "grep -E '^GUILD_ID=' ${REPO}/deploy/podman/.env | tail -1 | cut -d= -f2- | tr -d '\"\\r'")
-MCP=$("${SSH[@]}" "grep -E '^MCP_TOKEN=' ${REPO}/deploy/podman/.env | tail -1 | cut -d= -f2- | tr -d '\"\\r'")
+read_env() {
+  local file="$1" key="$2"
+  "${SSH[@]}" "sed -n 's/^${key}=//p' '$file' | tail -1 | tr -d '\r' | sed 's/^\"//; s/\"\$//'"
+}
+
+TOKEN=$(read_env "${REPO}/deploy/podman/.env.voice-${N}" "DISCORD_TOKEN")
+GUILD=$(read_env "${REPO}/deploy/podman/.env" "GUILD_ID")
+MCP=$(read_env "${REPO}/deploy/podman/.env" "MCP_TOKEN")
 
 if [ -z "${TOKEN}" ] || [ -z "${MCP}" ]; then
   echo "missing token or MCP_TOKEN in deploy/podman" >&2
@@ -43,13 +57,15 @@ fi
 # Pick a voice channel from the guild unless one is provided.
 VOICE_CHANNEL_ID="${VOICE_CHANNEL_ID:-}"
 if [ -z "${VOICE_CHANNEL_ID}" ]; then
-  VOICE_CHANNEL_ID=$("${SSH[@]}" "python3 - <<'PY'
-import json, urllib.request
-token = '''${TOKEN}'''
-guild = '''${GUILD}'''
+  # Pass the values as argv, not through a quoted heredoc, so nothing
+  # interpolates inside Python source.
+  VOICE_CHANNEL_ID=$("${SSH[@]}" "python3 - '${TOKEN}' '${GUILD}' <<'PY'
+import json, sys, urllib.request
+
+token, guild = sys.argv[1], sys.argv[2]
 req = urllib.request.Request(
     f'https://discord.com/api/v10/guilds/{guild}/channels',
-    headers={'Authorization': f'Bot {token}'},
+    headers={'Authorization': f'Bot {token}', 'User-Agent': 'SielaBot/1.0'},
 )
 channels = json.load(urllib.request.urlopen(req, timeout=10))
 voice = [c for c in channels if c.get('type') == 2]
@@ -74,6 +90,12 @@ trap cleanup EXIT
 
 echo "=== stopping ${WORKER} so the sessions do not fight ==="
 "${SSH[@]}" "podman stop -t 20 ${WORKER} >/dev/null 2>&1 || true"
+
+# Discord can deliver a voice state that still references the old session for
+# a few seconds after the bot signs out. Joining too early gives close code
+# 4006, "Session is no longer valid".
+echo "letting the old gateway session expire"
+sleep 15
 
 echo "=== starting the Rust worker ==="
 "${SSH[@]}" "podman rm -f ${TEST_CONTAINER} >/dev/null 2>&1 || true
@@ -114,6 +136,9 @@ if [ "${READY}" != "1" ]; then
 fi
 "${SSH[@]}" "podman logs ${TEST_CONTAINER} 2>&1 | grep -iE 'logged in|bound|listening' | tail -5"
 
+# Give the voice state cache a moment before the first join.
+sleep 5
+
 echo
 echo "=== heartbeat present in Valkey? ==="
 "${SSH[@]}" "podman exec siela-valkey valkey-cli exists siela:fleet:node:voice-${N}"
@@ -130,13 +155,17 @@ echo
 echo "=== play one track into ${VOICE_CHANNEL_ID} ==="
 "${SSH[@]}" "podman exec -e TOK='${MCP}' -e CH='${VOICE_CHANNEL_ID}' ${TEST_CONTAINER} python3 -c \"
 import json, os, urllib.request
-body = json.dumps({'query': 'lofi hip hop radio', 'voiceChannelId': os.environ['CH']}).encode()
+body = json.dumps({'query': 'queen bohemian rhapsody', 'voiceChannelId': os.environ['CH']}).encode()
 req = urllib.request.Request(
     'http://127.0.0.1:3101/internal/music/play',
     data=body,
     headers={'Authorization': 'Bearer ' + os.environ['TOK'], 'content-type': 'application/json'},
 )
-print(json.load(urllib.request.urlopen(req, timeout=180)))
+try:
+    print(json.load(urllib.request.urlopen(req, timeout=180)))
+except urllib.error.HTTPError as error:
+    print('HTTP', error.code, error.read().decode())
+    raise
 \""
 
 sleep 12

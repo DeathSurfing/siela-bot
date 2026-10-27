@@ -29,6 +29,19 @@ flowchart LR
 - **Voice workers** (`NODE_ROLE=voice`, `NODE_ID=voice-<i>`): same image,
   own `DISCORD_TOKEN`. They ignore text commands and interactions, skip
   schedulers, and serve only the internal worker API `:3101` plus health.
+
+A Rust worker is also available at `apps/voice-worker`. It speaks the same
+environment, internal API, health endpoints, and Valkey heartbeat, so the
+router cannot tell it apart. It exists because the TypeScript worker holds
+about 53 MB of private memory idle and keeps a decoder process alive for each
+track, while the Rust worker measured 3 MB of private memory and 16 MB total
+while playing a normal track, with no decoder process. It is not part of the
+deployed stack yet; see `apps/voice-worker/README.md`.
+
+Discord requires the DAVE encryption protocol on voice connections, so any
+voice client must support it. `@discordjs/voice` 0.19.2 ships `davey`, and the
+Rust worker needs songbird 0.6 or newer for the same reason. songbird 0.4 is
+rejected at the voice gateway with close code 4017.
 - **Router** (`apps/router`, `siela-router`): stateless gateway. Music
   routes require `nodeId` and fan out to that node's `/internal/music/*`;
   every other `/v1/*` route proxies to the commander unchanged.

@@ -13,6 +13,17 @@ populated. Per active stream the Bun worker also keeps a decoder process
 (mpv at about 45 MB or ffmpeg at about 30 MB) alive for the whole track. This
 worker decodes in process with symphonia, so that process does not exist.
 
+## Voice encryption (DAVE)
+
+Discord now requires the DAVE end-to-end encryption protocol on voice
+connections. A client that does not speak it is rejected at the voice
+WebSocket with close code 4017, `E2EE/DAVE protocol required`.
+
+The TypeScript worker works because `@discordjs/voice` 0.19.2 depends on
+`davey`. This worker needs songbird **0.6 or newer**, which has DAVE support
+through `davey`; songbird 0.4 fails every join with 4017. That is why the
+dependency is pinned to 0.6 rather than 0.4.
+
 ## Audio pipeline
 
 ```
@@ -67,5 +78,15 @@ Adds `AUDIO_DECODER` (`inprocess` or `ffmpeg`).
 
 ## Status
 
+Verified in a live voice channel on the production host, using worker 2's
+Discord token in place of the TypeScript worker:
+
+| Case | Result |
+|---|---|
+| Login, guild bind, heartbeat | gateway, guild, and valkey all ready |
+| Live stream (radio) | played; ffmpeg child 69 MB, worker 12 MB |
+| Normal track (in-process decode) | played; **3 MB anon, 16 MB total, one process** |
+| Comparable TypeScript worker | 53 MB idle, plus mpv at about 45 MB while playing |
+
 Not yet wired into compose. The TypeScript worker remains the deployed one
-until the Rust worker passes a live playback check in a real voice channel.
+until this is switched over in `scripts/make-voice-overlay.sh` and rolled out.

@@ -16,7 +16,9 @@ serenity = { version = "0.12", default-features = false, features = [
   "model",
   "cache",
 ] }
-songbird = { version = "0.4", features = ["serenity", "rustls"] }
+songbird = { version = "0.6", features = ["serenity", "rustls"] }
+# songbird 0.6 enables DAVE (davey) through its driver feature. Without it
+# Discord voice rejects the connection with close code 4017.
 # songbird depends on symphonia with default features off, so the codecs have to
 # be turned on here. Feature unification then gives its decoder AAC and MP4.
 symphonia = { version = "0.5", features = ["aac", "isomp4", "mp3", "ogg", "vorbis", "flac", "wav", "alac"] }

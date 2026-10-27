@@ -430,7 +430,9 @@ impl Player {
             .manager
             .join(guild_id, channel_id)
             .await
-            .map_err(|error| PlayerError::Internal(error.to_string()))?;
+            // Debug form keeps the underlying driver cause; Display collapses
+            // every driver failure to "establishing connection failed".
+            .map_err(|error| PlayerError::Internal(format!("join failed: {error:?}")))?;
 
         if self.call.is_none() {
             let mut locked = call.lock().await;
