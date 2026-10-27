@@ -76,6 +76,7 @@ ${WORKER_COMMAND:+${WORKER_COMMAND}
       NODE_ADVERTISE_URL: http://bot-voice-${i}:3101
       DATABASE_URL: \${DATABASE_URL}
       VALKEY_URL: \${VALKEY_URL:-redis://valkey:6379}
+      TTS_SERVICE_URL: \${TTS_SERVICE_URL:-http://tts:8000}
       WORKER_INTERNAL_PORT: 3101
     restart: unless-stopped
     init: true
