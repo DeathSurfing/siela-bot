@@ -99,6 +99,10 @@ services:
       # One slot: Delulu calls are occasional, and extra slots cost host RAM.
       - "--parallel"
       - "1"
+      # No host-side prompt cache: Delulu prompts are unique, and the default
+      # allows up to 8 GB of them to accumulate in RAM.
+      - "--cache-ram"
+      - "0"
     restart: unless-stopped
     mem_limit: 2g
     healthcheck:
