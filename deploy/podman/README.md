@@ -48,6 +48,7 @@ flowchart LR
 | `migrate` | `localhost/siela-bot:latest` | One-shot migration runner; exits after the schema is current |
 | `bot` | `localhost/siela-bot:latest` | `oven/bun` image with yt-dlp, mpv, and ffmpeg; commander by default (`NODE_ROLE=commander`) |
 | `router` | `localhost/siela-router:latest` | Voice fleet gateway `:3100`; fans music out by `nodeId`, proxies everything else to the commander |
+| `bot-voice-*` | `localhost/siela-bot:latest` | Generated workers (`scripts/make-voice-overlay.sh <N>`). Slim `dist/worker.js` entrypoint under `bun --smol`, 1 GB cap: voice + music/TTS + worker API only, no commands or schedulers |
 | `watchtower` | `localhost/siela-watchtower:latest` | Optional auto-deploy sidecar; mounts the host Podman socket |
 
 Health endpoints:

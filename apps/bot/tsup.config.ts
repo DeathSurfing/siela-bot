@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     "scripts/migrate": "src/scripts/migrate.ts",
+    worker: "src/workerEntry.ts",
   },
   format: ["esm"],
   target: "node24",

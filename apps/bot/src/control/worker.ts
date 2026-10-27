@@ -14,12 +14,16 @@ import {
   musicSkipSchema,
   musicVolumeSchema,
 } from "@siela/shared";
-import type { Services } from "../framework/types.js";
+import type { MusicService } from "../features/music.js";
+import type { TtsService } from "../features/tts.js";
 import type { Logger } from "../lib/logger.js";
 import { UserError, errorMessage } from "../lib/errors.js";
 
 export interface WorkerServerOptions {
-  services: Services;
+  services: {
+    music: MusicService | null;
+    tts: TtsService | null;
+  };
   client: Client;
   token: string;
   logger: Logger;
@@ -128,7 +132,7 @@ export class WorkerServer {
       return this.options.services.music!.play(member, body.query, body.voiceChannelId, body.next);
     });
 
-    const guildOp = (fn: (music: NonNullable<Services["music"]>, guildId: string) => Promise<unknown>) => async () => {
+    const guildOp = (fn: (music: NonNullable<MusicService>, guildId: string) => Promise<unknown>) => async () => {
       const music = this.options.services.music;
       if (!music) throw new UserError("Music service is not ready.", "not_ready");
       return fn(music, this.guildId());
@@ -136,7 +140,7 @@ export class WorkerServer {
 
     // Cleanup ops are idempotent: "nothing playing" is success, not an
     // error, so session preempt works on idle nodes.
-    const idempotentOp = (fn: (music: NonNullable<Services["music"]>, guildId: string) => Promise<unknown>) => async () => {
+    const idempotentOp = (fn: (music: NonNullable<MusicService>, guildId: string) => Promise<unknown>) => async () => {
       const music = this.options.services.music;
       if (!music) throw new UserError("Music service is not ready.", "not_ready");
       try {

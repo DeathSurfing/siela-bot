@@ -40,6 +40,7 @@ done
   bot-voice-${i}:
     image: localhost/siela-bot:latest
     container_name: siela-voice-${i}
+    command: ["bun", "--smol", "dist/worker.js"]
     env_file: .env.voice-${i}
     networks:
       edge:
@@ -68,7 +69,7 @@ done
       interval: 15s
       timeout: 5s
       retries: 10
-    mem_limit: 4g
+    mem_limit: 1g
 EOF
   done
 } >"${OUT}"
