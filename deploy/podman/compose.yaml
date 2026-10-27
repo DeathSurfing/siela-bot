@@ -56,13 +56,23 @@ services:
     mem_limit: 256m
 
   llm:
-    image: ghcr.io/ggml-org/llama.cpp:server
+    # CUDA 12.4 build pinned for the host's NVIDIA 535 driver. Newer
+    # `server-cuda` tags are built against CUDA 12.8 and refuse to start.
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda-b4729
     container_name: siela-llm
     networks: [edge, control]
+    devices:
+      - /dev/nvidia0
+      - /dev/nvidiactl
+      - /dev/nvidia-uvm
     volumes:
-      - llmcache:/root/.cache/huggingface
+      # Whole cache dir so both the Hugging Face and llama.cpp caches persist.
+      - llmcache:/root/.cache
+      # Driver libraries come from the host; podman has no CDI spec here.
+      - /opt/nvidia-libs:/usr/local/nvidia/lib64:ro
     environment:
       HF_HOME: /root/.cache/huggingface
+      LD_LIBRARY_PATH: /usr/local/nvidia/lib64
     command:
       - "--hf-repo"
       - "DeathSurfing/tinyTanLLM-delulu-gemma"
@@ -78,10 +88,13 @@ services:
       - "q8_0"
       - "--cache-type-v"
       - "q8_0"
-      - "--spec-type"
-      - "ngram-simple"
+      # KV quantization on CUDA needs flash attention.
+      - "-fa"
+      # Keep the weights in VRAM so system RAM stays free.
+      - "-ngl"
+      - "99"
     restart: unless-stopped
-    mem_limit: 4g
+    mem_limit: 2g
 
   tts:
     image: localhost/siela-tts:latest
