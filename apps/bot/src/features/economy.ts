@@ -1,3 +1,4 @@
+import { renderBlackjackTable } from "./blackjack-table.js";
 import { styleMessage } from "./ui.js";
 import { and, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import {
@@ -12,7 +13,7 @@ import {
   type Database,
 } from "@siela/db";
 import type { Logger } from "../lib/logger.js";
-import { ButtonBuilder, ButtonInteraction, ButtonStyle } from "discord.js";
+import { AttachmentBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle } from "discord.js";
 import type { ReplyPayload } from "../framework/types.js";
 import { actionRow, card } from "./ui.js";
 import type { ValkeyService } from "./valkey.js";
@@ -1172,7 +1173,7 @@ export class EconomyService {
     return game;
   }
 
-  blackjackPayload(game: BlackjackGame): ReplyPayload {
+  blackjackPayload(game: BlackjackGame): ReplyPayload & { attachments: [] } {
     const reveal = game.status === "finished";
     const dealerCards = reveal ? game.dealer.join(" ") : `${game.dealer[0]} ??`;
     const playerValue = this.handValue(game.player);
@@ -1185,9 +1186,11 @@ export class EconomyService {
       lines.push("", game.result);
       if (game.payout && game.payout > 0) lines.push(`Payout: ${game.payout} SC`);
     }
-    return card({
-      title: "Blackjack",
-      body: lines.join("\n"),
+    return { ...card({
+      theme: "economy",
+      eyebrow: "THE CARD ROOM",
+      image: { name: "blackjack-table.png", description: lines.join(" ").slice(0, 1024) },
+      footer: false,
       rows: game.status === "playing"
         ? [
             actionRow(
@@ -1196,7 +1199,7 @@ export class EconomyService {
             ),
           ]
         : [],
-    });
+    }), files: [new AttachmentBuilder(renderBlackjackTable(game), { name: "blackjack-table.png" })], attachments: [] };
   }
 
   async handleBlackjackInteraction(interaction: ButtonInteraction): Promise<void> {

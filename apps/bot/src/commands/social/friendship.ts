@@ -1,7 +1,9 @@
+import { friendshipBoardPayload } from "../../features/friendship-board.js";
+import { resolveFamilyProfiles } from "../../features/family-profiles.js";
 import { SlashCommandBuilder } from "discord.js";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { friendshipProgress, friendshipTier } from "../../features/friendship.js";
-import { attachPagination, card, fetchMemberNames, pagedCard, progressBar, rankLabel } from "../../features/ui.js";
+import { attachPagination, card, progressBar } from "../../features/ui.js";
 
 function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -63,29 +65,14 @@ export const friendshipTopCommand: Command = {
   cooldownMs: 3_000,
   slash: new SlashCommandBuilder().setName("friendshiptop").setDescription("Friendship leaderboard"),
   async execute(ctx: CommandContext) {
+    await ctx.defer();
     const rows = await ctx.services.friendship.leaderboard(ctx.guild.id, 100);
     if (!rows.length) {
       await ctx.reply({ content: "No friendship levels yet.", ephemeral: true });
       return;
     }
-    const names = await fetchMemberNames(ctx.guild, rows.flatMap((row) => [row.userA, row.userB]));
-    const perPage = 10;
-    const totalPages = Math.max(1, Math.ceil(rows.length / perPage));
-    const buildPage = (page: number, disabled = false) => {
-      const start = (page - 1) * perPage;
-      const lines = rows.slice(start, start + perPage).map((row, index) => {
-        const tier = friendshipTier(row.xp);
-        return `${rankLabel(start + index + 1)} ${tier.emoji} ${names.get(row.userA) ?? row.userA} & ${names.get(row.userB) ?? row.userB} — ${row.xp} XP`;
-      });
-      return pagedCard({
-        title: "Friendship leaderboard",
-        subtitle: "pair XP",
-        body: lines.join("\n"),
-        page,
-        totalPages,
-        disabled,
-      });
-    };
+    const { names } = await resolveFamilyProfiles(ctx.guild, ctx.client, [...new Set(rows.flatMap((row) => [row.userA, row.userB]))]);
+    const buildPage = (page: number, disabled = false) => friendshipBoardPayload(rows, names, page, disabled);
     const message = await ctx.reply(buildPage(1));
     if (message) attachPagination(message, ctx.author.id, 1, buildPage);
   },
