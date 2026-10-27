@@ -5,6 +5,7 @@ import {
   currentBranch,
   fastForward,
   fetchBranch,
+  isAncestor,
   isClean,
   localHead,
   remoteHead,
@@ -17,6 +18,7 @@ import { waitForBotHealthy } from "./health.js";
 import { notify } from "./notify.js";
 import { startStatusServer } from "./server.js";
 import { loadState, saveState, type WatchtowerState } from "./state.js";
+import { deployerDriftFiles } from "./staleness.js";
 import { sleep } from "./run.js";
 
 function nowIso(): string {
@@ -114,11 +116,42 @@ async function main(): Promise<void> {
     await rollback(previousSha, mode, detail);
   }
 
+  /**
+   * A watchtower image older than the checkout can recreate itself and abort
+   * its own deploy, leaving the stack half-recreated. Only a change to the
+   * deployer's own inputs makes the image stale; ordinary deploys advance the
+   * checkout past the stamped commit by design.
+   */
+  async function staleImageReason(local: string): Promise<string | null> {
+    const built = process.env.WATCHTOWER_BUILD_COMMIT;
+    if (!built || built === "unknown" || built === local) return null;
+    if (!(await isAncestor(repoDir, built, local))) {
+      return `watchtower image was built from ${short(built)}, which is not an ancestor of ${short(local)}; rebuild it with scripts/podman-stack.sh up`;
+    }
+    let touched: string[];
+    try {
+      touched = await changedFiles(repoDir, built, local);
+    } catch {
+      return null;
+    }
+    const drift = deployerDriftFiles(touched);
+    if (drift.length === 0) return null;
+    return `watchtower image is stale (${drift.length} deployer file(s) changed since ${short(built)}); rebuild it with scripts/podman-stack.sh up`;
+  }
+
   async function checkOnce(): Promise<void> {
     state.lastCheckAt = nowIso();
     const target = await remoteHead(remote);
     state.lastRemoteSha = target;
     const local = await localHead(repoDir);
+
+    const stale = await staleImageReason(local);
+    if (stale) {
+      state.lastError = stale;
+      await persist();
+      logger.error({ sha: short(local) }, stale);
+      return;
+    }
 
     if (target === local) {
       if (state.lastDeployedSha !== local) {

@@ -29,7 +29,48 @@ read_flag() {
   printf '%s' "${value:-false}" | tr '[:upper:]' '[:lower:]'
 }
 
+read_env_value() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ -z "${value}" && -f "${ENV_FILE}" ]]; then
+    value="$(grep -E "^${name}=" "${ENV_FILE}" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r"' || true)"
+  fi
+  printf '%s' "${value}"
+}
+
+# A watchtower image older than the checkout can recreate this very container
+# and kill its own deploy halfway. Rebuild it whenever its stamped commit
+# drifts from HEAD, then drop the container so compose starts the new image.
+ensure_watchtower_image() {
+  command -v git >/dev/null 2>&1 || return 0
+  local head stamped
+  head="$(git -C "${ROOT_DIR}" rev-parse HEAD 2>/dev/null || true)"
+  [[ -n "${head}" ]] || return 0
+  stamped="$(podman image inspect localhost/siela-watchtower:latest \
+    --format '{{ index .Labels "org.siela.commit" }}' 2>/dev/null || true)"
+  if [[ "${stamped}" == "${head}" ]]; then
+    return 0
+  fi
+  echo "watchtower image is ${stamped:-absent}, checkout is ${head:0:7}; rebuilding" >&2
+  local build_args=(
+    -f "${ROOT_DIR}/deploy/podman/Containerfile.watchtower"
+    -t localhost/siela-watchtower:latest
+    --build-arg "WATCHTOWER_COMMIT=${head}"
+  )
+  local network
+  network="$(read_env_value WATCHTOWER_BUILD_NETWORK)"
+  if [[ -n "${network}" ]]; then
+    build_args=(--network "${network}" "${build_args[@]}")
+  fi
+  podman build "${build_args[@]}" "${ROOT_DIR}" >&2
+  podman rm -f siela-watchtower >/dev/null 2>&1 || true
+}
+
 WATCHTOWER_ENABLED="$(read_flag WATCHTOWER_ENABLED)"
+
+if [[ "${1:-}" == "up" && "$(read_flag WATCHTOWER_ENABLED)" != "false" ]]; then
+  ensure_watchtower_image
+fi
 
 COMPOSE=(podman compose -p siela -f "${ROOT_DIR}/deploy/podman/compose.yaml")
 
