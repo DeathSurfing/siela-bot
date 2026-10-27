@@ -1171,6 +1171,7 @@ dependencies = [
  "bytes",
  "futures-util",
  "hound",
+ "libc",
  "ndarray",
  "ort",
  "pkg-config",

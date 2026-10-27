@@ -5,6 +5,7 @@ import { UserError } from "../lib/errors.js";
 import type { Logger } from "../lib/logger.js";
 import type { MusicService } from "./music.js";
 import { FleetClient } from "./fleetClient.js";
+import { unloadTtsService, warmupTtsService } from "./ttsService.js";
 import { TambolaVoice } from "./tambola/voice.js";
 import {
   buildAttachmentUtterance,
@@ -122,12 +123,14 @@ export class TtsService {
     const channel = guild.channels.cache.get(voiceChannelId) ?? await guild.channels.fetch(voiceChannelId).catch(() => null);
     if (!channel || channel.type !== ChannelType.GuildVoice) throw new UserError("Choose a voice channel.");
 
-    await this.disable(guildId);
+    await this.disable(guildId, { keepModel: true });
     const voice = new TambolaVoice(this.logger);
     const joined = await voice.join(channel as any);
     if (!joined) throw new UserError("Could not join that voice channel. Check Connect and Speak permissions.");
 
     this.logger.info({ guildId, channelId: channel.id }, "TTS enabled");
+    // Load the model now so the first utterance does not wait on it.
+    void warmupTtsService(this.logger);
     this.sessions.set(guildId, { channelId: channel.id, voice, enabled: true, lastSpeakerId: null, nodeId: this.config.NODE_ID });
     this.pokeActivity(guildId);
     if (this.music) {
@@ -136,7 +139,7 @@ export class TtsService {
     }
   }
 
-  async disable(guildId: string): Promise<void> {
+  async disable(guildId: string, options: { keepModel?: boolean } = {}): Promise<void> {
     this.clearIdleTimer(guildId);
     const session = this.sessions.get(guildId);
     if (session && !session.voice && session.nodeId !== this.config.NODE_ID) {
@@ -155,6 +158,8 @@ export class TtsService {
       this.sessions.delete(guildId);
     }
     this.music?.unlockVoice(guildId);
+    // Release the model. Synthesis loads it again on demand.
+    if (!options.keepModel) await unloadTtsService(this.logger);
   }
 
   async speak(guildId: string, text: string, opts: { speakerId?: string; speakerName?: string } = {}): Promise<void> {

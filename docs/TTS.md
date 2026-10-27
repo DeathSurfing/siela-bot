@@ -61,14 +61,20 @@ Order in `TambolaVoice.speak()` / `synthesizeNow()`:
 
 `services/tts/` (Rust, image `localhost/siela-tts:latest`): byte-parity port of
 the Python KittenTTS pipeline (`ort` CPU session, libespeak-ng FFI, same
-`/healthz`, `/synthesize`, `/synthesize-stream` contract). Idle RSS ~100–160 MB
-vs ~210 MB for the Python service it replaced; the old implementation is kept at
-`deploy/podman/tts/` (`server.py` + `Containerfile.tts`) as a rollback
-reference. Golden parity fixtures live in gitignored `.local-tts/`; see
-`services/tts/README.md` for the verification procedure.
+`/healthz`, `/synthesize`, `/synthesize-stream` contract). Idle RSS is ~10 MB
+when the model is unloaded; it peaks around 160 MB while loaded. The old
+implementation is kept at `deploy/podman/tts/` (`server.py` +
+`Containerfile.tts`) as a rollback reference. Golden parity fixtures live in
+gitignored `.local-tts/`; see `services/tts/README.md` for the verification
+procedure.
 
 - Model `KittenML/kitten-tts-nano-0.8` baked into the image, voice `Bruno`
   (`TTS_VOICE`), speed `1.0` (`TTS_SPEED`), 24 kHz WAV.
+- The model loads lazily on the first synthesis, `/warmup`, or `/tts on`. It is
+  dropped again on `/tts off` (and on the 30s idle timeout), returning the
+  memory to the OS.
+- `GET /healthz` reports `{"status":"ok","loaded":<bool>}`.
+- `POST /warmup` loads the model, `POST /unload` drops it.
 - `GET /healthz`, `POST /synthesize` (buffered WAV), `POST /synthesize-stream`
   (chunked WAV).
 - Bot env in `deploy/podman/compose.yaml`: `TTS_SERVICE_URL=http://tts:8000`,
