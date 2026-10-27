@@ -72,6 +72,7 @@ const botSchema = z.object({
   EVENT_PRAYER: z.enum(["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]).default("Dhuhr"),
   NODE_ROLE: z.enum(["commander", "voice"]).default("commander"),
   NODE_ID: z.string().min(1).max(64).default("commander"),
+  NODE_ADVERTISE_URL: z.string().url().optional(),
   WORKER_INTERNAL_HOST: z.string().default("0.0.0.0"),
   WORKER_INTERNAL_PORT: z.coerce.number().int().min(1).max(65535).default(3101),
   ROUTER_URL: z.string().url().optional(),
@@ -126,8 +127,12 @@ const routerSchema = z.object({
   ROUTER_HOST: z.string().default("0.0.0.0"),
   ROUTER_PORT: z.coerce.number().int().min(1).max(65535).default(3100),
   COMMANDER_URL: z.string().url().default("http://bot-control:3001"),
-  // Fleet nodes as id=url pairs, including the commander, e.g.
-  // commander=http://bot-control:3101,voice-1=http://bot-voice-1:3101
+  // Fleet session: static fallback. Live membership comes from Valkey
+  // heartbeats (siela:fleet:node:* with TTL) when VALKEY_URL is set.
+  VALKEY_URL: z.string().url().optional(),
+  // Guild scope for the session. Semaphore capacity counts only nodes
+  // heartbeating for this guild: 1 for a lone commander, more with workers.
+  GUILD_ID: optionalSnowflake,
   NODES: z.string().optional(),
   LOG_LEVEL: logLevel.default("info"),
   TZ: z.string().default("UTC"),

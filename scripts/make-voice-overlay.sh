@@ -51,6 +51,7 @@ done
     environment:
       NODE_ROLE: voice
       NODE_ID: voice-${i}
+      NODE_ADVERTISE_URL: http://bot-voice-${i}:3101
       DATABASE_URL: \${DATABASE_URL}
       VALKEY_URL: \${VALKEY_URL:-redis://valkey:6379}
       WORKER_INTERNAL_PORT: 3101

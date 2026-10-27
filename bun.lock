@@ -39,6 +39,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@siela/config": "workspace:*",
+        "@siela/shared": "workspace:*",
         "fastify": "^5.12.7",
         "pino": "^10.4.0",
         "zod": "^4.6.7",

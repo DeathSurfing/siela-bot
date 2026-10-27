@@ -9,6 +9,7 @@ export default defineConfig({
   platform: "node",
   bundle: true,
   noExternal: [/^@siela\//],
+  external: ["bun"],
   sourcemap: true,
   clean: true,
   splitting: false,

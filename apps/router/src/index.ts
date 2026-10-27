@@ -11,6 +11,8 @@ async function main(): Promise<void> {
     token: config.MCP_TOKEN,
     commanderUrl: config.COMMANDER_URL,
     nodesRaw: config.NODES,
+    valkeyUrl: config.VALKEY_URL ?? null,
+    guildId: config.GUILD_ID ?? null,
     logger,
   });
   await server.start(config.ROUTER_HOST, config.ROUTER_PORT);

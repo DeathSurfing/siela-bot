@@ -40,12 +40,12 @@ export class FleetPool {
   private readonly reserved = new Set<string>();
 
   constructor(
-    private readonly nodes: FleetNode[],
+    private readonly listNodes: (guildId?: string | null) => Promise<FleetNode[]>,
     private readonly fetchState: FetchNodeState,
   ) {}
 
-  size(): number {
-    return this.nodes.length;
+  async size(): Promise<number> {
+    return (await this.listNodes()).length;
   }
 
   reservedCount(): number {
@@ -56,9 +56,10 @@ export class FleetPool {
     return state.playing || state.hasCurrent;
   }
 
-  async acquire(): Promise<FleetNode> {
-    if (this.nodes.length === 0) throw new NoNodesReachableError();
-    const settled = await Promise.allSettled(this.nodes.map(async (node) => ({ node, state: await this.fetchState(node) })));
+  async acquire(guildId?: string | null): Promise<FleetNode> {
+    const nodes = await this.listNodes(guildId);
+    if (nodes.length === 0) throw new NoNodesReachableError();
+    const settled = await Promise.allSettled(nodes.map(async (node) => ({ node, state: await this.fetchState(node) })));
     let anyReachable = false;
     for (const entry of settled) {
       if (entry.status !== "fulfilled") continue;
@@ -70,10 +71,14 @@ export class FleetPool {
       return node;
     }
     if (!anyReachable) throw new NoNodesReachableError();
-    throw new AllNodesBusyError(this.nodes.length);
+    throw new AllNodesBusyError(nodes.length);
   }
 
   release(nodeId: string): void {
     this.reserved.delete(nodeId);
+  }
+
+  releaseAll(): void {
+    this.reserved.clear();
   }
 }

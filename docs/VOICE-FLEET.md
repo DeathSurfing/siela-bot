@@ -63,7 +63,17 @@ delete the overlay and the `.env.voice-*` files and restart.
 
 ## Session model
 
-One guild is one session. The fleet serves that session together:
+One guild is one session, and the session lives only in Valkey. Every node
+(commander and workers) refreshes `siela:fleet:node:<nodeId>` every 15s with
+a 45s TTL; the router reads the live set for nodes, state-all, preempt, and
+auto-route. Crashed nodes expire out on their own, restarts re-register on
+boot — clear up and re-initiate with no manual cleanup. Static `NODES` is
+only the fallback when Valkey is unreachable.
+
+Semaphore capacity is per guild: the router counts only nodes heartbeating
+for that guild (`GUILD_ID` in the router env). A lone commander yields a
+semaphore of one; each worker that comes online grows it. Playback, 429s,
+and preempt all operate on that guild's session.
 
 - Music plays per node (independent queues), routed by `nodeId` or
   auto-routed to a free node.

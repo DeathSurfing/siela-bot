@@ -48,6 +48,7 @@ describe("RouterServer session + semaphore", () => {
       token: TOKEN,
       commanderUrl: "http://commander:3001",
       nodesRaw: "commander=http://n1:3101,voice-1=http://n2:3101",
+      valkeyUrl: undefined,
       logger: createLogger("silent"),
     });
     await server.start("127.0.0.1", PORT);

@@ -85,6 +85,7 @@ import {
 } from "./features/help.js";
 import { ControlServer } from "./control/server.js";
 import { WorkerServer } from "./control/worker.js";
+import { FleetHeartbeat } from "./features/fleetHeartbeat.js";
 import { HealthServer } from "./control/health.js";
 import type { Logger } from "./lib/logger.js";
 import { UserError } from "./lib/errors.js";
@@ -101,6 +102,7 @@ export class SielaBot {
   private readonly isVoiceWorker: boolean;
   private readonly nodeId: string;
   private readonly valkey: ValkeyService;
+  private readonly fleetHeartbeat: FleetHeartbeat | null;
   private readonly randomVc: RandomVcService;
   private readonly scheduledEvents: ScheduledEventService;
   private guildId: string | null = null;
@@ -131,6 +133,16 @@ export class SielaBot {
     const settings = new SettingsService(this.dbHandle.db);
     const counters = new CounterService(this.dbHandle.db);
     this.valkey = new ValkeyService(this.config.VALKEY_URL ?? null, this.logger);
+    this.fleetHeartbeat = this.config.NODE_ADVERTISE_URL
+      ? new FleetHeartbeat(
+        this.valkey,
+        this.logger,
+        this.nodeId,
+        this.config.NODE_ADVERTISE_URL,
+        this.config.NODE_ROLE,
+        () => this.guildId,
+      )
+      : null;
     const economy = new EconomyService(this.dbHandle.db, this.valkey, this.logger);
     const audit = new AuditService(this.dbHandle.db, this.logger);
     const relics = new RelicService(this.dbHandle.db, this.client, economy, audit, this.logger);
@@ -248,6 +260,7 @@ export class SielaBot {
     this.registerEvents();
     await this.valkey.start();
     if (!this.isVoiceWorker) this.services.friendship.start();
+    this.fleetHeartbeat?.start();
     await Promise.all([
       // Only the commander serves the public control API. Voice workers
       // serve only the internal worker API so there is a single writer.
@@ -1162,6 +1175,7 @@ export class SielaBot {
   async stop(): Promise<void> {
     if (this.stopping) return;
     this.stopping = true;
+    await this.fleetHeartbeat?.stop().catch(() => undefined);
     await Promise.allSettled([this.controlServer.stop(), this.healthServer.stop(), this.workerServer.stop()]);
     if (this.music) await this.music.shutdown().catch(() => undefined);
     this.services.tambola.stop();

@@ -135,6 +135,7 @@ services:
       TTS_STREAM: "true"
       NODE_ROLE: commander
       NODE_ID: commander
+      NODE_ADVERTISE_URL: http://bot-control:3101
     restart: unless-stopped
     init: true
     read_only: true
@@ -165,10 +166,13 @@ services:
     networks:
       control:
         aliases: [voice-router]
+      data:
     depends_on:
       - bot
+      - valkey
     environment:
       COMMANDER_URL: ${COMMANDER_URL:-http://bot-control:3001}
+      VALKEY_URL: ${VALKEY_URL:-redis://valkey:6379}
       NODES: ${NODES:-commander=http://bot-control:3101}
       ROUTER_PORT: 3100
     restart: unless-stopped

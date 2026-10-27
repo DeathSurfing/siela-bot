@@ -3,11 +3,14 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import type { Logger } from "./logger.js";
 import { MUSIC_OPS, parseNodes, workerPath, type FleetNode } from "./nodes.js";
 import { FleetPool, type NodePlaybackState } from "./pool.js";
+import { BunRegistryStore, FleetRegistry } from "./registry.js";
 
 export interface RouterOptions {
   token: string;
   commanderUrl: string;
   nodesRaw: string | undefined;
+  valkeyUrl?: string | null;
+  guildId?: string | null;
   logger: Logger;
 }
 
@@ -24,12 +27,18 @@ function stripNodeId(body: unknown): unknown {
 
 export class RouterServer {
   private readonly app: FastifyInstance;
-  private readonly nodes: FleetNode[];
+  private readonly registry: FleetRegistry;
   private readonly pool: FleetPool;
+  private readonly store: BunRegistryStore | null;
 
   constructor(private readonly options: RouterOptions) {
-    this.nodes = parseNodes(options.nodesRaw);
-    this.pool = new FleetPool(this.nodes, (node) => this.readPlaybackState(node));
+    const staticNodes = parseNodes(options.nodesRaw);
+    this.store = options.valkeyUrl ? new BunRegistryStore(options.valkeyUrl, options.logger) : null;
+    this.registry = new FleetRegistry(this.store, staticNodes);
+    this.pool = new FleetPool(
+      (guildId) => this.registry.list(guildId ?? this.guildId()),
+      (node) => this.readPlaybackState(node),
+    );
     this.app = Fastify({ logger: false, bodyLimit: 16 * 1024 });
     this.app.addHook("preHandler", async (request, reply) => {
       if (request.url === "/healthz") return;
@@ -66,8 +75,13 @@ export class RouterServer {
     return provided.length === expected.length && timingSafeEqual(provided, expected);
   }
 
-  private nodeUrl(nodeId: string, path: string): string {
-    const node = this.nodes.find((candidate) => candidate.id === nodeId);
+  private guildId(): string | null {
+    return this.options.guildId ?? null;
+  }
+
+  private async nodeUrl(nodeId: string, path: string): Promise<string> {
+    const nodes = await this.registry.list(this.guildId());
+    const node = nodes.find((candidate) => candidate.id === nodeId);
     if (!node) throw Object.assign(new Error(`Unknown voice node: ${nodeId}.`), { statusCode: 400 });
     return `${node.baseUrl}${path}`;
   }
@@ -119,15 +133,16 @@ export class RouterServer {
     this.app.get("/healthz", async () => ({ ok: true }));
 
     this.app.get("/v1/music/nodes", async () => ({
-      nodes: this.nodes.map((node) => ({ nodeId: node.id })),
+      nodes: (await this.registry.list(this.guildId())).map((node) => ({ nodeId: node.id })),
     }));
 
     // Session preempt: one guild is one session. Scheduled events call this
     // before playing so worker playback never overlaps event audio. Clears
     // every node's queue, disconnects voice, and drops pool reservations.
     this.app.post("/v1/session/preempt", async () => {
+      const nodes = await this.registry.list(this.guildId());
       const settled = await Promise.allSettled(
-        this.nodes.map(async (node) => {
+        nodes.map(async (node) => {
           for (const op of ["clear", "disconnect"] as const) {
             const response = await fetch(`${node.baseUrl}/internal/music/${op}`, {
               method: "POST",
@@ -143,16 +158,18 @@ export class RouterServer {
           return { nodeId: node.id, ok: true as const };
         }),
       );
-      for (const node of this.nodes) this.pool.release(node.id);
+      this.pool.releaseAll();
       return settled.map((entry, index) =>
         entry.status === "fulfilled"
           ? entry.value
-          : { nodeId: this.nodes[index]!.id, ok: false as const, error: entry.reason instanceof Error ? entry.reason.message : String(entry.reason) },
+          : { nodeId: nodes[index]!.id, ok: false as const, error: entry.reason instanceof Error ? entry.reason.message : String(entry.reason) },
       );
     });
 
-    this.app.get("/v1/music/state-all", async () => {      const settled = await Promise.allSettled(
-        this.nodes.map(async (node) => {
+    this.app.get("/v1/music/state-all", async () => {
+      const nodes = await this.registry.list(this.guildId());
+      const settled = await Promise.allSettled(
+        nodes.map(async (node) => {
           const response = await fetch(`${node.baseUrl}/internal/music/state`, {
             headers: { authorization: `Bearer ${this.options.token}` },
             signal: AbortSignal.timeout(15_000),
@@ -166,7 +183,7 @@ export class RouterServer {
       return settled.map((entry, index) =>
         entry.status === "fulfilled"
           ? entry.value
-          : { nodeId: this.nodes[index]!.id, ok: false as const, error: entry.reason instanceof Error ? entry.reason.message : String(entry.reason) },
+          : { nodeId: nodes[index]!.id, ok: false as const, error: entry.reason instanceof Error ? entry.reason.message : String(entry.reason) },
       );
     });
 
@@ -182,13 +199,13 @@ export class RouterServer {
           throw Object.assign(new Error("nodeId is required for this operation."), { statusCode: 400 });
         }
         return this.forward(
-          this.nodeUrl(nodeId, workerPath(op)),
+          await this.nodeUrl(nodeId, workerPath(op)),
           stripNodeId(body),
           op === "play" ? PLAY_TIMEOUT_MS : DEFAULT_TIMEOUT_MS,
         );
       }
       // Auto-route: semaphore over free nodes. Rejects 429 when the fleet is full.
-      const node = await this.pool.acquire();
+      const node = await this.pool.acquire(this.guildId());
       try {
         return {
           nodeId: node.id,
@@ -243,10 +260,12 @@ export class RouterServer {
   }
 
   async start(host: string, port: number): Promise<void> {
+    await this.store?.start();
     await this.app.listen({ host, port });
   }
 
   async stop(): Promise<void> {
     await this.app.close().catch(() => undefined);
+    this.store?.stop();
   }
 }
