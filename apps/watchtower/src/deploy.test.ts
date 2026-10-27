@@ -1,8 +1,8 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { voiceWorkerServices } from "./deploy.js";
+import { voiceWorkerServices, voiceWorkersUseRust } from "./deploy.js";
 
 describe("voiceWorkerServices", () => {
   let dir = "";
@@ -30,5 +30,39 @@ describe("voiceWorkerServices", () => {
 
   it("returns empty when no overlay exists", () => {
     expect(voiceWorkerServices(join(dir, "missing"))).toEqual([]);
+  });
+});
+
+describe("voiceWorkersUseRust", () => {
+  let dir = "";
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "siela-wt-rust-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function overlay(image: string): string {
+    const repoDir = join(dir, "repo");
+    mkdirSync(join(repoDir, "deploy/podman"), { recursive: true });
+    writeFileSync(
+      join(repoDir, "deploy/podman/compose.voice.generated.yaml"),
+      `services:\n  bot-voice-1:\n    image: ${image}\n`,
+    );
+    return repoDir;
+  }
+
+  it("detects the Rust worker image", () => {
+    expect(voiceWorkersUseRust(overlay("localhost/siela-voice-worker:latest"))).toBe(true);
+  });
+
+  it("is false for the Bun image", () => {
+    expect(voiceWorkersUseRust(overlay("localhost/siela-bot:latest"))).toBe(false);
+  });
+
+  it("is false when no overlay exists", () => {
+    expect(voiceWorkersUseRust(join(dir, "missing"))).toBe(false);
   });
 });

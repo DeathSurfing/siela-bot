@@ -143,6 +143,17 @@ async function deployFull(deps: DeployDeps): Promise<DeployResult> {
   );
   if (!router.ok) return router;
 
+  // Building the Rust worker costs a full cargo compile, so only do it when
+  // the generated overlay actually points at that image.
+  if (voiceWorkersUseRust(deps.repoDir)) {
+    const worker = await buildImage(
+      deps,
+      "apps/voice-worker/Containerfile",
+      "localhost/siela-voice-worker:latest",
+    );
+    if (!worker.ok) return worker;
+  }
+
   if (deps.config.WATCHTOWER_RUN_MIGRATIONS) {
     const migrated = await runMigrations(deps);
     if (!migrated.ok) return migrated;
@@ -241,6 +252,16 @@ async function deployFast(deps: DeployDeps): Promise<DeployResult> {
  * bind-mount the fresh bot dist into them, so worker code updates apply
  * without a full image rebuild.
  */
+/** True when the generated overlay points workers at the Rust image. */
+export function voiceWorkersUseRust(repoDir: string): boolean {
+  try {
+    const text = readFileSync(join(repoDir, "deploy/podman/compose.voice.generated.yaml"), "utf8");
+    return text.includes("localhost/siela-voice-worker");
+  } catch {
+    return false;
+  }
+}
+
 export function voiceWorkerServices(repoDir: string): string[] {
   try {
     const text = readFileSync(join(repoDir, "deploy/podman/compose.voice.generated.yaml"), "utf8");
