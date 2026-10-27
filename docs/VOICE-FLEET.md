@@ -157,11 +157,15 @@ The server runs the watchtower sidecar (overlay + `WATCHTOWER_ENABLED=true`),
 so pushes to `main` auto-deploy after CI passes:
 
 - Full deploys rebuild the bot, TTS, **and router** images, run migrations,
-  then recreate the whole stack — including generated voice workers.
-- Fast (bot-source-only) deploys rebuild `apps/bot/dist` and
-  `apps/router/dist`, bind-mount them into the running containers
-  (`compose.fast.yaml`, plus the dist mount in generated voice services),
-  and recreate `bot`, `router`, and every `bot-voice-*` service.
+  then recreate the whole stack except the watchtower itself (recreating
+  it mid-deploy would SIGTERM the deploy) — including generated voice
+  workers.
+- Fast (bot/router-source-only) deploys rebuild `apps/bot/dist` and
+  `apps/router/dist`, bind-mount them into the running `bot`/`router`
+  containers (`compose.fast.yaml`), and recreate `bot`, `router`, and
+  every `bot-voice-*` service from their images. Voice workers always run
+  the image's `dist/worker.js`; the generated overlay intentionally has no
+  host bind-mounts, since server checkouts never build `dist` locally and
+  an empty host dir would shadow the image.
 - Code changes to the slim worker entrypoint (`apps/bot/src/worker*.ts`,
-  bundled into `dist/worker.js`) apply through either path; no image
-  rebuild dance needed for fast deploys.
+  bundled into `dist/worker.js`) apply through either path.
