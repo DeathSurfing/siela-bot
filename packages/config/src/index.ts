@@ -25,6 +25,12 @@ const UPSTREAM_REPO_URL = "https://github.com/DeathSurfing/siela-nogseuui-seobeo
 
 const logLevel = z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]);
 
+const baseProcessEnv = {
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  LOG_LEVEL: logLevel.default("info"),
+  TZ: z.string().default("UTC"),
+};
+
 function readSecret(name: string, env: NodeJS.ProcessEnv): string | undefined {
   const fileVar = `${name}_FILE`;
   const file = env[fileVar];
@@ -38,6 +44,25 @@ function readSecret(name: string, env: NodeJS.ProcessEnv): string | undefined {
   return env[name];
 }
 
+function formatIssues(issues: Array<{ path: Array<string | number | symbol>; message: string }>): string {
+  return issues.map((issue) => `${issue.path.map(String).join(".") || "env"}: ${issue.message}`).join("\n");
+}
+
+function loadEnv<T extends z.ZodTypeAny>(
+  label: string,
+  schema: T,
+  env: NodeJS.ProcessEnv,
+  secrets: string[],
+): z.infer<T> {
+  const secretValues: Record<string, string | undefined> = {};
+  for (const name of secrets) secretValues[name] = readSecret(name, env) ?? env[name];
+  const parsed = schema.safeParse({ ...env, ...secretValues });
+  if (!parsed.success) {
+    throw new Error(`Invalid ${label} environment:\n${formatIssues(parsed.error.issues)}`);
+  }
+  return parsed.data;
+}
+
 function csv(value: string | undefined): string[] {
   return value
     ? value
@@ -48,7 +73,7 @@ function csv(value: string | undefined): string[] {
 }
 
 const botSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  ...baseProcessEnv,
   DISCORD_TOKEN: z.string().min(20, "DISCORD_TOKEN is required"),
   GUILD_ID: optionalSnowflake,
   DISCORD_CLIENT_ID: optionalSnowflake,
@@ -77,15 +102,11 @@ const botSchema = z.object({
   WORKER_INTERNAL_PORT: z.coerce.number().int().min(1).max(65535).default(3101),
   ROUTER_URL: z.string().url().optional(),
 
-  LOG_LEVEL: logLevel.default("info"),
   AUDIT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
-  TZ: z.string().default("UTC"),
 });
 
 const watchtowerSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  LOG_LEVEL: logLevel.default("info"),
-  TZ: z.string().default("UTC"),
+  ...baseProcessEnv,
 
   // Source of truth. Point this at a fork to follow the fork instead.
   WATCHTOWER_REPO_URL: z.string().min(1).default(UPSTREAM_REPO_URL),
@@ -112,6 +133,7 @@ const watchtowerSchema = z.object({
   GH_TOKEN: optionalString,
 });
 
+
 export type BotConfig = z.infer<typeof botSchema> & {
   adminRoleIds: string[];
   botOwnerId: string | null;
@@ -122,7 +144,7 @@ export type BotConfig = z.infer<typeof botSchema> & {
 export type WatchtowerConfig = z.infer<typeof watchtowerSchema>;
 
 const routerSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  ...baseProcessEnv,
   MCP_TOKEN: z.string().min(16, "MCP_TOKEN must be at least 16 characters"),
   ROUTER_HOST: z.string().default("0.0.0.0"),
   ROUTER_PORT: z.coerce.number().int().min(1).max(65535).default(3100),
@@ -134,62 +156,32 @@ const routerSchema = z.object({
   // heartbeating for this guild: 1 for a lone commander, more with workers.
   GUILD_ID: optionalSnowflake,
   NODES: z.string().optional(),
-  LOG_LEVEL: logLevel.default("info"),
-  TZ: z.string().default("UTC"),
 });
 
 export type RouterConfig = z.infer<typeof routerSchema>;
 
 export function loadRouterConfig(env: NodeJS.ProcessEnv = process.env): RouterConfig {
-  const parsed = routerSchema.safeParse({
-    ...env,
-    MCP_TOKEN: readSecret("MCP_TOKEN", env) ?? env.MCP_TOKEN,
-  });
-  if (!parsed.success) {
-    const details = parsed.error.issues
-      .map((issue) => `${issue.path.join(".") || "env"}: ${issue.message}`)
-      .join("\n");
-    throw new Error(`Invalid router environment:\n${details}`);
-  }
-  return parsed.data;
+  return loadEnv("router", routerSchema, env, ["MCP_TOKEN"]);
 }
 
 export function loadBotConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
-  const parsed = botSchema.safeParse({
-    ...env,
-    DISCORD_TOKEN: readSecret("DISCORD_TOKEN", env) ?? env.DISCORD_TOKEN,
-    DATABASE_URL: readSecret("DATABASE_URL", env) ?? env.DATABASE_URL,
-    MCP_TOKEN: readSecret("MCP_TOKEN", env) ?? env.MCP_TOKEN,
-    HF_TOKEN: readSecret("HF_TOKEN", env) ?? env.HF_TOKEN,
-    LLM_URL: readSecret("LLM_URL", env) ?? env.LLM_URL,
-    VALKEY_URL: readSecret("VALKEY_URL", env) ?? env.VALKEY_URL,
-  });
-  if (!parsed.success) {
-    const details = parsed.error.issues
-      .map((issue) => `${issue.path.join(".") || "env"}: ${issue.message}`)
-      .join("\n");
-    throw new Error(`Invalid environment:\n${details}`);
-  }
+  const parsed = loadEnv("bot", botSchema, env, [
+    "DISCORD_TOKEN",
+    "DATABASE_URL",
+    "MCP_TOKEN",
+    "HF_TOKEN",
+    "LLM_URL",
+    "VALKEY_URL",
+  ]);
   return {
-    ...parsed.data,
-    adminRoleIds: csv(parsed.data.ADMIN_ROLE_IDS),
-    botOwnerId: parsed.data.BOT_OWNER_ID ?? null,
-    guildId: parsed.data.GUILD_ID ?? null,
-    clientId: parsed.data.DISCORD_CLIENT_ID ?? null,
+    ...parsed,
+    adminRoleIds: csv(parsed.ADMIN_ROLE_IDS),
+    botOwnerId: parsed.BOT_OWNER_ID ?? null,
+    guildId: parsed.GUILD_ID ?? null,
+    clientId: parsed.DISCORD_CLIENT_ID ?? null,
   };
 }
 
 export function loadWatchtowerConfig(env: NodeJS.ProcessEnv = process.env): WatchtowerConfig {
-  const parsed = watchtowerSchema.safeParse({
-    ...env,
-    GH_TOKEN: readSecret("GH_TOKEN", env) ?? env.GH_TOKEN,
-    WATCHTOWER_TOKEN: readSecret("WATCHTOWER_TOKEN", env) ?? env.WATCHTOWER_TOKEN,
-  });
-  if (!parsed.success) {
-    const details = parsed.error.issues
-      .map((issue) => `${issue.path.join(".") || "env"}: ${issue.message}`)
-      .join("\n");
-    throw new Error(`Invalid watchtower environment:\n${details}`);
-  }
-  return parsed.data;
+  return loadEnv("watchtower", watchtowerSchema, env, ["GH_TOKEN", "WATCHTOWER_TOKEN"]);
 }
