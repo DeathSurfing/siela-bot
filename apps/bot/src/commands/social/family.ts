@@ -11,6 +11,7 @@ import {
 import type { Command, CommandContext } from "../../framework/types.js";
 import { attachConfirmation, card, confirmCard } from "../../features/ui.js";
 import { generateFamilyTreeCard } from "../../features/familyCard.js";
+import { resolveFamilyProfiles } from "../../features/family-profiles.js";
 import { ServiceUnavailableError } from "../../lib/errors.js";
 
 function normalizeId(value: string | undefined): string | undefined {
@@ -307,17 +308,12 @@ export const familyTreeCommand: Command = {
   async execute(ctx: CommandContext) {
     const target = ctx.args[0] ? await resolveMember(ctx, ctx.args[0]) : null;
     const rootId = target?.id ?? ctx.author.id;
+    await ctx.defer();
     const tree = await ctx.services.family.buildTree(ctx.guild.id, rootId, 30);
-    const names = new Map<string, string>();
-    await Promise.all(
-      tree.nodes.map(async (id) => {
-        const member = await ctx.guild.members.fetch(id).catch(() => null);
-        names.set(id, member?.displayName ?? id);
-      }),
-    );
+    const { names, avatars } = await resolveFamilyProfiles(ctx.guild, ctx.client, tree.nodes);
     let buffer: Buffer;
     try {
-      buffer = await generateFamilyTreeCard(tree, names, rootId);
+      buffer = await generateFamilyTreeCard(tree, names, rootId, avatars);
     } catch {
       throw new ServiceUnavailableError("Could not render the family tree.");
     }
