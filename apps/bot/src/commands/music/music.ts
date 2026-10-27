@@ -7,6 +7,7 @@ import { buildLyricsPayload } from "../../features/lyrics-ui.js";
 import { attachConfirmation, attachPagination, card, confirmCard, success } from "../../features/ui.js";
 import { canManageMusic } from "../../framework/permissions.js";
 import { UserError } from "../../lib/errors.js";
+import { FleetClient } from "../../features/fleetClient.js";
 
 function music(ctx: CommandContext): MusicService {
   if (!ctx.services.music) throw new UserError("The music service is still starting up.");
@@ -72,6 +73,26 @@ const playCommand: Command = {
       const message = await ctx.edit(buildMusicPayload(ctx.guild.id, state, notice));
       if (message) service.setNowPlayingMessage(ctx.guild.id, message);
     } catch (error) {
+      // The commander's own voice is locked (Tambola, TTS): fall back to a
+      // free fleet node instead of failing when one is available.
+      const service = music(ctx);
+      const locked = service.isVoiceLocked(ctx.guild.id);
+      const channelId = ctx.args[1] ?? ctx.member.voice?.channelId ?? undefined;
+      const fleet = new FleetClient(ctx.services.config.ROUTER_URL ?? null, ctx.services.config.MCP_TOKEN, service.logger);
+      if (locked && fleet.enabled && channelId) {
+        try {
+          const routed = await fleet.autoPlay(query, channelId);
+          const extra = routed.added > 1 ? ` · ${routed.added - 1} more queued` : "";
+          await ctx
+            .edit(card({ title: `Playing on ${routed.nodeId}`, body: `**${routed.title}**${extra}\n<@${ctx.author.id}> is in <#${channelId}>. Commander voice is busy, so the fleet picked it up.` }))
+            .catch(() => undefined);
+          return;
+        } catch (fleetError) {
+          const message = fleetError instanceof UserError ? fleetError.message : "Fleet playback failed.";
+          await ctx.edit(card({ title: "Could not play", body: message })).catch(() => undefined);
+          return;
+        }
+      }
       const message = error instanceof UserError ? error.message : "Could not play that request. Try another link or search.";
       await ctx.edit(card({ title: "Could not play", body: message })).catch(() => undefined);
     }

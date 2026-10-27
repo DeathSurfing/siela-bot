@@ -42,6 +42,7 @@ describe("play command", () => {
     const service = {
       state: vi.fn().mockReturnValueOnce(emptyState).mockReturnValue(afterState),
       play: vi.fn().mockResolvedValue({ added: 1 }),
+      isVoiceLocked: vi.fn().mockReturnValue(false),
       setNowPlayingMessage: vi.fn(),
     } as unknown as MusicService;
 
@@ -54,7 +55,7 @@ describe("play command", () => {
       rawArgs: "lofi",
       commandName: "play",
       source: "slash",
-      services: { music: service } as unknown as Services,
+      services: { music: service, config: {} } as unknown as Services,
       client: {} as CommandContext["client"],
       channel: {} as CommandContext["channel"],
       interaction: undefined,
@@ -100,6 +101,7 @@ describe("play command", () => {
     const service = {
       state: vi.fn().mockReturnValueOnce(beforeState).mockReturnValue(afterState),
       play: vi.fn().mockResolvedValue({ added: 1 }),
+      isVoiceLocked: vi.fn().mockReturnValue(false),
       setNowPlayingMessage: vi.fn(),
     } as unknown as MusicService;
 
@@ -112,7 +114,7 @@ describe("play command", () => {
       rawArgs: "lofi",
       commandName: "play",
       source: "slash",
-      services: { music: service } as unknown as Services,
+      services: { music: service, config: {} } as unknown as Services,
       client: {} as CommandContext["client"],
       channel: {} as CommandContext["channel"],
       interaction: undefined,
@@ -139,6 +141,7 @@ describe("play command", () => {
       state: vi.fn().mockReturnValue(null),
       play: vi.fn().mockRejectedValue(new Error("secret message")),
       setNowPlayingMessage: vi.fn(),
+      isVoiceLocked: vi.fn().mockReturnValue(false),
     } as unknown as MusicService;
 
     const edited: ReplyPayload[] = [];
@@ -150,7 +153,7 @@ describe("play command", () => {
       rawArgs: "lofi",
       commandName: "play",
       source: "slash",
-      services: { music: service } as unknown as Services,
+      services: { music: service, config: {} } as unknown as Services,
       client: {} as CommandContext["client"],
       channel: {} as CommandContext["channel"],
       interaction: undefined,
@@ -171,5 +174,52 @@ describe("play command", () => {
     const text = textFromPayload(edited[0]);
     expect(text).toContain("Could not play that request");
     expect(text).not.toContain("secret message");
+  });
+
+  it("falls back to a fleet node when local voice is locked", async () => {
+    const service = {
+      state: vi.fn().mockReturnValue(null),
+      play: vi.fn().mockRejectedValue(new Error("locked")),
+      setNowPlayingMessage: vi.fn(),
+      isVoiceLocked: vi.fn().mockReturnValue(true),
+      logger: { info: () => undefined, warn: () => undefined },
+    } as unknown as MusicService;
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ nodeId: "voice-1", result: { added: 1, first: { title: "Fleet Song" } } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const edited: ReplyPayload[] = [];
+    const ctx = {
+      guild: { id: "guild-1" } as Guild,
+      member: { voice: { channelId: "voice-9" } } as unknown as GuildMember,
+      author: { id: "user-1" } as User,
+      args: ["lofi"],
+      rawArgs: "lofi",
+      commandName: "play",
+      source: "slash",
+      services: { music: service, config: { ROUTER_URL: "http://router:3100", MCP_TOKEN: "token-1234567890123456" } } as unknown as Services,
+      client: {} as CommandContext["client"],
+      channel: {} as CommandContext["channel"],
+      interaction: undefined,
+      message: undefined,
+      reply: vi.fn().mockResolvedValue(null),
+      defer: vi.fn().mockResolvedValue(undefined),
+      edit: vi.fn(async (payload: ReplyPayload) => {
+        edited.push(payload);
+        return null;
+      }),
+      followUp: vi.fn().mockResolvedValue(null),
+    } as unknown as CommandContext;
+
+    const playCommand = musicCommands.find((command) => command.name === "play");
+    await playCommand!.execute(ctx);
+    vi.unstubAllGlobals();
+
+    expect(edited).toHaveLength(1);
+    expect(textFromPayload(edited[0])).toContain("Playing on voice-1");
   });
 });

@@ -104,9 +104,11 @@ control network), not at individual nodes:
   `play` allows a 5-minute upstream timeout (large playlist resolves).
 - Any other `/v1/*` — proxied to the commander as-is.
 
-Discord `!music`/`/music` commands always drive the commander's queue in the
-author's channel. Cross-node control from chat is not implemented; use the
-router for that.
+Discord `!music`/`/music` commands normally drive the commander's queue in the
+author's channel. If the commander's voice is locked (Tambola game, TTS
+session) and `ROUTER_URL` is set, `/play` auto-routes to a free fleet node
+instead of failing, replying with the node that picked it up. Fleet playback
+has no chat buttons; use the router for further control.
 
 ## Known limitations
 
