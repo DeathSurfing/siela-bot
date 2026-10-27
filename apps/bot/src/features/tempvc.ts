@@ -1,3 +1,4 @@
+import { styleMessage } from "./ui.js";
 import { brandedContainer } from "./ui.js";
 import {
   ButtonBuilder,
@@ -198,13 +199,13 @@ export class TempVcService {
         message.components.some((component) => JSON.stringify(component.toJSON()).includes(marker)),
     );
     if (existing) {
-      await existing.edit(payload).catch((error) => {
+      await existing.edit(styleMessage(payload)).catch((error) => {
         this.logger.warn({ err: error, channelId }, "temp VC panel edit failed");
         throw error;
       });
       return;
     }
-    const sent = await channel.send(payload).catch((error) => {
+    const sent = await channel.send(styleMessage(payload)).catch((error) => {
       this.logger.warn({ err: error, channelId }, "temp VC panel send failed");
       throw error;
     });
@@ -228,7 +229,7 @@ export class TempVcService {
       if (member && !member.user.bot) {
         await this.ensureChannel(member, settings).catch((error) => {
           this.logger.warn({ err: error, userId: member.id }, "temp VC creation failed");
-          member.send({ content: "Could not create your temporary voice channel. Please try again." }).catch(() => undefined);
+          member.send(styleMessage({ content: "Could not create your temporary voice channel. Please try again." })).catch(() => undefined);
         });
       }
     }

@@ -1,3 +1,4 @@
+import { styleMessage } from "./ui.js";
 import { EventEmitter } from "node:events";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -667,7 +668,7 @@ export class MusicService extends EventEmitter {
     }
     this.nowPlayingUpdating.add(guildId);
     try {
-      await message.edit(buildMusicPayload(guildId, resolved, undefined, channelId ?? undefined));
+      await message.edit(styleMessage(buildMusicPayload(guildId, resolved, undefined, channelId ?? undefined)));
     } catch {
       this.nowPlayingMessages.delete(guildId);
     } finally {
@@ -679,7 +680,7 @@ export class MusicService extends EventEmitter {
     const message = this.nowPlayingMessages.get(guildId);
     this.nowPlayingMessages.delete(guildId);
     if (!message) return;
-    await message.edit(buildMusicPayload(guildId, null)).catch(() => undefined);
+    await message.edit(styleMessage(buildMusicPayload(guildId, null))).catch(() => undefined);
   }
 
   private cacheKey(track: QueueTrack): string {

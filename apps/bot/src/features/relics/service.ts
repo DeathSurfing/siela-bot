@@ -1,3 +1,4 @@
+import { styleMessage } from "../ui.js";
 import { randomUUID } from "node:crypto";
 import {
   and,
@@ -392,10 +393,10 @@ export class RelicService {
     try {
       if (input.settings.pingRoleId) {
         await input.channel
-          .send({
+          .send(styleMessage({
             content: `🔔 <@&${input.settings.pingRoleId}> — a new relic is up for auction.`,
             allowedMentions: { roles: [input.settings.pingRoleId] },
-          })
+          }))
           .catch(() => undefined);
       }
       const payload = buildAuctionPayload({
@@ -403,11 +404,11 @@ export class RelicService {
         card,
         art: await this.cardArt(card),
       });
-      const message = await input.channel.send({
+      const message = await input.channel.send(styleMessage({
         components: payload.components,
         files: payload.files,
         flags: payload.flags,
-      });
+      }));
       await this.db.update(relicAuctions).set({ messageId: message.id }).where(eq(relicAuctions.id, auction.id));
       await message.react("💰").catch(() => undefined);
       return { auction: { ...auction, messageId: message.id }, card };
@@ -819,12 +820,12 @@ export class RelicService {
         const message = await channel.messages.fetch(row.auction.messageId).catch(() => null);
         if (message) {
           const edited = await message
-            .edit({
+            .edit(styleMessage({
               components: payload.components,
               files: payload.files,
               flags: payload.flags,
               attachments: [],
-            })
+            }))
             .then(() => true)
             .catch(() => false);
           delivered = edited;
@@ -832,17 +833,17 @@ export class RelicService {
       }
       if (!delivered) {
         const sent = await channel
-          .send({ components: payload.components, files: payload.files, flags: payload.flags })
+          .send(styleMessage({ components: payload.components, files: payload.files, flags: payload.flags }))
           .then(() => true)
           .catch(() => false);
         delivered = sent;
       }
       if (row.auction.winnerId) {
         const pinged = await channel
-          .send({
+          .send(styleMessage({
             content: `🏆 <@${row.auction.winnerId}> won **${row.card.name}** (${relicSerialLabel(row.card.id)}) for ${formatSc(row.auction.winningBid ?? 0)}.`,
             allowedMentions: { users: [row.auction.winnerId] },
-          })
+          }))
           .then(() => true)
           .catch(() => false);
         delivered = delivered || pinged;
@@ -975,7 +976,7 @@ export class RelicService {
     if (!message) return;
     const payload = buildCancelledAuctionPayload(auction, card);
     await message
-      .edit({ components: payload.components, files: payload.files, flags: payload.flags, attachments: [] })
+      .edit(styleMessage({ components: payload.components, files: payload.files, flags: payload.flags, attachments: [] }))
       .catch(() => undefined);
   }
 
@@ -998,12 +999,12 @@ export class RelicService {
       card: row.card,
       art: await this.cardArt(row.card),
     });
-    await message.edit({
+    await message.edit(styleMessage({
       components: payload.components,
       files: payload.files,
       flags: payload.flags,
       attachments: [],
-    });
+    }));
   }
 
   async handleReaction(reaction: MessageReaction, user: User): Promise<void> {
@@ -1017,7 +1018,7 @@ export class RelicService {
     if (!auction) return;
     if (auction.endsAt.getTime() <= Date.now()) return;
     if (auction.highestBidderId === user.id) {
-      await user.send({ content: "You are already the highest bidder on that relic." }).catch(() => undefined);
+      await user.send(styleMessage({ content: "You are already the highest bidder on that relic." })).catch(() => undefined);
       await reaction.users.remove(user.id).catch(() => undefined);
       return;
     }
@@ -1030,7 +1031,7 @@ export class RelicService {
       await this.placeBid({ guildId: auction.guildId, userId: user.id, auctionId: auction.id, amount });
     } catch (error) {
       const message = relicErrorMessage(error);
-      await user.send({ content: `Relic bid failed: ${message}` }).catch(() => undefined);
+      await user.send(styleMessage({ content: `Relic bid failed: ${message}` })).catch(() => undefined);
     } finally {
       await reaction.users.remove(user.id).catch(() => undefined);
     }
@@ -1055,9 +1056,9 @@ export class RelicService {
           auctionId,
           amount,
         });
-        await interaction.editReply({
+        await interaction.editReply(styleMessage({
           content: `✅ You are the highest bidder at **${formatSc(result.amount)}**. Next minimum is ${formatSc(result.nextBid)}.`,
-        });
+        }));
         return;
       }
 
@@ -1092,9 +1093,9 @@ export class RelicService {
           auctionId,
           amount,
         });
-        await interaction.editReply({
+        await interaction.editReply(styleMessage({
           content: `✅ Bid placed at **${formatSc(result.amount)}**. You are the highest bidder.`,
-        });
+        }));
         return;
       }
 
@@ -1120,9 +1121,9 @@ export class RelicService {
             : lastBid
               ? `Your last bid was ${formatSc(lastBid.amount)} and it was outbid.`
               : "You have not bid on this relic.";
-        await interaction.editReply({
+        await interaction.editReply(styleMessage({
           content: `**Balance** · ${formatSc(balance.balance)}\n${standing}\n**Next minimum** · ${formatSc(next)}`,
-        });
+        }));
         return;
       }
 
@@ -1130,7 +1131,7 @@ export class RelicService {
         const serial = Number(parts[2]);
         await interaction.deferReply();
         const payload = await this.cardPayload(interaction.guildId, serial, interaction.user.id);
-        await interaction.editReply(payload);
+        await interaction.editReply(styleMessage(payload));
         return;
       }
 
@@ -1138,7 +1139,7 @@ export class RelicService {
         const userId = parts[2] ?? "";
         const page = Number(parts[3] ?? 0);
         const payload = await this.inventoryPayload(interaction.guildId, userId, page);
-        await interaction.update({ components: payload.components, files: payload.files, flags: payload.flags });
+        await interaction.update(styleMessage({ components: payload.components, files: payload.files, flags: payload.flags }));
         return;
       }
 
@@ -1146,19 +1147,19 @@ export class RelicService {
         const userId = parts[2] ?? interaction.user.id;
         await interaction.deferReply();
         const payload = await this.profilePayload(interaction.guildId, userId);
-        await interaction.editReply(payload);
+        await interaction.editReply(styleMessage(payload));
         return;
       }
 
       if (parts[1] === "top" && interaction.isButton()) {
         await interaction.deferReply();
         const payload = await this.leaderboardPayload(interaction.guildId);
-        await interaction.editReply(payload);
+        await interaction.editReply(styleMessage(payload));
         return;
       }
 
       if (parts[1] === "rules" && interaction.isButton()) {
-        await interaction.reply({ ...buildRulesPayload(), ephemeral: true });
+        await interaction.reply(styleMessage({ ...buildRulesPayload(), ephemeral: true }));
         return;
       }
 
@@ -1166,7 +1167,7 @@ export class RelicService {
         await interaction.deferReply();
         const payload = await this.buildAuctionPayload(interaction.guildId);
         if (payload) {
-          await interaction.editReply(payload);
+          await interaction.editReply(styleMessage(payload));
         } else {
           const settings = await this.getSettings(interaction.guildId);
           const next = relicDropWindow(new Date(), {
@@ -1176,7 +1177,7 @@ export class RelicService {
             minIncrement: settings.minIncrement,
           });
           await interaction.editReply(
-            card({
+            styleMessage(card({
               title: "No relic is live",
               body: [
                 settings.enabled && settings.channelId
@@ -1184,7 +1185,7 @@ export class RelicService {
                   : "Relic auctions are not configured yet. An admin can run `/relics channel`.",
                 `Next window opens <t:${Math.floor(next.start.getTime() / 1000)}:R>.`,
               ].join("\n"),
-            }),
+            })),
           );
         }
         return;
@@ -1194,9 +1195,9 @@ export class RelicService {
         const serial = Number(parts[2]);
         await interaction.deferReply({ ephemeral: true });
         const result = await this.setFeatured(interaction.guildId, interaction.user.id, serial);
-        await interaction.editReply({
+        await interaction.editReply(styleMessage({
           content: `✅ ${result.card.emoji} **${result.card.name}** is now your featured relic.`,
-        });
+        }));
         return;
       }
 
@@ -1206,23 +1207,23 @@ export class RelicService {
         await interaction.deferReply({ ephemeral: true });
         if (action === "accept") {
           await this.acceptTrade(interaction.guildId, tradeId, interaction.user.id);
-          await interaction.editReply({ content: "✅ Trade accepted. Both relics have moved." });
+          await interaction.editReply(styleMessage({ content: "✅ Trade accepted. Both relics have moved." }));
           return;
         }
         if (action === "decline") {
           await this.declineTrade(interaction.guildId, tradeId, interaction.user.id);
-          await interaction.editReply({ content: "Trade declined. Any escrowed coins were returned." });
+          await interaction.editReply(styleMessage({ content: "Trade declined. Any escrowed coins were returned." }));
           return;
         }
       }
     } catch (error) {
       const content = relicErrorMessage(error);
       if (interaction.deferred) {
-        await interaction.editReply({ content }).catch(() => undefined);
+        await interaction.editReply(styleMessage({ content })).catch(() => undefined);
       } else if (interaction.replied) {
-        await interaction.followUp({ content, ephemeral: true }).catch(() => undefined);
+        await interaction.followUp(styleMessage({ content, ephemeral: true })).catch(() => undefined);
       } else {
-        await interaction.reply({ content, ephemeral: true }).catch(() => undefined);
+        await interaction.reply(styleMessage({ content, ephemeral: true })).catch(() => undefined);
       }
     }
   }
@@ -1581,12 +1582,12 @@ export class RelicService {
     if (coins > 0) await this.economy.invalidateBalance(input.guild.id, input.proposerId).catch(() => undefined);
     try {
       const payload = await this.tradePayload(input.guild.id, trade);
-      const message = await input.channel.send({
+      const message = await input.channel.send(styleMessage({
         components: payload.components,
         files: payload.files,
         flags: payload.flags,
         allowedMentions: { users: [input.partnerId] },
-      });
+      }));
       await this.db
         .update(relicTrades)
         .set({ messageId: message.id })
@@ -1838,7 +1839,7 @@ export class RelicService {
     if (!message) return;
     const payload = await this.tradePayload(trade.guildId, trade);
     await message
-      .edit({ components: payload.components, files: payload.files, flags: payload.flags, attachments: [] })
+      .edit(styleMessage({ components: payload.components, files: payload.files, flags: payload.flags, attachments: [] }))
       .catch(() => undefined);
   }
 

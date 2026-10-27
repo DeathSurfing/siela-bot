@@ -182,15 +182,47 @@ export function progressBar(current: number, total: number, width = 12): string 
 }
 
 export function success(message: string): ReplyPayload {
-  return { content: `${ICONS.success} ${message}`, ephemeral: true };
+  return card({ theme: "success", body: message, footer: false, ephemeral: true });
 }
 
 export function error(message: string): ReplyPayload {
-  return { content: `${ICONS.error} ${message}`, ephemeral: true };
+  return card({ theme: "warning", body: message, footer: false, ephemeral: true });
 }
 
 export function empty(message: string): ReplyPayload {
-  return { content: message, ephemeral: true };
+  return card({ body: message, footer: false, ephemeral: true });
+}
+
+/** Normalize outgoing Discord messages, retaining controls, attachments and delivery options. */
+export function styleMessage<T>(input: T): T {
+  const payload = typeof input === "string" ? { content: input } : input;
+  if (!payload || typeof payload !== "object") return input;
+  const data = payload as Record<string, any>;
+  const flags = Number(data.flags?.bitfield ?? data.flags ?? 0);
+  if (flags & MessageFlags.IsComponentsV2) return input;
+  if (!data.content && !data.embeds?.length) return input;
+  const container = brandedContainer();
+  const addText = (value: string) => {
+    // Text displays accept at most 4000 characters each.
+    for (let offset = 0; offset < value.length; offset += 4000) {
+      container.addTextDisplayComponents(text(value.slice(offset, offset + 4000)));
+    }
+  };
+  if (data.content) addText(data.content);
+  for (const source of data.embeds ?? []) {
+    const embed = typeof source.toJSON === "function" ? source.toJSON() : source;
+    if (embed.color !== undefined) container.setAccentColor(embed.color);
+    if (embed.author?.name) addText(`-# ${embed.author.name}`);
+    if (embed.title) addText(`## ${embed.url ? `[${embed.title}](${embed.url})` : embed.title}`);
+    if (embed.description) addText(embed.description);
+    for (const field of embed.fields ?? []) addText(`**${field.name}**\n${field.value}`);
+    const image = embed.image?.url ?? embed.thumbnail?.url;
+    if (image) container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(image)));
+    if (embed.footer?.text) addText(`-# ${embed.footer.text}`);
+  }
+  // Keep original rows outside the container, preserving every custom ID and collector.
+  const { content, embeds, ...rest } = data;
+  return { ...rest, flags: flags | MessageFlags.IsComponentsV2, components: [container, ...(data.components ?? [])] } as T;
 }
 
 export function confirmCard(options: {
@@ -274,7 +306,7 @@ export function attachPagination(
   });
   collector.on("collect", async (interaction) => {
     if (interaction.user.id !== userId) {
-      await interaction.reply({ content: "Only the original user can change pages.", ephemeral: true }).catch(() => undefined);
+      await interaction.reply(styleMessage({ content: "Only the original user can change pages.", ephemeral: true })).catch(() => undefined);
       return;
     }
     const page = Number(interaction.customId.split(":").pop()) || 1;
@@ -302,7 +334,7 @@ export function attachConfirmation(options: {
   });
   collector.on("collect", async (interaction) => {
     if (interaction.user.id !== options.userId) {
-      await interaction.reply({ content: "This confirmation is not for you.", ephemeral: true }).catch(() => undefined);
+      await interaction.reply(styleMessage({ content: "This confirmation is not for you.", ephemeral: true })).catch(() => undefined);
       return;
     }
     await interaction.deferUpdate().catch(() => undefined);

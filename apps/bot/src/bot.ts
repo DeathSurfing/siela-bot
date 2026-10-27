@@ -1,3 +1,4 @@
+import { styleMessage } from "./features/ui.js";
 import { randomUUID } from "node:crypto";
 import {
   ActionRowBuilder,
@@ -539,7 +540,7 @@ export class SielaBot {
     } catch (error) {
       this.logger.error({ err: error }, "interaction error");
       if (interaction.isRepliable() && !interaction.replied) {
-        await interaction.reply({ content: "Something went wrong. Try again, and ask an admin to check the logs if it persists.", ephemeral: true }).catch(() => undefined);
+        await interaction.reply(styleMessage({ content: "Something went wrong. Try again, and ask an admin to check the logs if it persists.", ephemeral: true })).catch(() => undefined);
       }
     }
   }
@@ -624,16 +625,16 @@ export class SielaBot {
       category,
       query,
     });
-    await interaction.update({
+    await interaction.update(styleMessage({
       components: payload.components,
       flags: payload.flags,
-    });
+    }));
   }
 
   private async onHelpSearch(interaction: ModalSubmitInteraction): Promise<void> {
     if (!interaction.isFromMessage()) {
       await interaction
-        .reply({ content: "Open help with `/help` or `!help` first.", ephemeral: true })
+        .reply(styleMessage({ content: "Open help with `/help` or `!help` first.", ephemeral: true }))
         .catch(() => undefined);
       return;
     }
@@ -650,10 +651,10 @@ export class SielaBot {
       prefix,
       query,
     });
-    await interaction.update({
+    await interaction.update(styleMessage({
       components: payload.components,
       flags: payload.flags,
-    });
+    }));
   }
 
   private async onMusicButton(interaction: ButtonInteraction): Promise<void> {
@@ -691,11 +692,11 @@ export class SielaBot {
 
     const replyError = async (message: string): Promise<void> => {
       if (interaction.deferred) {
-        await interaction.editReply({ content: message }).catch(() => undefined);
+        await interaction.editReply(styleMessage({ content: message })).catch(() => undefined);
       } else if (!interaction.replied) {
-        await interaction.reply({ content: message, ephemeral: true }).catch(() => undefined);
+        await interaction.reply(styleMessage({ content: message, ephemeral: true })).catch(() => undefined);
       } else {
-        await interaction.followUp({ content: message, ephemeral: true }).catch(() => undefined);
+        await interaction.followUp(styleMessage({ content: message, ephemeral: true })).catch(() => undefined);
       }
     };
 
@@ -706,11 +707,11 @@ export class SielaBot {
       await interaction.deferReply();
       try {
         const result = await this.services.lyrics.forTrack(state.current);
-        await interaction.editReply(buildLyricsPayload(state.current, result));
+        await interaction.editReply(styleMessage(buildLyricsPayload(state.current, result)));
       } catch (error) {
         const message = error instanceof UserError ? error.message : "Could not fetch lyrics.";
         await interaction
-          .editReply(card({ title: "Lyrics", body: message }))
+          .editReply(styleMessage(card({ title: "Lyrics", body: message })))
           .catch(() => undefined);
       }
       return;
@@ -723,37 +724,37 @@ export class SielaBot {
       if (action === "pause") {
         if (state.paused) await music.resume(guild.id);
         else await music.pause(guild.id);
-        await interaction.update(buildMusicPayload(guild.id, music.state(guild.id)));
+        await interaction.update(styleMessage(buildMusicPayload(guild.id, music.state(guild.id))));
         return;
       }
       if (action === "rewind" || action === "forward") {
         await interaction.deferUpdate();
         const delta = action === "rewind" ? -10_000 : 10_000;
         await music.seek(guild.id, state.position + delta);
-        await interaction.editReply(buildMusicPayload(guild.id, music.state(guild.id)));
+        await interaction.editReply(styleMessage(buildMusicPayload(guild.id, music.state(guild.id))));
         return;
       }
       if (action === "skip") {
         await interaction.deferUpdate();
         await music.skip(guild.id);
-        await interaction.editReply(buildMusicPayload(guild.id, music.state(guild.id)));
+        await interaction.editReply(styleMessage(buildMusicPayload(guild.id, music.state(guild.id))));
         return;
       }
       if (action === "shuffle") {
         await interaction.deferUpdate();
         await music.shuffle(guild.id);
-        await interaction.editReply(buildMusicPayload(guild.id, music.state(guild.id)));
+        await interaction.editReply(styleMessage(buildMusicPayload(guild.id, music.state(guild.id))));
         return;
       }
       if (action === "loop") {
         const next = state.loop === "off" ? "track" : state.loop === "track" ? "queue" : "off";
         await interaction.deferUpdate();
         await music.loop(guild.id, next);
-        await interaction.editReply(buildMusicPayload(guild.id, music.state(guild.id)));
+        await interaction.editReply(styleMessage(buildMusicPayload(guild.id, music.state(guild.id))));
         return;
       }
       if (action === "filter") {
-        await interaction.reply({
+        await interaction.reply(styleMessage({
           content: "Choose a filter preset:",
           ephemeral: true,
           components: [
@@ -769,13 +770,13 @@ export class SielaBot {
                 ),
             ),
           ],
-        });
+        }));
         return;
       }
       if (action === "stop") {
         const confirmId = "music:stop:confirm";
         const cancelId = "music:stop:cancel";
-        const confirmationMessage = await interaction.reply({
+        const confirmationMessage = await interaction.reply(styleMessage({
           ...confirmCard({
             title: "Stop playback?",
             body: "This stops the current track and clears the queue.",
@@ -784,7 +785,7 @@ export class SielaBot {
             confirmLabel: "Stop",
           }),
           fetchReply: true,
-        });
+        }));
         attachConfirmation({
           message: confirmationMessage,
           userId: interaction.user.id,
@@ -793,7 +794,7 @@ export class SielaBot {
           onConfirm: async () => {
             await music.stop(guild.id);
             await music.disconnect(guild.id);
-            await interaction.message?.edit(card({ title: "Stopped", body: "The player has been disconnected." })).catch(() => undefined);
+            await interaction.message?.edit(styleMessage(card({ title: "Stopped", body: "The player has been disconnected." }))).catch(() => undefined);
             return card({ title: "Stopped", body: "The player has been disconnected." });
           },
           onCancel: () => card({ title: "Cancelled", body: "Playback continues." }),
@@ -823,17 +824,17 @@ export class SielaBot {
 
     const replyError = async (message: string): Promise<void> => {
       if (interaction.deferred) {
-        await interaction.editReply({ content: message }).catch(() => undefined);
+        await interaction.editReply(styleMessage({ content: message })).catch(() => undefined);
       } else if (!interaction.replied) {
-        await interaction.reply({ content: message, ephemeral: true }).catch(() => undefined);
+        await interaction.reply(styleMessage({ content: message, ephemeral: true })).catch(() => undefined);
       } else {
-        await interaction.followUp({ content: message, ephemeral: true }).catch(() => undefined);
+        await interaction.followUp(styleMessage({ content: message, ephemeral: true })).catch(() => undefined);
       }
     };
 
     const refresh = async (): Promise<void> => {
       const { state } = await fleet.nodeState(nodeId);
-      await interaction.editReply(buildMusicPayload(guild.id, state, undefined, channelId ?? undefined)).catch(() => undefined);
+      await interaction.editReply(styleMessage(buildMusicPayload(guild.id, state, undefined, channelId ?? undefined))).catch(() => undefined);
       music.refreshNowPlaying(guild.id);
     };
 
@@ -851,11 +852,11 @@ export class SielaBot {
       await interaction.deferReply();
       try {
         const result = await this.services.lyrics.forTrack(playback.state.current);
-        await interaction.editReply(buildLyricsPayload(playback.state.current, result));
+        await interaction.editReply(styleMessage(buildLyricsPayload(playback.state.current, result)));
       } catch (error) {
         const message = error instanceof UserError ? error.message : "Could not fetch lyrics.";
         await interaction
-          .editReply(card({ title: "Lyrics", body: message }))
+          .editReply(styleMessage(card({ title: "Lyrics", body: message })))
           .catch(() => undefined);
       }
       return;
@@ -871,7 +872,7 @@ export class SielaBot {
       if (action === "pause") {
         if (playback.state.paused) await fleet.control(nodeId, "resume");
         else await fleet.control(nodeId, "pause");
-        await interaction.update(buildMusicPayload(guild.id, (await fleet.nodeState(nodeId)).state, undefined, channelId ?? undefined));
+        await interaction.update(styleMessage(buildMusicPayload(guild.id, (await fleet.nodeState(nodeId)).state, undefined, channelId ?? undefined)));
         music.refreshNowPlaying(guild.id);
         return;
       }
@@ -902,7 +903,7 @@ export class SielaBot {
         return;
       }
       if (action === "filter") {
-        await interaction.reply({
+        await interaction.reply(styleMessage({
           content: "Choose a filter preset:",
           ephemeral: true,
           components: [
@@ -918,13 +919,13 @@ export class SielaBot {
                 ),
             ),
           ],
-        });
+        }));
         return;
       }
       if (action === "stop") {
         const confirmId = "music:stop:confirm";
         const cancelId = "music:stop:cancel";
-        const confirmationMessage = await interaction.reply({
+        const confirmationMessage = await interaction.reply(styleMessage({
           ...confirmCard({
             title: "Stop playback?",
             body: "This stops the fleet player and clears its queue.",
@@ -933,7 +934,7 @@ export class SielaBot {
             confirmLabel: "Stop",
           }),
           fetchReply: true,
-        });
+        }));
         attachConfirmation({
           message: confirmationMessage,
           userId: interaction.user.id,
@@ -942,7 +943,7 @@ export class SielaBot {
           onConfirm: async () => {
             await fleet.control(nodeId, "stop").catch(() => undefined);
             if (channelId) music.setFleetNode(guild.id, channelId, null);
-            await interaction.message?.edit(card({ title: "Stopped", body: "The fleet player has been disconnected." })).catch(() => undefined);
+            await interaction.message?.edit(styleMessage(card({ title: "Stopped", body: "The fleet player has been disconnected." }))).catch(() => undefined);
             return card({ title: "Stopped", body: "The fleet player has been disconnected." });
           },
           onCancel: () => card({ title: "Cancelled", body: "Playback continues." }),
@@ -966,9 +967,9 @@ export class SielaBot {
 
     const errorReply = async (message: string): Promise<void> => {
       if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: message, ephemeral: true }).catch(() => undefined);
+        await interaction.reply(styleMessage({ content: message, ephemeral: true })).catch(() => undefined);
       } else {
-        await interaction.followUp({ content: message, ephemeral: true }).catch(() => undefined);
+        await interaction.followUp(styleMessage({ content: message, ephemeral: true })).catch(() => undefined);
       }
     };
 
@@ -990,12 +991,12 @@ export class SielaBot {
         if (!playback.state?.current) return errorReply("Nothing is playing.");
         await fleet.control(fleetNode, "filters", { preset: value });
         music.refreshNowPlaying(guild.id);
-        await interaction.editReply({ content: `Filter preset set to **${value}** on **${fleetNode}**.`, components: [] });
+        await interaction.editReply(styleMessage({ content: `Filter preset set to **${value}** on **${fleetNode}**.`, components: [] }));
       } catch (error) {
-        await interaction.editReply({
+        await interaction.editReply(styleMessage({
           content: error instanceof UserError ? error.message : "That filter could not be applied.",
           components: [],
-        });
+        }));
       }
       return;
     }
@@ -1009,12 +1010,12 @@ export class SielaBot {
     try {
       await music.filters(guild.id, value as MusicFilterPreset);
       music.refreshNowPlaying(guild.id);
-      await interaction.editReply({ content: `Filter preset set to **${value}**.`, components: [] });
+      await interaction.editReply(styleMessage({ content: `Filter preset set to **${value}**.`, components: [] }));
     } catch (error) {
-      await interaction.editReply({
+      await interaction.editReply(styleMessage({
         content: error instanceof UserError ? error.message : "That filter could not be applied.",
         components: [],
-      });
+      }));
     }
   }
 
@@ -1032,7 +1033,7 @@ export class SielaBot {
     if (!parsed || !guild) return null;
     if (interaction.channelId !== parsed.channelId) {
       await interaction
-        .reply({ content: "That control panel does not belong to this channel.", ephemeral: true })
+        .reply(styleMessage({ content: "That control panel does not belong to this channel.", ephemeral: true }))
         .catch(() => undefined);
       return null;
     }
@@ -1040,7 +1041,7 @@ export class SielaBot {
     const channel = await guild.channels.fetch(parsed.channelId).catch(() => null);
     if (!row || row.status !== "active" || !channel || channel.type !== ChannelType.GuildVoice) {
       await interaction
-        .reply({ content: "That temporary VC is no longer active.", ephemeral: true })
+        .reply(styleMessage({ content: "That temporary VC is no longer active.", ephemeral: true }))
         .catch(() => undefined);
       return null;
     }
@@ -1048,7 +1049,7 @@ export class SielaBot {
     if (!member) return null;
     if (!canManageTempVc(member, row.ownerId, this.config)) {
       await interaction
-        .reply({ content: "Only the channel owner or an admin can use these controls.", ephemeral: true })
+        .reply(styleMessage({ content: "Only the channel owner or an admin can use these controls.", ephemeral: true }))
         .catch(() => undefined);
       return null;
     }
@@ -1062,9 +1063,9 @@ export class SielaBot {
     const message = error instanceof UserError ? error.message : "That VC action failed.";
     this.logger.warn({ err: error, customId: interaction.customId }, "temp VC panel action failed");
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content: message, ephemeral: true }).catch(() => undefined);
+      await interaction.followUp(styleMessage({ content: message, ephemeral: true })).catch(() => undefined);
     } else {
-      await interaction.reply({ content: message, ephemeral: true }).catch(() => undefined);
+      await interaction.reply(styleMessage({ content: message, ephemeral: true })).catch(() => undefined);
     }
   }
 
@@ -1100,7 +1101,7 @@ export class SielaBot {
         if (row.locked) await this.services.tempVc.unlock(channelId, interaction.user.id);
         else await this.services.tempVc.lock(channelId, interaction.user.id);
         await this.auditTempVcPanel(interaction, "vc.panel.lock", channelId, { locked: !row.locked });
-        await interaction.editReply(await this.services.tempVc.panelPayload(channelId));
+        await interaction.editReply(styleMessage(await this.services.tempVc.panelPayload(channelId)));
         return;
       }
 
@@ -1145,7 +1146,7 @@ export class SielaBot {
       }
 
       if (action === "delete") {
-        await interaction.reply({
+        await interaction.reply(styleMessage({
           content: `Delete **${channel.name}** and disconnect everyone in it?`,
           ephemeral: true,
           components: [
@@ -1160,7 +1161,7 @@ export class SielaBot {
                 .setStyle(ButtonStyle.Secondary),
             ),
           ],
-        });
+        }));
         return;
       }
 
@@ -1168,33 +1169,33 @@ export class SielaBot {
         await interaction.deferReply({ ephemeral: true });
         await this.services.tempVc.delete(channelId, "Owner deleted temporary VC from panel");
         await this.auditTempVcPanel(interaction, "vc.panel.delete", channelId);
-        await interaction.editReply(card({ title: "Deleted", body: "Temporary VC deleted." })).catch(() => undefined);
+        await interaction.editReply(styleMessage(card({ title: "Deleted", body: "Temporary VC deleted." }))).catch(() => undefined);
         return;
       }
 
       if (action === "delete-cancel") {
-        await interaction.update(card({ title: "Cancelled", body: "No changes were made." }));
+        await interaction.update(styleMessage(card({ title: "Cancelled", body: "No changes were made." })));
         return;
       }
 
       if (action === "manage") {
         if (!interaction.isStringSelectMenu()) throw new UserError("Choose a management action.");
         const choice = interaction.values[0];
-        await interaction.update(await this.services.tempVc.panelPayload(channelId));
+        await interaction.update(styleMessage(await this.services.tempVc.panelPayload(channelId)));
         if (choice === "delete") {
           await interaction.followUp(
-            confirmCard({
+            styleMessage(confirmCard({
               title: "Delete this channel?",
               body: `This will delete **${channel.name}** and disconnect everyone in it.`,
               confirmId: tempVcPanelCustomId("delete-confirm", channelId),
               cancelId: tempVcPanelCustomId("delete-cancel", channelId),
               confirmLabel: "Delete",
-            }),
+            })),
           );
           return;
         }
         if (choice === "kick" || choice === "transfer") {
-          await interaction.followUp({
+          await interaction.followUp(styleMessage({
             content: choice === "kick" ? "Select a member to kick." : "Select the new owner.",
             ephemeral: true,
             components: [
@@ -1206,7 +1207,7 @@ export class SielaBot {
                   .setMaxValues(1),
               ),
             ],
-          });
+          }));
           return;
         }
         throw new UserError("Unknown management action.");
@@ -1219,7 +1220,7 @@ export class SielaBot {
         await interaction.deferReply({ ephemeral: true });
         await this.services.tempVc.disconnect(channelId, targetId);
         await this.auditTempVcPanel(interaction, "vc.panel.kick", channelId, { targetId });
-        await interaction.editReply({ content: `Kicked <@${targetId}> from the VC.` });
+        await interaction.editReply(styleMessage({ content: `Kicked <@${targetId}> from the VC.` }));
         await this.services.tempVc.refreshPanel(channelId).catch(() => undefined);
         return;
       }
@@ -1232,7 +1233,7 @@ export class SielaBot {
         await this.services.tempVc.transfer(channelId, targetId);
         await this.auditTempVcPanel(interaction, "vc.panel.transfer", channelId, { targetId });
         await interaction.editReply(
-          card({ title: "Ownership transferred", body: `<@${targetId}> now owns this VC.` }),
+          styleMessage(card({ title: "Ownership transferred", body: `<@${targetId}> now owns this VC.` })),
         );
         await this.services.tempVc.refreshPanel(channelId).catch(() => undefined);
         return;
@@ -1256,7 +1257,7 @@ export class SielaBot {
         await this.services.tempVc.rename(channelId, name);
         await this.auditTempVcPanel(interaction, "vc.panel.rename", channelId, { name });
         await this.services.tempVc.refreshPanel(channelId);
-        await interaction.editReply({ content: "Temporary VC renamed." });
+        await interaction.editReply(styleMessage({ content: "Temporary VC renamed." }));
         return;
       }
 
@@ -1268,7 +1269,7 @@ export class SielaBot {
         await this.services.tempVc.setLimit(channelId, limit);
         await this.auditTempVcPanel(interaction, "vc.panel.limit", channelId, { limit });
         await this.services.tempVc.refreshPanel(channelId);
-        await interaction.editReply({ content: `User limit set to **${limit === 0 ? "unlimited" : limit}**.` });
+        await interaction.editReply(styleMessage({ content: `User limit set to **${limit === 0 ? "unlimited" : limit}**.` }));
         return;
       }
 
@@ -1314,9 +1315,9 @@ export class SielaBot {
     this.logger.error({ err: error, requestId }, "command error");
     const content = `${message}${error instanceof UserError ? "" : ` Reference: \`${requestId}\``}`;
     if ("commandName" in source) {
-      await (source as CommandContext).reply({ content, ephemeral: true }).catch(() => undefined);
+      await (source as CommandContext).reply(styleMessage({ content, ephemeral: true })).catch(() => undefined);
     } else {
-      await (source as Message).reply({ content, allowedMentions: { parse: [] } }).catch(() => undefined);
+      await (source as Message).reply(styleMessage({ content, allowedMentions: { parse: [] } })).catch(() => undefined);
     }
   }
 

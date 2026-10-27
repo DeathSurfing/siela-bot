@@ -1,3 +1,4 @@
+import { styleMessage } from "../ui.js";
 import { brandedContainer } from "../ui.js";
 import { randomBytes } from "node:crypto";
 import {
@@ -154,7 +155,7 @@ export class CahService {
 
     try {
       session.cardMessage = await options.channel.send(
-        messageOptions(this.buildLobbyPayload(game), false),
+        styleMessage(messageOptions(this.buildLobbyPayload(game), false)),
       );
     } catch (error) {
       this.byGuild.delete(game.guildId);
@@ -382,7 +383,7 @@ export class CahService {
       }
       if (action === "endcancel") {
         await interaction
-          .update(messageOptions(this.buildStatusPayload(session.game), false))
+          .update(styleMessage(messageOptions(this.buildStatusPayload(session.game), false)))
           .catch(() => undefined);
         return;
       }
@@ -567,7 +568,7 @@ export class CahService {
       ? this.buildFinalPayload(session.game, note)
       : this.buildStatusPayload(session.game);
     try {
-      await session.cardMessage.edit(messageOptions(payload, false));
+      await session.cardMessage.edit(styleMessage(messageOptions(payload, false)));
     } catch (error) {
       this.log("debug", "cah card update failed", { err: error, gameId: session.game.id });
     }
@@ -583,15 +584,15 @@ export class CahService {
   }
 
   private async editPrivate(interaction: ComponentInteraction, payload: ReplyPayload): Promise<void> {
-    await interaction.editReply(messageOptions(payload, false));
+    await interaction.editReply(styleMessage(messageOptions(payload, false)));
   }
 
   private async privateReply(interaction: ComponentInteraction, payload: ReplyPayload): Promise<void> {
     const data = messageOptions(payload, interaction.inGuild());
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(data).catch(() => undefined);
+      await interaction.followUp(styleMessage(data)).catch(() => undefined);
     } else {
-      await interaction.reply(data).catch(() => undefined);
+      await interaction.reply(styleMessage(data)).catch(() => undefined);
     }
   }
 
@@ -599,7 +600,7 @@ export class CahService {
     const message = error instanceof UserError ? error.message : "That CAH action failed.";
     this.log("warn", "cah interaction failed", { err: error, customId: interaction.customId });
     if (interaction.deferred) {
-      await interaction.editReply(messageOptions({ content: message }, false)).catch(() => undefined);
+      await interaction.editReply(styleMessage(messageOptions({ content: message }, false))).catch(() => undefined);
       return;
     }
     await this.privateReply(interaction, { content: message, ephemeral: true });

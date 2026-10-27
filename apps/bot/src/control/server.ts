@@ -1,3 +1,4 @@
+import { styleMessage } from "../features/ui.js";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import type { Client, Guild } from "discord.js";
@@ -429,7 +430,7 @@ export class ControlServer {
         throw new UserError("Channel is not text-based", "invalid_channel");
       }
       const sendable = channel as unknown as { send: (options: unknown) => Promise<{ id: string }> };
-      const sent = await sendable.send({ content: body.content, allowedMentions: { parse: [] } });
+      const sent = await sendable.send(styleMessage({ content: body.content, allowedMentions: { parse: [] } }));
       await services.audit.log({
         guildId: this.guildId(),
         actorId: this.actor(request),

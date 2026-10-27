@@ -306,7 +306,7 @@ describe("TambolaService", () => {
       const interaction = fakeInteraction(`tambola:${action}:NOPE`, "host");
       await service.handleInteraction(interaction as never);
       const replied = interaction.getState().replied as { content?: string } | null;
-      expect(replied?.content).toBe("That Tambola game is no longer active.");
+      expect(JSON.stringify(replied)).toContain("That Tambola game is no longer active.");
     }
   });
 });

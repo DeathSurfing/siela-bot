@@ -1,3 +1,4 @@
+import { styleMessage } from "../features/ui.js";
 import type {
   ChatInputCommandInteraction,
   GuildBasedChannel,
@@ -11,7 +12,7 @@ type Repliable = ChatInputCommandInteraction | MessageContextMenuCommandInteract
 
 function withDefaults(payload: ReplyPayload): ReplyPayload {
   return {
-    ...payload,
+    ...styleMessage(payload),
     allowedMentions: payload.allowedMentions ?? { parse: [], repliedUser: false },
   };
 }

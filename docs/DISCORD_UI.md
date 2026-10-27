@@ -8,7 +8,7 @@ Siela uses native Discord Components V2 for cards and interactive panels. The sh
 - Music retains native artwork thumbnails when available, playback progress, volume/loop/queue information, and existing controls.
 - Help groups the main activities before its category and search controls.
 - Dense Tambola tickets combine their brand and title in one component to preserve Discord's component budget.
-- One-line acknowledgements remain compact; confirmation dialogs have a distinct warning theme.
+- All command replies and background notices pass through the shared native-card presentation, including errors, cooldowns, confirmations, welcomes, birthdays, and private messages. Controls, attachments, explicit mention policy, and private delivery are retained. Confirmation dialogs have a distinct warning theme.
 
 ## Offline preview
 

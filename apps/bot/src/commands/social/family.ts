@@ -1,3 +1,4 @@
+import { styleMessage } from "../../features/ui.js";
 import { randomUUID } from "node:crypto";
 import {
   ActionRowBuilder,
@@ -54,7 +55,7 @@ async function requestConsent(
 
     collector.on("collect", async (interaction) => {
       if (interaction.user.id !== target.id) {
-        await interaction.reply({ content: "This request is not for you.", ephemeral: true }).catch(() => undefined);
+        await interaction.reply(styleMessage({ content: "This request is not for you.", ephemeral: true })).catch(() => undefined);
         return;
       }
       const approved = interaction.customId.includes(":approve:");
@@ -66,11 +67,11 @@ async function requestConsent(
       const approved = reason === "approved";
       try {
         if (approved) {
-          await message.edit(card({ theme: "social", title: "Approved", body: `${target.displayName} approved the request.` }));
+          await message.edit(styleMessage(card({ theme: "social", title: "Approved", body: `${target.displayName} approved the request.` })));
         } else if (reason === "rejected") {
-          await message.edit(card({ theme: "social", title: "Rejected", body: `${target.displayName} rejected the request.` }));
+          await message.edit(styleMessage(card({ theme: "social", title: "Rejected", body: `${target.displayName} rejected the request.` })));
         } else {
-          await message.edit(card({ theme: "social", title: "Timed out", body: `${target.displayName} did not respond in time.` }));
+          await message.edit(styleMessage(card({ theme: "social", title: "Timed out", body: `${target.displayName} did not respond in time.` })));
         }
       } catch {
         // ignore edit failures

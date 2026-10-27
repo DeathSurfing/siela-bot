@@ -1,3 +1,4 @@
+import { styleMessage } from "./ui.js";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { confessions, guildSettings, type Database, type ConfessionRow } from "@siela/db";
 import { type Client, type TextChannel } from "discord.js";
@@ -89,14 +90,14 @@ export class ConfessionService {
     }
 
     try {
-      const message = await (channel as TextChannel).send({
+      const message = await (channel as TextChannel).send(styleMessage({
         ...card({
           title: `Confession #${number}`,
           subtitle: `Anonymous · <t:${Math.floor(Date.now() / 1000)}:R>`,
           body: trimmed,
         }),
         allowedMentions: { parse: [] },
-      });
+      }));
       await this.db.update(confessions).set({ messageId: message.id }).where(eq(confessions.id, row.id));
     } catch (error) {
       await this.db.delete(confessions).where(eq(confessions.id, row.id));

@@ -1,3 +1,4 @@
+import { styleMessage } from "./ui.js";
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -159,12 +160,12 @@ export async function handleStockButton(
 
   if (interaction.customId === "stocks:view:portfolio") {
     const portfolio = await economy.getPortfolio(guildId, interaction.user.id);
-    await interaction.reply({ ...portfolioPayload(portfolio), ephemeral: true });
+    await interaction.reply(styleMessage({ ...portfolioPayload(portfolio), ephemeral: true }));
     return;
   }
   if (interaction.customId === "stocks:view:market") {
     const market = await economy.getMarket(guildId);
-    await interaction.reply({ ...marketPayload(market), ephemeral: true });
+    await interaction.reply(styleMessage({ ...marketPayload(market), ephemeral: true }));
     return;
   }
   if (interaction.customId === "stocks:trade:buy") {
@@ -189,7 +190,7 @@ export async function handleStockModal(
   const symbol = interaction.fields.getTextInputValue("symbol").trim();
   const shares = Number(interaction.fields.getTextInputValue("shares").trim());
   if (!Number.isSafeInteger(shares) || shares <= 0) {
-    await interaction.reply({ ...error("Shares must be a positive whole number."), ephemeral: true });
+    await interaction.reply(styleMessage({ ...error("Shares must be a positive whole number."), ephemeral: true }));
     return;
   }
 
@@ -197,12 +198,12 @@ export async function handleStockModal(
   try {
     if (side === "buy") {
       const result = await economy.buyStock(guildId, interaction.user.id, symbol, shares);
-      await interaction.editReply(success(tradeResultMessage(result)));
+      await interaction.editReply(styleMessage(success(tradeResultMessage(result))));
       return;
     }
     const result = await economy.sellStock(guildId, interaction.user.id, symbol, shares);
-    await interaction.editReply(success(tradeResultMessage(result)));
+    await interaction.editReply(styleMessage(success(tradeResultMessage(result))));
   } catch (cause) {
-    await interaction.editReply(error(tradeErrorMessage(cause)));
+    await interaction.editReply(styleMessage(error(tradeErrorMessage(cause))));
   }
 }
