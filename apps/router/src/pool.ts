@@ -13,7 +13,9 @@ export class AllNodesBusyError extends Error {
   readonly code = "all_nodes_busy";
 
   constructor(readonly fleetSize: number) {
-    super(`All ${fleetSize} voice node(s) are busy. Try again when one is free.`);
+    super(
+      `All ${fleetSize} voice node(s) are busy. Add more worker nodes for more concurrent streams.`,
+    );
     this.name = "AllNodesBusyError";
   }
 }

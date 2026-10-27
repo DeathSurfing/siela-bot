@@ -47,7 +47,7 @@ export class FleetClient {
     } | null;
     if (!response.ok) {
       if (response.status === 429) {
-        throw new UserError("All voice nodes are busy right now. Try again when one frees up.");
+        throw new UserError("All voice nodes are busy. Add more worker nodes for more concurrent streams.");
       }
       const message = typeof parsed?.error?.message === "string" ? parsed.error.message : "Fleet playback failed.";
       throw new UserError(message);

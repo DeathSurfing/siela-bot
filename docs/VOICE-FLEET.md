@@ -97,7 +97,8 @@ control network), not at individual nodes:
   auto-routes to a free node (first idle; reservations close the race
   between concurrent requests) and returns `{ nodeId, result }`. When every
   node is playing or holding a track, it rejects with `429 all_nodes_busy`
-  instead of stacking load. With `nodeId`, the request goes straight there.
+  ("add more worker nodes for more concurrent streams"). With `nodeId`,
+  the request goes straight there.
 - `POST /v1/music/<other op>` with `{"nodeId": "voice-1", ...}` — `join`,
   `pause`, `resume`, `skip`, `stop`, `volume`, `seek`, `loop`, `shuffle`,
   `remove`, `clear`, `move`, `jump`, `autoplay`, `filters`, `disconnect`.
