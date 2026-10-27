@@ -1,4 +1,4 @@
-import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
+import { createCanvas, loadImage, type Image, type SKRSContext2D } from "@napi-rs/canvas";
 import type { FamilyTree } from "./family.js";
 import { canvasFonts } from "./canvas.js";
 
@@ -81,7 +81,18 @@ export async function generateFamilyTreeCard(
   tree: FamilyTree,
   names: Map<string, string>,
   rootUserId: string,
+  avatarUrls: Map<string, string> = new Map(),
 ): Promise<Buffer> {
+  const avatars = new Map<string, Image>();
+  await Promise.all([...avatarUrls].map(async ([id, url]) => {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (!response.ok) return;
+      avatars.set(id, await loadImage(Buffer.from(await response.arrayBuffer())));
+    } catch {
+      // A failed CDN image must not prevent the rest of the tree from rendering.
+    }
+  }));
   const { regular: regularFamily, bold: boldFamily } = canvasFonts();
   const nodeIds = tree.nodes;
   const nodeSet = new Set(nodeIds);
@@ -183,7 +194,7 @@ export async function generateFamilyTreeCard(
       .filter((id) => !visited.has(id))
       .sort((a, b) => groupLabel(a).localeCompare(groupLabel(b)));
     const childLayouts = children.map((id) => layoutGroup(id));
-    const unitWidth = group.members.length > 1 ? NODE_WIDTH * 2 + COUPLE_GAP : NODE_WIDTH;
+    const unitWidth = group.members.length * NODE_WIDTH + (group.members.length - 1) * COUPLE_GAP;
     const childTotal =
       childLayouts.reduce((sum, child) => sum + child.width, 0) + Math.max(0, childLayouts.length - 1) * CHILD_GAP;
     const width = Math.max(unitWidth, childTotal);
@@ -245,7 +256,7 @@ export async function generateFamilyTreeCard(
     const group = groups.get(groupId);
     const position = group ? positions.get(group.id) : undefined;
     if (!group || !position) return { x: 0, y: 0 };
-    const unitWidth = group.members.length > 1 ? NODE_WIDTH * 2 + COUPLE_GAP : NODE_WIDTH;
+    const unitWidth = group.members.length * NODE_WIDTH + (group.members.length - 1) * COUPLE_GAP;
     return { x: position.x + unitWidth / 2, y: drawY(position.y) + NODE_HEIGHT };
   };
 
@@ -275,20 +286,19 @@ export async function generateFamilyTreeCard(
     ctx.strokeStyle = LINE;
     ctx.lineWidth = 1.25;
     ctx.beginPath();
-    ctx.moveTo(first.x + NODE_WIDTH, y);
-    ctx.lineTo(second.x, y);
-    ctx.stroke();
+    // Leave the partner gap empty so the heart floats between the cards.
     ctx.fillStyle = HEART;
-    ctx.font = `14px ${boldFamily}`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("♥", (first.x + NODE_WIDTH + second.x) / 2, y);
-    ctx.textAlign = "left";
-    ctx.textBaseline = "alphabetic";
+    // Geometry is centered on the connector; font baselines vary across platforms.
+    const cx = (first.x + NODE_WIDTH + second.x) / 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, y - 3);
+    ctx.bezierCurveTo(cx - 8, y - 11, cx - 12, y + 1, cx, y + 8);
+    ctx.bezierCurveTo(cx + 12, y + 1, cx + 8, y - 11, cx, y - 3);
+    ctx.fill();
   }
 
   for (const [id, position] of nodePositions) {
-    const displayName = names.get(id) ?? id;
+    const displayName = names.get(id) ?? "Unavailable user";
     const isRoot = id === rootUserId;
     const x = position.x;
     const y = drawY(position.y);
@@ -309,6 +319,15 @@ export async function generateFamilyTreeCard(
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(initials(displayName), x + 28, y + NODE_HEIGHT / 2 + 1);
+    const avatar = avatars.get(id);
+    if (avatar) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x + 28, y + NODE_HEIGHT / 2, 17, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(avatar, x + 11, y + NODE_HEIGHT / 2 - 17, 34, 34);
+      ctx.restore();
+    }
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
 
@@ -327,3 +346,4 @@ export async function generateFamilyTreeCard(
 
   return Buffer.from(canvas.toBuffer("image/png"));
 }
+
