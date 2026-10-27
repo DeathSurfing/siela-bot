@@ -1,8 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
 
 use siela_tts::server::{AppState, SharedState};
-use siela_tts::synthesis::Synthesizer;
 
 fn env_or(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_string())
@@ -24,28 +23,15 @@ async fn main() {
     let host = env_or("HOST", "0.0.0.0");
     let port: u16 = env_or("PORT", "8000").parse().unwrap_or(8000);
 
-    tracing::info!(model_path, voices_path, "loading model");
-    let mut synth =
-        Synthesizer::load(&model_path, &voices_path, default_voice.clone(), default_speed)
-            .unwrap_or_else(|e| {
-                tracing::error!(error = %e, "failed to load synthesizer");
-                std::process::exit(1);
-            });
-    // Validate the default voice up front (mirrors the Python ValueError).
-    let config = siela_tts::pipeline::ModelConfigJson::load(&config_path, synth.voice_names())
-        .unwrap_or_else(|e| {
-            tracing::error!(error = %e, "failed to load model config");
-            std::process::exit(1);
-        });
-    if let Err(e) = siela_tts::pipeline::resolve_voice(&config, &default_voice, default_speed) {
-        tracing::error!(error = %e, "invalid default voice");
-        std::process::exit(1);
-    }
-    let _ = &mut synth;
-
+    // The model loads on first use. The bot warms it on `/tts on` and drops
+    // it on `/tts off`, so an idle service holds no weights.
+    tracing::info!(model_path, voices_path, "lazy model loading enabled");
     let state: SharedState = Arc::new(TokioMutex::new(AppState {
-        synth: Arc::new(Mutex::new(synth)),
-        config,
+        synth: None,
+        config: None,
+        model_path,
+        voices_path,
+        config_path,
         default_voice,
         default_speed,
     }));

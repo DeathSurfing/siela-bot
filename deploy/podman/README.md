@@ -63,7 +63,7 @@ Workers only exist when `scripts/make-voice-overlay.sh <N>` has generated the ov
 | `postgres` | `postgres:17-alpine` | Data on `pgdata`; `data` network only |
 | `valkey` | `valkey/valkey:8-alpine` | Append-only cache; `VALKEY_URL=redis://valkey:6379` |
 | `llm` | `ghcr.io/ggml-org/llama.cpp:server` (CPU) | Model `DeathSurfing/tinyTanLLM-delulu-gemma` (`delulu-gemma-q4_k_m.gguf`, ctx 1024); weights cached in `llmcache`. GPU offload dropped: host driver 535 predates the CUDA 13 kernels in current images. |
-| `tts` | `localhost/siela-tts:latest` | CPU; KittenTTS model baked at build; `/healthz`, `/synthesize`, `/synthesize-stream` |
+| `tts` | `localhost/siela-tts:latest` | CPU; KittenTTS model baked at build but loaded lazily; `/healthz`, `/warmup`, `/unload`, `/synthesize`, `/synthesize-stream` |
 | `migrate` | `localhost/siela-bot:latest` | One-shot migration runner; exits after the schema is current |
 | `bot` | `localhost/siela-bot:latest` | `oven/bun` image with yt-dlp, mpv, and ffmpeg; commander by default (`NODE_ROLE=commander`) |
 | `router` | `localhost/siela-router:latest` | Voice fleet gateway `:3100`; fans music out by `nodeId`, proxies everything else to the commander |
@@ -75,7 +75,7 @@ Health endpoints:
 - Bot health and metrics: `127.0.0.1:3002` (`/healthz`, `/readyz`, `/metrics`). The port is not published to the host.
 - Control API: `:3001` with Bearer `MCP_TOKEN`, on the internal `control` network.
 - Voice router: `:3100` with Bearer `MCP_TOKEN`, on the internal `control` network. See [docs/VOICE-FLEET.md](../../docs/VOICE-FLEET.md).
-- TTS: `:8000` with `/healthz`, `/synthesize`, and `/synthesize-stream`.
+- TTS: `:8000` with `/healthz`, `/warmup`, `/unload`, `/synthesize`, and `/synthesize-stream`. The model is loaded on demand, so idle memory is low.
 
 ## Quickstart
 
