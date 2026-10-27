@@ -1,5 +1,6 @@
 import type { WatchtowerConfig } from "@siela/config";
 import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { failureDetail, runCommand } from "./run.js";
 import type { DeployMode } from "./plan.js";
 import type { Logger } from "./logger.js";
@@ -103,14 +104,16 @@ async function composeUp(
   // --no-deps avoids podman-compose waiting for the one-shot `migrate`
   // container to reach "running", which never happens. Dependencies are
   // started explicitly above, and migrations run separately.
+  // An empty service list recreates the whole stack (bot, router, voice
+  // workers, tts); named services limit the blast radius for fast deploys.
   args.push("up", "-d", "--no-deps", "--force-recreate", ...services);
 
-  deps.logger.info({ services, fast: Boolean(fastOverlay) }, "recreating services");
+  deps.logger.info({ services: services.length ? services : "all", fast: Boolean(fastOverlay) }, "recreating services");
   const result = await runWrapper(deps, args, LONG_TIMEOUT);
   if (result.code !== 0) {
     return { ok: false, detail: `compose up failed: ${failureDetail(result)}` };
   }
-  return { ok: true, detail: `recreated ${services.join(", ")}` };
+  return { ok: true, detail: `recreated ${services.length ? services.join(", ") : "stack"}` };
 }
 
 async function deployFull(deps: DeployDeps): Promise<DeployResult> {
@@ -128,6 +131,13 @@ async function deployFull(deps: DeployDeps): Promise<DeployResult> {
   );
   if (!tts.ok) return tts;
 
+  const router = await buildImage(
+    deps,
+    "deploy/podman/Containerfile.router",
+    "localhost/siela-router:latest",
+  );
+  if (!router.ok) return router;
+
   if (deps.config.WATCHTOWER_RUN_MIGRATIONS) {
     const migrated = await runMigrations(deps);
     if (!migrated.ok) return migrated;
@@ -136,8 +146,7 @@ async function deployFull(deps: DeployDeps): Promise<DeployResult> {
   const dependencies = await ensureDependencies(deps);
   if (!dependencies.ok) return dependencies;
 
-  const services = ["bot", "tts"];
-  return composeUp(deps, services);
+  return composeUp(deps, []);
 }
 
 /**
@@ -187,7 +196,7 @@ async function deployFast(deps: DeployDeps): Promise<DeployResult> {  await ensu
     deps.logger,
   );
 
-  deps.logger.info("building bot dist");
+  deps.logger.info("building bot and router dist");
   const build = await runCommand("bun", ["run", "--cwd", "apps/bot", "build"], {
     cwd: deps.repoDir,
     timeoutMs: SHORT_TIMEOUT,
@@ -195,15 +204,41 @@ async function deployFast(deps: DeployDeps): Promise<DeployResult> {  await ensu
   if (build.code !== 0) {
     return { ok: false, detail: `bot build failed: ${failureDetail(build)}` };
   }
+  const routerBuild = await runCommand("bun", ["run", "--cwd", "apps/router", "build"], {
+    cwd: deps.repoDir,
+    timeoutMs: SHORT_TIMEOUT,
+  });
+  if (routerBuild.code !== 0) {
+    return { ok: false, detail: `router build failed: ${failureDetail(routerBuild)}` };
+  }
 
   const dependencies = await ensureDependencies(deps);
   if (!dependencies.ok) return dependencies;
 
   return composeUp(
     deps,
-    ["bot"],
+    ["bot", "router", ...voiceWorkerServices(deps.repoDir)],
     join(deps.repoDir, "deploy/podman/compose.fast.yaml"),
   );
+}
+
+/**
+ * Voice worker services from the generated overlay, if present. Fast deploys
+ * bind-mount the fresh bot dist into them, so worker code updates apply
+ * without a full image rebuild.
+ */
+export function voiceWorkerServices(repoDir: string): string[] {
+  try {
+    const text = readFileSync(join(repoDir, "deploy/podman/compose.voice.generated.yaml"), "utf8");
+    const names: string[] = [];
+    for (const line of text.split("\n")) {
+      const match = line.match(/^  (bot-voice-[A-Za-z0-9_-]+):\s*$/);
+      if (match?.[1] && !names.includes(match[1])) names.push(match[1]);
+    }
+    return names;
+  } catch {
+    return [];
+  }
 }
 
 export async function runDeploy(

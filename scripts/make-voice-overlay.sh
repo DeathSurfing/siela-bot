@@ -61,6 +61,9 @@ done
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      # Fast code-only deploys bind-mount the freshly built dist over the image.
+      - ../../apps/bot/dist:/app/dist:ro
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]

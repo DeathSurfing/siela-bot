@@ -150,3 +150,18 @@ TTS binds to exactly one node until `/tts off`:
 - `Error: ... depends on container ... not found in input list`: stale
   dependency metadata from an interrupted compose run. Remove the stuck
   `Created` container (`podman rm siela-router`) and run `up` again.
+
+## Updates (watchtower)
+
+The server runs the watchtower sidecar (overlay + `WATCHTOWER_ENABLED=true`),
+so pushes to `main` auto-deploy after CI passes:
+
+- Full deploys rebuild the bot, TTS, **and router** images, run migrations,
+  then recreate the whole stack — including generated voice workers.
+- Fast (bot-source-only) deploys rebuild `apps/bot/dist` and
+  `apps/router/dist`, bind-mount them into the running containers
+  (`compose.fast.yaml`, plus the dist mount in generated voice services),
+  and recreate `bot`, `router`, and every `bot-voice-*` service.
+- Code changes to the slim worker entrypoint (`apps/bot/src/worker*.ts`,
+  bundled into `dist/worker.js`) apply through either path; no image
+  rebuild dance needed for fast deploys.
