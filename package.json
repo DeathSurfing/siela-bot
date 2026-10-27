@@ -6,11 +6,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot.git"
+    "url": "https://github.com/DeathSurfing/siela-bot.git"
   },
-  "homepage": "https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot#readme",
+  "homepage": "https://github.com/DeathSurfing/siela-bot#readme",
   "bugs": {
-    "url": "https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot/issues"
+    "url": "https://github.com/DeathSurfing/siela-bot/issues"
   },
   "type": "module",
   "packageManager": "bun@1.4.2",

@@ -1,6 +1,6 @@
 # Siela Bot
 
-[![CI](https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot/actions/workflows/ci.yml)
+[![CI](https://github.com/DeathSurfing/siela-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/DeathSurfing/siela-bot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Runtime: Bun](https://img.shields.io/badge/runtime-Bun%201.4-f9f1e1)](https://bun.sh)
 [![Deploy: Podman](https://img.shields.io/badge/deploy-Podman%205%2B-892ca0)](https://podman.io)
@@ -77,8 +77,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for command flow, boot order, p
 The full production stack targets Linux with Podman 5 or newer and an NVIDIA GPU for the local LLM service. Local development works without a GPU.
 
 ```bash
-git clone https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot.git
-cd siela-nogseuui-seobeo-bot
+git clone https://github.com/DeathSurfing/siela-bot.git
+cd siela-bot
 
 export DISCORD_TOKEN="..."
 export GUILD_ID="..."   # recommended for a single-guild install
@@ -110,7 +110,7 @@ The complete first-run checklist, including Discord intents, invite permissions,
 
 ```mermaid
 flowchart TD
-  ROOT[siela-nogseuui-seobeo-bot]
+  ROOT[siela-bot]
 
   ROOT --> BOT[apps/bot<br/>Discord bot, features,<br/>control API, worker API]
   ROOT --> ROUTER[apps/router<br/>stateless fleet gateway]

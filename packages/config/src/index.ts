@@ -21,7 +21,7 @@ const booleanString = (defaultValue: "true" | "false") =>
     .default(defaultValue)
     .transform((value) => value === "true");
 
-const UPSTREAM_REPO_URL = "https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot.git";
+const UPSTREAM_REPO_URL = "https://github.com/DeathSurfing/siela-bot.git";
 
 const logLevel = z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]);
 

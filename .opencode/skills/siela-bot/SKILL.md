@@ -1,6 +1,6 @@
 ---
 name: siela-bot
-description: Use when working in, extending, debugging, testing, or deploying the siela-nogseuui-seobeo-bot repository. Covers the Bun/TypeScript monorepo, single-guild discord.js bot, hybrid command framework, music/lyrics/Tambola voice features, the N-bot voice fleet (router, workers, sticky TTS), PostgreSQL/Drizzle schema, Valkey, control API, Podman deployment, and runbook gotchas.
+description: Use when working in, extending, debugging, testing, or deploying the siela-bot repository. Covers the Bun/TypeScript monorepo, single-guild discord.js bot, hybrid command framework, music/lyrics/Tambola voice features, the N-bot voice fleet (router, workers, sticky TTS), PostgreSQL/Drizzle schema, Valkey, control API, Podman deployment, and runbook gotchas.
 ---
 
 # Siela Bot
@@ -266,8 +266,8 @@ Conventions:
 ### Standard first deploy
 
 ```bash
-git clone https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot.git
-cd siela-nogseuui-seobeo-bot
+git clone https://github.com/DeathSurfing/siela-bot.git
+cd siela-bot
 
 export DISCORD_TOKEN="..."
 ./scripts/podman-init.sh          # derives client ID, generates secrets, writes deploy/podman/.env (600)
@@ -320,7 +320,7 @@ podman compose -p siela -f deploy/podman/compose.yaml run --rm migrate
 The remote Podman host is documented in `docs/RUNBOOK.md`. On that host, image builds may need host networking because `/dev/net/tun` is unavailable:
 
 ```bash
-cd /root/siela-nogseuui-seobeo-bot
+cd /root/siela-bot
 git pull --ff-only
 podman build --network=host -f deploy/podman/Containerfile.bot -t localhost/siela-bot:latest .
 podman compose -p siela -f deploy/podman/compose.yaml up -d --force-recreate bot

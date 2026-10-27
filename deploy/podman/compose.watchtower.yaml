@@ -13,7 +13,7 @@
 #   WATCHTOWER_ENABLED=true scripts/podman-stack.sh up -d
 #
 # WATCHTOWER_REPO_DIR is required and must be the absolute host path of this
-# checkout (for example /root/siela-nogseuui-seobeo-bot).
+# checkout (for example /root/siela-bot).
 #
 # Security: the socket is root-equivalent access to the host. Only enable this
 # against a repository you trust, and prefer HTTPS plus GH_TOKEN over SSH keys.
@@ -33,7 +33,7 @@ services:
       NODE_ENV: production
       TZ: ${TZ:-UTC}
       LOG_LEVEL: ${WATCHTOWER_LOG_LEVEL:-info}
-      WATCHTOWER_REPO_URL: ${WATCHTOWER_REPO_URL:-https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot.git}
+      WATCHTOWER_REPO_URL: ${WATCHTOWER_REPO_URL:-https://github.com/DeathSurfing/siela-bot.git}
       WATCHTOWER_BRANCH: ${WATCHTOWER_BRANCH:-main}
       WATCHTOWER_REPO_DIR: ${WATCHTOWER_REPO_DIR:?set WATCHTOWER_REPO_DIR to the absolute host path of this checkout}
       WATCHTOWER_INTERVAL_SEC: ${WATCHTOWER_INTERVAL_SEC:-60}

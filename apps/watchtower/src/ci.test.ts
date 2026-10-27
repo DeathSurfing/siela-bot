@@ -4,11 +4,11 @@ import { parseGitHubRepo } from "./ci.js";
 describe("parseGitHubRepo", () => {
   it("parses https URLs with and without .git", () => {
     expect(
-      parseGitHubRepo("https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot.git"),
-    ).toEqual({ owner: "DeathSurfing", repo: "siela-nogseuui-seobeo-bot" });
+      parseGitHubRepo("https://github.com/DeathSurfing/siela-bot.git"),
+    ).toEqual({ owner: "DeathSurfing", repo: "siela-bot" });
     expect(
-      parseGitHubRepo("https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot"),
-    ).toEqual({ owner: "DeathSurfing", repo: "siela-nogseuui-seobeo-bot" });
+      parseGitHubRepo("https://github.com/DeathSurfing/siela-bot"),
+    ).toEqual({ owner: "DeathSurfing", repo: "siela-bot" });
   });
 
   it("parses ssh URLs", () => {

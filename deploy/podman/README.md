@@ -131,7 +131,7 @@ Required in `deploy/podman/.env` when enabled:
 | Variable | Purpose |
 |---|---|
 | `WATCHTOWER_ENABLED` | `true` includes the overlay |
-| `WATCHTOWER_REPO_DIR` | Absolute host path of this checkout, for example `/root/siela-nogseuui-seobeo-bot` |
+| `WATCHTOWER_REPO_DIR` | Absolute host path of this checkout, for example `/root/siela-bot` |
 | `WATCHTOWER_TOKEN` | Bearer token for `POST /trigger`; `scripts/podman-init.sh` generates it |
 
 Common overrides:
