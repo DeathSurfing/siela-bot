@@ -18,10 +18,18 @@ function isBotSource(file: string): boolean {
   return file.startsWith("apps/bot/src/");
 }
 
+function isRouterSource(file: string): boolean {
+  return file.startsWith("apps/router/src/");
+}
+
+function isFastSource(file: string): boolean {
+  return isBotSource(file) || isRouterSource(file);
+}
+
 export function planDeploy(changedFiles: string[]): DeployMode {
   const files = changedFiles.map((file) => file.replace(/\\/g, "/")).filter(Boolean);
   if (files.length === 0) return "none";
   if (files.every(isDocsOnly)) return "none";
-  if (files.every(isBotSource)) return "fast";
+  if (files.every(isFastSource)) return "fast";
   return "full";
 }

@@ -182,7 +182,8 @@ async function runMigrations(deps: DeployDeps): Promise<DeployResult> {
   return { ok: true, detail: "migrations complete" };
 }
 
-async function deployFast(deps: DeployDeps): Promise<DeployResult> {  await ensureNodeModules(
+async function deployFast(deps: DeployDeps): Promise<DeployResult> {
+  await ensureNodeModules(
     deps.repoDir,
     async () => {
       const install = await runCommand("bun", ["install", "--frozen-lockfile"], {
