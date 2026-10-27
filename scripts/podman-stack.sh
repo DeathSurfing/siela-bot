@@ -40,8 +40,15 @@ read_env_value() {
 
 # A watchtower image older than the checkout can recreate this very container
 # and kill its own deploy halfway. Rebuild it whenever its stamped commit
-# drifts from HEAD, then drop the container so compose starts the new image.
+# drifts from HEAD. Never touch the container from here when the call is
+# already running inside watchtower (WATCHTOWER_RUNNING), or when this `up`
+# targets other services: removing it mid-deploy leaves the stack without a
+# deployer. The runtime guard refuses stale deploys until an operator runs
+# this wrapper on the host with no service arguments.
 ensure_watchtower_image() {
+  if [[ "${WATCHTOWER_RUNNING:-0}" == "1" ]]; then
+    return 0
+  fi
   command -v git >/dev/null 2>&1 || return 0
   local head stamped
   head="$(git -C "${ROOT_DIR}" rev-parse HEAD 2>/dev/null || true)"
@@ -63,13 +70,24 @@ ensure_watchtower_image() {
     build_args=(--network "${network}" "${build_args[@]}")
   fi
   podman build "${build_args[@]}" "${ROOT_DIR}" >&2
-  podman rm -f siela-watchtower >/dev/null 2>&1 || true
+
+  # Only drop the container when this invocation will recreate it.
+  local targets=() arg
+  for arg in "${@:2}"; do
+    [[ "${arg}" == -* ]] && continue
+    targets+=("${arg}")
+  done
+  if [[ ${#targets[@]} -eq 0 || " ${targets[*]} " == *" watchtower "* ]]; then
+    podman rm -f siela-watchtower >/dev/null 2>&1 || true
+  else
+    echo "watchtower image rebuilt; recreate the container with: $0 up -d watchtower" >&2
+  fi
 }
 
 WATCHTOWER_ENABLED="$(read_flag WATCHTOWER_ENABLED)"
 
-if [[ "${1:-}" == "up" && "$(read_flag WATCHTOWER_ENABLED)" != "false" ]]; then
-  ensure_watchtower_image
+if [[ "${1:-}" == "up" && "${WATCHTOWER_ENABLED}" != "false" ]]; then
+  ensure_watchtower_image "$@"
 fi
 
 COMPOSE=(podman compose -p siela -f "${ROOT_DIR}/deploy/podman/compose.yaml")

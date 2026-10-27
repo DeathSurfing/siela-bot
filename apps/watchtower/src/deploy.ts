@@ -33,6 +33,8 @@ async function runWrapper(
       // run` removes orphan containers, and this container is an orphan when
       // the overlay is omitted.
       WATCHTOWER_ENABLED: "true",
+      // Tells the wrapper not to rebuild or remove this very container.
+      WATCHTOWER_RUNNING: "1",
     },
     timeoutMs,
   });
