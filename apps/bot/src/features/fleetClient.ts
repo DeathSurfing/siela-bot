@@ -8,6 +8,8 @@ export interface FleetPlayResult {
   title: string;
 }
 
+const FULL_MESSAGE = "All voice nodes are busy. Add more worker nodes for more concurrent streams.";
+
 /**
  * Commander-side fleet client. When the commander's own voice is locked
  * (Tambola, TTS), `/play` falls back to a free fleet node via the router
@@ -16,6 +18,10 @@ export interface FleetPlayResult {
 export interface FleetNodePlayback {
   state: MusicQueueState | null;
   channelId: string | null;
+}
+
+interface RouterErrorBody {
+  error?: { message?: unknown };
 }
 
 export class FleetClient {
@@ -38,148 +44,153 @@ export class FleetClient {
     return { "content-type": "application/json", authorization: `Bearer ${this.token}` };
   }
 
-  /** Live playback state (plus voice channel) of one fleet node. */
-  async nodeState(nodeId: string): Promise<FleetNodePlayback> {
+  private async request(
+    method: string,
+    path: string,
+    body: unknown,
+    timeoutMs: number,
+    logContext: Record<string, unknown>,
+    unreachableMessage: string,
+  ): Promise<{ status: number; parsed: unknown }> {
     let response: Response;
     try {
-      response = await fetch(`${this.base()}/v1/music/state?nodeId=${encodeURIComponent(nodeId)}`, {
-        headers: { authorization: `Bearer ${this.token}` },
-        signal: AbortSignal.timeout(15_000),
+      response = await fetch(`${this.base()}${path}`, {
+        method,
+        headers: method === "GET" ? { authorization: `Bearer ${this.token}` } : this.auth(),
+        body: method === "GET" ? undefined : JSON.stringify(body ?? {}),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
-      this.logger.warn({ err: error, nodeId }, "fleet node unreachable");
-      throw new UserError("That voice node is unreachable.");
+      this.logger.warn({ err: error, ...logContext }, "fleet request unreachable");
+      throw new UserError(unreachableMessage);
     }
-    const parsed = (await response.json().catch(() => null)) as (MusicQueueState & { channelId?: unknown }) | null;
-    if (!response.ok || !parsed || typeof parsed !== "object") {
+    const parsed: unknown = await response.json().catch(() => null);
+    return { status: response.status, parsed };
+  }
+
+  private errorMessage(parsed: unknown, fallback: string): string {
+    const message = (parsed as RouterErrorBody | null)?.error?.message;
+    return typeof message === "string" ? message : fallback;
+  }
+
+  private throwForStatus(
+    status: number,
+    parsed: unknown,
+    fallback: string,
+    logContext: Record<string, unknown>,
+  ): never {
+    if (status === 429) throw new UserError(FULL_MESSAGE);
+    this.logger.debug({ status, ...logContext }, "fleet request failed");
+    throw new UserError(this.errorMessage(parsed, fallback));
+  }
+
+  /** Live playback state (plus voice channel) of one fleet node. */
+  async nodeState(nodeId: string): Promise<FleetNodePlayback> {
+    const { status, parsed } = await this.request(
+      "GET",
+      `/v1/music/state?nodeId=${encodeURIComponent(nodeId)}`,
+      undefined,
+      15_000,
+      { nodeId },
+      "That voice node is unreachable.",
+    );
+    const state = parsed as (MusicQueueState & { channelId?: unknown }) | null;
+    if (status !== 200 || !state || typeof state !== "object") {
       throw new UserError("That voice node is unreachable.");
     }
     return {
       state: {
-        playing: parsed.playing === true,
-        paused: parsed.paused === true,
-        volume: typeof parsed.volume === "number" ? parsed.volume : 80,
-        loop: parsed.loop === "track" || parsed.loop === "queue" ? parsed.loop : "off",
-        position: typeof parsed.position === "number" ? parsed.position : 0,
-        current: (parsed.current ?? null) as MusicQueueState["current"],
-        upcoming: Array.isArray(parsed.upcoming) ? parsed.upcoming : [],
+        playing: state.playing === true,
+        paused: state.paused === true,
+        volume: typeof state.volume === "number" ? state.volume : 80,
+        loop: state.loop === "track" || state.loop === "queue" ? state.loop : "off",
+        position: typeof state.position === "number" ? state.position : 0,
+        current: (state.current ?? null) as MusicQueueState["current"],
+        upcoming: Array.isArray(state.upcoming) ? state.upcoming : [],
       },
-      channelId: typeof parsed.channelId === "string" ? parsed.channelId : null,
+      channelId: typeof state.channelId === "string" ? state.channelId : null,
     };
   }
 
   /** Forward one music op to a fleet node (nodeId always attached). */
   async control(nodeId: string, op: string, body: Record<string, unknown> = {}): Promise<unknown> {
-    let response: Response;
-    try {
-      response = await fetch(`${this.base()}/v1/music/${op}`, {
-        method: "POST",
-        headers: this.auth(),
-        body: JSON.stringify({ ...body, nodeId }),
-        signal: AbortSignal.timeout(op === "play" ? 300_000 : 30_000),
-      });
-    } catch (error) {
-      this.logger.warn({ err: error, nodeId, op }, "fleet control unreachable");
-      throw new UserError("That voice node is unreachable.");
-    }
-    const parsed = (await response.json().catch(() => null)) as { error?: { message?: unknown } } | null;
-    if (!response.ok) {
-      const message = typeof parsed?.error?.message === "string" ? parsed.error.message : "That fleet control failed.";
-      throw new UserError(message);
+    const { status, parsed } = await this.request(
+      "POST",
+      `/v1/music/${op}`,
+      { ...body, nodeId },
+      op === "play" ? 300_000 : 30_000,
+      { nodeId, op },
+      "That voice node is unreachable.",
+    );
+    if (status !== 200) {
+      this.throwForStatus(status, parsed, "That fleet control failed.", { nodeId, op });
     }
     return parsed;
   }
 
   /** Enable TTS on a free fleet node (auto-routed). Returns the node. */
   async ttsEnable(channelId: string): Promise<string> {
-    let response: Response;
-    try {
-      response = await fetch(`${this.base()}/v1/tts/enable`, {
-        method: "POST",
-        headers: this.auth(),
-        body: JSON.stringify({ channelId }),
-        signal: AbortSignal.timeout(30_000),
-      });
-    } catch (error) {
-      this.logger.warn({ err: error }, "fleet tts unreachable");
-      throw new UserError("No voice nodes are reachable. Try again in a moment.");
+    const { status, parsed } = await this.request(
+      "POST",
+      "/v1/tts/enable",
+      { channelId },
+      30_000,
+      {},
+      "No voice nodes are reachable. Try again in a moment.",
+    );
+    if (status !== 200) {
+      this.throwForStatus(status, parsed, "Fleet TTS failed.", {});
     }
-    const parsed = (await response.json().catch(() => null)) as { nodeId?: unknown; error?: { message?: unknown } } | null;
-    if (!response.ok) {
-      if (response.status === 429) {
-        throw new UserError("All voice nodes are busy. Add more worker nodes for more concurrent streams.");
-      }
-      const message = typeof parsed?.error?.message === "string" ? parsed.error.message : "Fleet TTS failed.";
-      throw new UserError(message);
-    }
-    if (typeof parsed?.nodeId !== "string") throw new UserError("Fleet TTS returned an unexpected response.");
-    return parsed.nodeId;
+    const nodeId = (parsed as { nodeId?: unknown } | null)?.nodeId;
+    if (typeof nodeId !== "string") throw new UserError("Fleet TTS returned an unexpected response.");
+    return nodeId;
   }
 
   async ttsDisable(nodeId: string): Promise<void> {
-    await this.controlTts(nodeId, "disable", {});
+    await this.ttsControl(nodeId, "disable", {});
   }
 
   async ttsSpeak(nodeId: string, utterance: string, speakerId?: string): Promise<void> {
-    await this.controlTts(nodeId, "speak", { utterance, speakerId });
+    await this.ttsControl(nodeId, "speak", { utterance, speakerId });
   }
 
-  private async controlTts(nodeId: string, op: string, body: Record<string, unknown>): Promise<void> {
-    let response: Response;
-    try {
-      response = await fetch(`${this.base()}/v1/tts/${op}`, {
-        method: "POST",
-        headers: this.auth(),
-        body: JSON.stringify({ ...body, nodeId }),
-        signal: AbortSignal.timeout(30_000),
-      });
-    } catch (error) {
-      this.logger.warn({ err: error, nodeId, op }, "fleet tts unreachable");
-      throw new UserError("That voice node is unreachable.");
-    }
-    if (!response.ok) {
-      const parsed = (await response.json().catch(() => null)) as { error?: { message?: unknown } } | null;
-      const message = typeof parsed?.error?.message === "string" ? parsed.error.message : "Fleet TTS failed.";
-      throw new UserError(message);
+  private async ttsControl(nodeId: string, op: string, body: Record<string, unknown>): Promise<void> {
+    const { status, parsed } = await this.request(
+      "POST",
+      `/v1/tts/${op}`,
+      { ...body, nodeId },
+      30_000,
+      { nodeId, op },
+      "That voice node is unreachable.",
+    );
+    if (status !== 200) {
+      this.throwForStatus(status, parsed, "Fleet TTS failed.", { nodeId, op });
     }
   }
 
   async autoPlay(query: string, voiceChannelId?: string, next = false): Promise<FleetPlayResult> {
-    if (!this.routerUrl) throw new UserError("The voice fleet is not configured.");
-    let response: Response;
-    try {
-      response = await fetch(`${this.routerUrl.replace(/\/+$/, "")}/v1/music/play`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${this.token}`,
-        },
-        body: JSON.stringify({ query, voiceChannelId, next }),
-        signal: AbortSignal.timeout(300_000),
-      });
-    } catch (error) {
-      this.logger.warn({ err: error }, "fleet auto-route unreachable");
-      throw new UserError("No voice nodes are reachable. Try again in a moment.");
-    }
-    const parsed = (await response.json().catch(() => null)) as {
+    const { status, parsed } = await this.request(
+      "POST",
+      "/v1/music/play",
+      { query, voiceChannelId, next },
+      300_000,
+      {},
+      "No voice nodes are reachable. Try again in a moment.",
+    );
+    const result = parsed as {
       nodeId?: unknown;
       result?: { added?: unknown; first?: { title?: unknown } };
-      error?: { code?: unknown; message?: unknown };
     } | null;
-    if (!response.ok) {
-      if (response.status === 429) {
-        throw new UserError("All voice nodes are busy. Add more worker nodes for more concurrent streams.");
-      }
-      const message = typeof parsed?.error?.message === "string" ? parsed.error.message : "Fleet playback failed.";
-      throw new UserError(message);
+    if (status !== 200) {
+      this.throwForStatus(status, parsed, "Fleet playback failed.", {});
     }
-    if (typeof parsed?.nodeId !== "string" || typeof parsed?.result?.added !== "number") {
+    if (typeof result?.nodeId !== "string" || typeof result?.result?.added !== "number") {
       throw new UserError("Fleet playback returned an unexpected response.");
     }
     return {
-      nodeId: parsed.nodeId,
-      added: parsed.result.added,
-      title: typeof parsed.result.first?.title === "string" ? parsed.result.first.title : "Unknown title",
+      nodeId: result.nodeId,
+      added: result.result.added,
+      title: typeof result.result.first?.title === "string" ? result.result.first.title : "Unknown title",
     };
   }
 }
