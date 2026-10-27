@@ -61,6 +61,20 @@ Each node keeps an independent music queue. Queues persist in Valkey under
 `deploy/podman/compose.voice.generated.yaml` exists. To go back to one bot,
 delete the overlay and the `.env.voice-*` files and restart.
 
+## Session model
+
+One guild is one session. The fleet serves that session together:
+
+- Music plays per node (independent queues), routed by `nodeId` or
+  auto-routed to a free node.
+- Scheduled events (azan, anthem, chalisa, church, monastery, gurudwara)
+  preempt the whole session: before event audio plays, the commander calls
+  `POST /v1/session/preempt` on the router (`ROUTER_URL` in `.env`), which
+  clears every node's queue, disconnects voice, and drops semaphore
+  reservations. Set `ROUTER_URL=http://voice-router:3100` to enable it;
+  without it, only the commander's own queue is stopped. Preempt is
+  best-effort — event audio still plays if the router is unreachable.
+
 ## Routing contract
 
 Point music automation at the router (`http://voice-router:3100` on the

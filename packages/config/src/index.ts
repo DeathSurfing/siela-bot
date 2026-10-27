@@ -74,6 +74,7 @@ const botSchema = z.object({
   NODE_ID: z.string().min(1).max(64).default("commander"),
   WORKER_INTERNAL_HOST: z.string().default("0.0.0.0"),
   WORKER_INTERNAL_PORT: z.coerce.number().int().min(1).max(65535).default(3101),
+  ROUTER_URL: z.string().url().optional(),
 
   LOG_LEVEL: logLevel.default("info"),
   AUDIT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),

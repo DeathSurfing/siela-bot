@@ -122,8 +122,36 @@ export class RouterServer {
       nodes: this.nodes.map((node) => ({ nodeId: node.id })),
     }));
 
-    this.app.get("/v1/music/state-all", async () => {
+    // Session preempt: one guild is one session. Scheduled events call this
+    // before playing so worker playback never overlaps event audio. Clears
+    // every node's queue, disconnects voice, and drops pool reservations.
+    this.app.post("/v1/session/preempt", async () => {
       const settled = await Promise.allSettled(
+        this.nodes.map(async (node) => {
+          for (const op of ["clear", "disconnect"] as const) {
+            const response = await fetch(`${node.baseUrl}/internal/music/${op}`, {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: `Bearer ${this.options.token}`,
+              },
+              body: "{}",
+              signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+            });
+            if (!response.ok) throw new Error(`Node ${node.id} ${op} returned ${response.status}.`);
+          }
+          return { nodeId: node.id, ok: true as const };
+        }),
+      );
+      for (const node of this.nodes) this.pool.release(node.id);
+      return settled.map((entry, index) =>
+        entry.status === "fulfilled"
+          ? entry.value
+          : { nodeId: this.nodes[index]!.id, ok: false as const, error: entry.reason instanceof Error ? entry.reason.message : String(entry.reason) },
+      );
+    });
+
+    this.app.get("/v1/music/state-all", async () => {      const settled = await Promise.allSettled(
         this.nodes.map(async (node) => {
           const response = await fetch(`${node.baseUrl}/internal/music/state`, {
             headers: { authorization: `Bearer ${this.options.token}` },

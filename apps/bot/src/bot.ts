@@ -180,6 +180,8 @@ export class SielaBot {
       isVoiceBusy,
       this.config.YTDLP_PATH,
       this.config.FFMPEG_PATH,
+      this.config.ROUTER_URL ?? null,
+      this.config.MCP_TOKEN,
     );
     const activity = new ActivityService(this.dbHandle.db, friendship, tempVc, music, this.logger, economy);
     const leveling = new LevelingService(this.dbHandle.db, settings, this.client, this.logger);

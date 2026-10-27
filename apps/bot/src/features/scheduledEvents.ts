@@ -98,7 +98,34 @@ export class ScheduledEventService {
     private readonly isVoiceBusy?: (guildId: string) => boolean,
     private readonly ytdlpPath = "yt-dlp",
     private readonly ffmpegPath = "ffmpeg",
+    private readonly routerUrl: string | null = null,
+    private readonly routerToken: string | null = null,
   ) {}
+
+  /**
+   * Session preempt: one guild is one session. Before event audio plays,
+   * tell the router to clear every node's queue and disconnect voice so
+   * worker playback never overlaps the event. Best-effort: event audio
+   * still plays if the router is unreachable.
+   */
+  private async preemptSession(guildId: string, phase: string): Promise<void> {
+    if (!this.routerUrl || !this.routerToken) return;
+    try {
+      const response = await fetch(`${this.routerUrl.replace(/\/+$/, "")}/v1/session/preempt`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${this.routerToken}`,
+        },
+        body: "{}",
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) throw new Error(`router preempt returned ${response.status}`);
+      this.logger.info({ guildId, phase }, "voice session preempted for scheduled event");
+    } catch (error) {
+      this.logger.warn({ err: error, guildId, phase }, "session preempt failed; playing event audio anyway");
+    }
+  }
 
   start(guild: Guild): void {
     if (!this.enabled) {
@@ -360,6 +387,7 @@ export class ScheduledEventService {
       this.stopPlayback();
       await this.music?.stop(guild.id).catch(() => undefined);
       await this.music?.disconnect(guild.id).catch(() => undefined);
+      await this.preemptSession(guild.id, phase.key);
       const channel = await this.ensureEventChannel(guild, phase.channelName);
       await this.moveEveryone(guild, channel);
       if (phase.youtubeUrl) {
