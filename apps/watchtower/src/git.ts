@@ -101,6 +101,16 @@ export async function changedFiles(repoDir: string, from: string, to: string): P
     .filter(Boolean);
 }
 
+/** True when `ancestor` is reachable from `descendant`. */
+export async function isAncestor(repoDir: string, ancestor: string, descendant: string): Promise<boolean> {
+  const result = await runCommand(
+    "git",
+    ["merge-base", "--is-ancestor", ancestor, descendant],
+    { cwd: repoDir },
+  );
+  return result.code === 0;
+}
+
 export async function fastForward(repoDir: string): Promise<void> {
   const result = await runCommand("git", ["merge", "--ff-only", "FETCH_HEAD"], {
     cwd: repoDir,
