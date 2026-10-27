@@ -56,9 +56,8 @@ services:
     mem_limit: 256m
 
   llm:
-    # CUDA 12.4 build pinned for the host's NVIDIA 535 driver. Newer
-    # `server-cuda` tags are built against CUDA 12.8 and refuse to start.
-    image: ghcr.io/ggml-org/llama.cpp:server-cuda-b4729
+    # Needs a driver that supports CUDA 12.8 (550 or newer; verified on 595).
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
     container_name: siela-llm
     networks: [edge, control]
     devices:
@@ -90,9 +89,13 @@ services:
       - "q8_0"
       # KV quantization on CUDA needs flash attention.
       - "-fa"
+      - "on"
       # Keep the weights in VRAM so system RAM stays free.
       - "-ngl"
       - "99"
+      # N-gram self-speculation speeds decoding without a draft model.
+      - "--spec-type"
+      - "ngram-simple"
     restart: unless-stopped
     mem_limit: 2g
     healthcheck:

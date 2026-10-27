@@ -8,13 +8,16 @@ Production stack for Siela Bot. All services run under one compose project (`-p 
 - cgroups v2.
 - About 25 GB of free disk for images and model weights.
 - Outbound access to container registries, Hugging Face, Discord, and the music providers.
-- NVIDIA GPU with driver 535 or newer, plus the driver userspace libraries in
-  `/opt/nvidia-libs` (`libcuda.so.1`, `libnvidia-ml.so.1`,
-  `libnvidia-ptxjitcompiler.so.1`). Podman here has no CDI spec, so the compose
-  file passes `/dev/nvidia*` and mounts those libraries directly.
+- NVIDIA GPU with a driver that supports CUDA 12.8 (550 or newer; verified on
+  595.112.07), plus matching driver userspace libraries in `/opt/nvidia-libs`
+  (`libcuda.so.1`, `libnvidia-ml.so.1`, `libnvidia-ptxjitcompiler.so.1`,
+  `libnvidia-gpucomp.so.1`). They must be the same version as the kernel
+  module, or CUDA init fails and llama.cpp quietly falls back to CPU. Podman
+  here has no CDI spec, so the compose file passes `/dev/nvidia*` and mounts
+  those libraries directly.
 
 The `llm` service runs llama.cpp with CUDA and keeps the weights in VRAM, which
-frees about 1 GB of system RAM and is roughly six times faster than CPU. Set
+frees about 1 GB of system RAM and is roughly nine times faster than CPU. Set
 `-ngl 0` and remove the devices and library mount to fall back to CPU.
 
 ## Services
@@ -68,7 +71,7 @@ Workers only exist when `scripts/make-voice-overlay.sh <N>` has generated the ov
 |---|---|---|
 | `postgres` | `postgres:17-alpine` | Data on `pgdata`; `data` network only |
 | `valkey` | `valkey/valkey:8-alpine` | Append-only cache; `VALKEY_URL=redis://valkey:6379` |
-| `llm` | `ghcr.io/ggml-org/llama.cpp:server-cuda-b4729` (CUDA 12.4) | Model `DeathSurfing/tinyTanLLM-delulu-gemma` (`delulu-gemma-q4_k_m.gguf`, ctx 1024, q8_0 KV, flash attention); all 27 layers in VRAM, ~140 MB host RAM. Pinned to the last CUDA 12.4 build because the host driver is 535; newer tags need CUDA 12.8. Weights cached in `llmcache`. |
+| `llm` | `ghcr.io/ggml-org/llama.cpp:server-cuda` | Model `DeathSurfing/tinyTanLLM-delulu-gemma` (`delulu-gemma-q4_k_m.gguf`, ctx 1024, q8_0 KV, flash attention, n-gram speculation); all 27 layers in VRAM (~2 GB), ~250 MB host RAM, 90-120 tok/s. Weights cached in `llmcache`. |
 | `tts` | `localhost/siela-tts:latest` | CPU; KittenTTS model baked at build but loaded lazily; `/healthz`, `/warmup`, `/unload`, `/synthesize`, `/synthesize-stream` |
 | `migrate` | `localhost/siela-bot:latest` | One-shot migration runner; exits after the schema is current |
 | `bot` | `localhost/siela-bot:latest` | `oven/bun` image with yt-dlp, mpv, and ffmpeg; commander by default (`NODE_ROLE=commander`) |
