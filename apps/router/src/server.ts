@@ -29,6 +29,7 @@ export class RouterServer {
     this.nodes = parseNodes(options.nodesRaw);
     this.app = Fastify({ logger: false, bodyLimit: 16 * 1024 });
     this.app.addHook("preHandler", async (request, reply) => {
+      if (request.url === "/healthz") return;
       if (!this.validToken(request.headers.authorization)) {
         return reply.code(401).send({ error: { code: "unauthorized", message: "Invalid router token" } });
       }
