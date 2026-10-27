@@ -96,6 +96,9 @@ services:
       # N-gram self-speculation speeds decoding without a draft model.
       - "--spec-type"
       - "ngram-simple"
+      # One slot: Delulu calls are occasional, and extra slots cost host RAM.
+      - "--parallel"
+      - "1"
     restart: unless-stopped
     mem_limit: 2g
     healthcheck:
