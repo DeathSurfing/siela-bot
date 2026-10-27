@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import type { Logger } from "./logger.js";
 import { MUSIC_OPS, parseNodes, workerPath, type FleetNode } from "./nodes.js";
+import { FleetPool, type NodePlaybackState } from "./pool.js";
 
 export interface RouterOptions {
   token: string;
@@ -24,9 +25,11 @@ function stripNodeId(body: unknown): unknown {
 export class RouterServer {
   private readonly app: FastifyInstance;
   private readonly nodes: FleetNode[];
+  private readonly pool: FleetPool;
 
   constructor(private readonly options: RouterOptions) {
     this.nodes = parseNodes(options.nodesRaw);
+    this.pool = new FleetPool(this.nodes, (node) => this.readPlaybackState(node));
     this.app = Fastify({ logger: false, bodyLimit: 16 * 1024 });
     this.app.addHook("preHandler", async (request, reply) => {
       if (request.url === "/healthz") return;
@@ -45,7 +48,12 @@ export class RouterServer {
         void reply.code(statusCode).send(payload);
         return;
       }
-      const code = statusCode >= 500 ? "internal_error" : "bad_request";
+      const code =
+        typeof (error as { code?: unknown }).code === "string"
+          ? (error as { code: string }).code
+          : statusCode >= 500
+            ? "internal_error"
+            : "bad_request";
       void reply.code(statusCode).send({ error: { code, message: (error as Error).message } });
     });
     this.registerRoutes();
@@ -62,6 +70,16 @@ export class RouterServer {
     const node = this.nodes.find((candidate) => candidate.id === nodeId);
     if (!node) throw Object.assign(new Error(`Unknown voice node: ${nodeId}.`), { statusCode: 400 });
     return `${node.baseUrl}${path}`;
+  }
+
+  private async readPlaybackState(node: FleetNode): Promise<NodePlaybackState> {
+    const response = await fetch(`${node.baseUrl}/internal/music/state`, {
+      headers: { authorization: `Bearer ${this.options.token}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error(`Node ${node.id} returned ${response.status}.`);
+    const state = (await response.json()) as { playing?: unknown; current?: unknown };
+    return { playing: state.playing === true, hasCurrent: state.current != null, reachable: true };
   }
 
   private async forward(url: string, body: unknown, timeoutMs: number): Promise<unknown> {
@@ -131,14 +149,30 @@ export class RouterServer {
       }
       const body = (request.body ?? {}) as Record<string, unknown>;
       const nodeId = typeof body.nodeId === "string" ? body.nodeId : undefined;
-      if (!nodeId) {
-        throw Object.assign(new Error("nodeId is required when a voice fleet is configured."), { statusCode: 400 });
+      if (nodeId || op !== "play") {
+        if (!nodeId) {
+          throw Object.assign(new Error("nodeId is required for this operation."), { statusCode: 400 });
+        }
+        return this.forward(
+          this.nodeUrl(nodeId, workerPath(op)),
+          stripNodeId(body),
+          op === "play" ? PLAY_TIMEOUT_MS : DEFAULT_TIMEOUT_MS,
+        );
       }
-      return this.forward(
-        this.nodeUrl(nodeId, workerPath(op)),
-        stripNodeId(body),
-        op === "play" ? PLAY_TIMEOUT_MS : DEFAULT_TIMEOUT_MS,
-      );
+      // Auto-route: semaphore over free nodes. Rejects 429 when the fleet is full.
+      const node = await this.pool.acquire();
+      try {
+        return {
+          nodeId: node.id,
+          result: await this.forward(
+            `${node.baseUrl}${workerPath(op)}`,
+            stripNodeId(body),
+            PLAY_TIMEOUT_MS,
+          ),
+        };
+      } finally {
+        this.pool.release(node.id);
+      }
     });
 
     // Everything else goes straight to the commander.
