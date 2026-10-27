@@ -182,6 +182,132 @@ describe("play command", () => {
     expect(text).not.toContain("secret message");
   });
 
+  it("routes pause to the fleet node in the author's channel", async () => {
+    const service = {
+      state: vi.fn().mockReturnValue(null),
+      play: vi.fn(),
+      setNowPlayingMessage: vi.fn(),
+      setFleetNode: vi.fn(),
+      getFleetNode: vi.fn().mockImplementation((_g: string, ch: string) => (ch === "voice-9" ? "voice-1" : null)),
+      isVoiceLocked: vi.fn().mockReturnValue(false),
+      isConnected: vi.fn().mockReturnValue(false),
+      channelId: vi.fn().mockReturnValue(null),
+      refreshNowPlaying: vi.fn(),
+      logger: { info: () => undefined, warn: () => undefined },
+    } as unknown as MusicService;
+    const bodies: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown, init?: RequestInit) => {
+        if (String(url).includes("/v1/music/state")) {
+          return new Response(
+            JSON.stringify({
+              playing: true, paused: false, volume: 80, loop: "off", position: 1000,
+              current: { title: "T", author: "A", length: 60000, uri: "u", artworkUrl: null, isStream: false },
+              upcoming: [], channelId: "voice-9",
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        bodies.push(`${init?.method} ${String(url)} :: ${String(init?.body)}`);
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+    const edited: ReplyPayload[] = [];
+    const ctx = {
+      guild: { id: "guild-1" } as Guild,
+      member: { voice: { channelId: "voice-9" } } as unknown as GuildMember,
+      author: { id: "user-1" } as User,
+      args: [],
+      rawArgs: "",
+      commandName: "pause",
+      source: "slash",
+      services: { music: service, config: { ROUTER_URL: "http://router:3100", MCP_TOKEN: "token-1234567890123456" } } as unknown as Services,
+      client: {} as CommandContext["client"],
+      channel: {} as CommandContext["channel"],
+      interaction: undefined,
+      message: undefined,
+      reply: vi.fn().mockResolvedValue(null),
+      defer: vi.fn().mockResolvedValue(undefined),
+      edit: vi.fn(),
+      followUp: vi.fn().mockResolvedValue(null),
+    } as unknown as CommandContext;
+
+    const pauseCommand = musicCommands.find((command) => command.name === "pause");
+    await pauseCommand!.execute(ctx);
+    vi.unstubAllGlobals();
+
+    expect(service.pause).toBeUndefined();
+    expect(bodies.some((b) => b.includes("/v1/music/pause") && b.includes('"nodeId":"voice-1"'))).toBe(true);
+    const replied = (ctx.reply as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[0] as { content?: string };
+    expect(replied.content ?? "").toContain("Paused.");
+  });
+
+  it("routes skip with count to the fleet node", async () => {
+    const service = {
+      state: vi.fn().mockReturnValue(null),
+      play: vi.fn(),
+      skip: vi.fn(),
+      setNowPlayingMessage: vi.fn(),
+      setFleetNode: vi.fn(),
+      getFleetNode: vi.fn().mockReturnValue("voice-2"),
+      isVoiceLocked: vi.fn().mockReturnValue(true),
+      isConnected: vi.fn().mockReturnValue(true),
+      channelId: vi.fn().mockReturnValue("other-ch"),
+      refreshNowPlaying: vi.fn(),
+      logger: { info: () => undefined, warn: () => undefined },
+    } as unknown as MusicService;
+    const bodies: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown, init?: RequestInit) => {
+        if (String(url).includes("/v1/music/state")) {
+          return new Response(
+            JSON.stringify({
+              playing: true, paused: false, volume: 80, loop: "off", position: 0,
+              current: { title: "T", author: "A", length: 60000, uri: "u", artworkUrl: null, isStream: false },
+              upcoming: [], channelId: "voice-9",
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        bodies.push(`${init?.method} ${String(url)} :: ${String(init?.body)}`);
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+    const ctx = {
+      guild: { id: "guild-1" } as Guild,
+      member: { voice: { channelId: "voice-9" } } as unknown as GuildMember,
+      author: { id: "user-1" } as User,
+      args: ["2"],
+      rawArgs: "2",
+      commandName: "skip",
+      source: "slash",
+      services: { music: service, config: { ROUTER_URL: "http://router:3100", MCP_TOKEN: "token-1234567890123456" }, settings: { getMusic: vi.fn().mockResolvedValue({ djRoleIds: [] }) } } as unknown as Services,
+      client: {} as CommandContext["client"],
+      channel: {} as CommandContext["channel"],
+      interaction: undefined,
+      message: undefined,
+      reply: vi.fn().mockResolvedValue("ok"),
+      defer: vi.fn().mockResolvedValue(undefined),
+      edit: vi.fn(),
+      followUp: vi.fn().mockResolvedValue(null),
+    } as unknown as CommandContext;
+
+    const skipCommand = musicCommands.find((command) => command.name === "skip");
+    await skipCommand!.execute(ctx);
+    vi.unstubAllGlobals();
+
+    expect(service.skip).not.toHaveBeenCalled();
+    expect(bodies.some((b) => b.includes("/v1/music/skip") && b.includes('"count":2'))).toBe(true);
+  });
+
   it("queues onto the node already serving the voice channel", async () => {
     const service = {
       state: vi.fn().mockReturnValue(null),

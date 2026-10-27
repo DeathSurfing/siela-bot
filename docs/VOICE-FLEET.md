@@ -110,8 +110,10 @@ music instance**. Playing in VC-A then VC-B runs two simultaneous streams:
 the commander takes a channel when its voice is free for it, otherwise the
 track auto-routes to a free fleet node, and the VC→node binding sticks for
 later plays in that channel. Each instance gets the full now-playing card,
-and all buttons route to the node behind that card. Queues never merge
-across channels; stop/disconnect ends only that VC's instance.
+and all interface — card buttons, `/nowplaying`, `/queue`, `/lyrics`, and
+every control command (`pause`, `skip`, `stop`, `volume`, `loop`, …) —
+follows the author's voice channel to the right node. Queues never merge
+across channels; stop/disconnect ends only that VC's stream.
 
 ## Sticky TTS
 

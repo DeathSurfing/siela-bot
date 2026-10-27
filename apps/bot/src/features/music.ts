@@ -653,21 +653,21 @@ export class MusicService extends EventEmitter {
     this.nowPlayingMessages.set(guildId, message);
   }
 
-  refreshNowPlaying(guildId: string): void {
-    void this.updateNowPlaying(guildId);
+  refreshNowPlaying(guildId: string, state?: MusicQueueState | null, channelId?: string | null): void {
+    void this.updateNowPlaying(guildId, state, channelId);
   }
 
-  private async updateNowPlaying(guildId: string): Promise<void> {
+  private async updateNowPlaying(guildId: string, state?: MusicQueueState | null, channelId?: string | null): Promise<void> {
     const message = this.nowPlayingMessages.get(guildId);
     if (!message || this.nowPlayingUpdating.has(guildId)) return;
-    const state = this.state(guildId);
-    if (!state?.current) {
+    const resolved = state ?? this.state(guildId);
+    if (!resolved?.current) {
       this.nowPlayingMessages.delete(guildId);
       return;
     }
     this.nowPlayingUpdating.add(guildId);
     try {
-      await message.edit(buildMusicPayload(guildId, state));
+      await message.edit(buildMusicPayload(guildId, resolved, undefined, channelId ?? undefined));
     } catch {
       this.nowPlayingMessages.delete(guildId);
     } finally {

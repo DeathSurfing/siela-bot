@@ -14,6 +14,41 @@ function music(ctx: CommandContext): MusicService {
   return ctx.services.music;
 }
 
+interface FleetTarget {
+  fleet: FleetClient;
+  nodeId: string;
+  channelId: string;
+}
+
+/**
+ * The fleet instance for the author's voice channel, if one is playing
+ * there. Every VC is its own instance; text commands follow the user.
+ */
+function fleetTarget(ctx: CommandContext): FleetTarget | null {
+  const service = music(ctx);
+  const channelId = ctx.member.voice?.channelId ?? undefined;
+  if (!channelId) return null;
+  const nodeId = service.getFleetNode(ctx.guild.id, channelId);
+  if (!nodeId || !ctx.services.config.ROUTER_URL) return null;
+  return {
+    fleet: new FleetClient(ctx.services.config.ROUTER_URL, ctx.services.config.MCP_TOKEN, service.logger),
+    nodeId,
+    channelId,
+  };
+}
+
+/** Run a music op on the fleet instance and refresh its card. */
+async function fleetControl(
+  ctx: CommandContext,
+  target: FleetTarget,
+  op: string,
+  body: Record<string, unknown> = {},
+): Promise<void> {
+  await target.fleet.control(target.nodeId, op, body);
+  const { state } = await target.fleet.nodeState(target.nodeId);
+  await music(ctx).refreshNowPlaying(ctx.guild.id, state, target.channelId);
+}
+
 /** Queue onto a fleet node and reply with the commander's now-playing card. */
 async function fleetPlayCard(
   ctx: CommandContext,
@@ -163,6 +198,12 @@ const pauseCommand: Command = {
   examples: ["pause"],
   slash: new SlashCommandBuilder().setName("pause").setDescription("Pause playback"),
   async execute(ctx) {
+    const target = fleetTarget(ctx);
+    if (target) {
+      await fleetControl(ctx, target, "pause", {});
+      await ctx.reply(success("Paused."));
+      return;
+    }
     requireSameVoice(ctx);
     await music(ctx).pause(ctx.guild.id);
     music(ctx).refreshNowPlaying(ctx.guild.id);
@@ -178,6 +219,12 @@ const resumeCommand: Command = {
   examples: ["resume"],
   slash: new SlashCommandBuilder().setName("resume").setDescription("Resume playback"),
   async execute(ctx) {
+    const target = fleetTarget(ctx);
+    if (target) {
+      await fleetControl(ctx, target, "resume", {});
+      await ctx.reply(success("Resumed."));
+      return;
+    }
     requireSameVoice(ctx);
     await music(ctx).resume(ctx.guild.id);
     music(ctx).refreshNowPlaying(ctx.guild.id);
@@ -197,8 +244,14 @@ const skipCommand: Command = {
     .setDescription("Skip track(s)")
     .addIntegerOption((option) => option.setName("count").setDescription("Tracks to skip").setRequired(false).setMinValue(1).setMaxValue(50)),
   async execute(ctx) {
-    requireSameVoice(ctx);
     await requireDj(ctx);
+    const target = fleetTarget(ctx);
+    if (target) {
+      await fleetControl(ctx, target, "skip", { count: Number(ctx.args[0] ?? 1) || 1 });
+      await ctx.reply(success("Skipped."));
+      return;
+    }
+    requireSameVoice(ctx);
     await music(ctx).skip(ctx.guild.id, Number(ctx.args[0] ?? 1) || 1);
     await ctx.reply(success("Skipped."));
   },
@@ -212,8 +265,38 @@ const stopCommand: Command = {
   examples: ["stop"],
   slash: new SlashCommandBuilder().setName("stop").setDescription("Stop and clear the queue"),
   async execute(ctx) {
-    requireSameVoice(ctx);
     await requireDj(ctx);
+    const target = fleetTarget(ctx);
+    if (target) {
+      const confirmId = "music:stop:confirm";
+      const cancelId = "music:stop:cancel";
+      const message = await ctx.reply(
+        confirmCard({
+          title: "Stop playback?",
+          body: "This stops the fleet player in your channel and clears its queue.",
+          confirmId,
+          cancelId,
+          confirmLabel: "Stop",
+        }),
+      );
+      if (!message) return;
+      attachConfirmation({
+        message,
+        userId: ctx.author.id,
+        confirmId,
+        cancelId,
+        onConfirm: async () => {
+          await target.fleet.control(target.nodeId, "stop").catch(() => undefined);
+          music(ctx).setFleetNode(ctx.guild.id, target.channelId, null);
+          const { state } = await target.fleet.nodeState(target.nodeId).catch(() => ({ state: null }));
+          await music(ctx).refreshNowPlaying(ctx.guild.id, state, target.channelId);
+          return card({ title: "Stopped", body: "The fleet player has been disconnected." });
+        },
+        onCancel: () => card({ title: "Cancelled", body: "Playback continues." }),
+      });
+      return;
+    }
+    requireSameVoice(ctx);
     const confirmId = "music:stop:confirm";
     const cancelId = "music:stop:cancel";
     const message = await ctx.reply(
@@ -255,6 +338,19 @@ const queueCommand: Command = {
     ),
   async execute(ctx) {
     const service = music(ctx);
+    const target = fleetTarget(ctx);
+    if (target) {
+      const { state } = await target.fleet.nodeState(target.nodeId);
+      if (!state?.current && !state?.upcoming.length) throw new UserError("The queue is empty.");
+      const requested = Number(ctx.args[0] ?? 1) || 1;
+      const snapshot = state;
+      const message = await ctx.reply(buildQueuePayload(ctx.guild.id, snapshot, requested));
+      if (!message) return;
+      attachPagination(message, ctx.author.id, requested, (page, disabled) =>
+        buildQueuePayload(ctx.guild.id, snapshot, page, disabled ?? false),
+      );
+      return;
+    }
     const state = service.state(ctx.guild.id);
     if (!state) throw new UserError("Nothing is playing.");
     if (!state.current && !state.upcoming.length) throw new UserError("The queue is empty.");
@@ -277,7 +373,10 @@ const lyricsCommand: Command = {
   slash: new SlashCommandBuilder().setName("lyrics").setDescription("Show lyrics for the current track"),
   async execute(ctx) {
     const service = music(ctx);
-    const state = service.state(ctx.guild.id);
+    const target = fleetTarget(ctx);
+    const state = target
+      ? (await target.fleet.nodeState(target.nodeId)).state
+      : service.state(ctx.guild.id);
     if (!state?.current) throw new UserError("Nothing is playing.");
     if (ctx.source === "prefix") {
       await ctx.reply(card({ title: "Lyrics", body: "Searching for lyrics…" }));
@@ -331,10 +430,19 @@ const volumeCommand: Command = {
     .setDescription("Set volume")
     .addIntegerOption((option) => option.setName("value").setDescription("0-150").setRequired(true).setMinValue(0).setMaxValue(150)),
   async execute(ctx) {
-    requireSameVoice(ctx);
-    await requireDj(ctx);
     const value = Number(ctx.args[0]);
     if (!Number.isInteger(value) || value < 0 || value > 150) throw new UserError("Volume must be 0-150.");
+    await requireDj(ctx);
+    const target = fleetTarget(ctx);
+    if (target) {
+      const result = (await target.fleet.control(target.nodeId, "volume", { volume: value })) as { volume?: unknown };
+      const { state } = await target.fleet.nodeState(target.nodeId);
+      await music(ctx).refreshNowPlaying(ctx.guild.id, state, target.channelId);
+      const actual = typeof result?.volume === "number" ? result.volume : value;
+      await ctx.reply(success(`Volume set to **${actual}%**.`));
+      return;
+    }
+    requireSameVoice(ctx);
     const actual = await music(ctx).volume(ctx.guild.id, value);
     music(ctx).refreshNowPlaying(ctx.guild.id);
     await ctx.reply(success(`Volume set to **${actual}%**.`));
@@ -352,10 +460,16 @@ const seekCommand: Command = {
     .setDescription("Seek the current track")
     .addStringOption((option) => option.setName("position").setDescription("mm:ss or seconds").setRequired(true)),
   async execute(ctx) {
-    requireSameVoice(ctx);
-    await requireDj(ctx);
     const position = parseDuration(ctx.args[0] ?? "");
     if (position === null) throw new UserError("Use seconds or mm:ss.");
+    await requireDj(ctx);
+    const target = fleetTarget(ctx);
+    if (target) {
+      await fleetControl(ctx, target, "seek", { positionMs: position });
+      await ctx.reply(success(`Seeked to ${formatDuration(position)}.`));
+      return;
+    }
+    requireSameVoice(ctx);
     await music(ctx).seek(ctx.guild.id, position);
     await ctx.reply(success(`Seeked to ${formatDuration(position)}.`));
   },
@@ -378,9 +492,15 @@ const loopCommand: Command = {
         .addChoices({ name: "off", value: "off" }, { name: "track", value: "track" }, { name: "queue", value: "queue" }),
     ),
   async execute(ctx) {
-    requireSameVoice(ctx);
     const mode = ctx.args[0]?.toLowerCase();
     if (mode !== "off" && mode !== "track" && mode !== "queue") throw new UserError("Use off, track, or queue.");
+    const target = fleetTarget(ctx);
+    if (target) {
+      await fleetControl(ctx, target, "loop", { mode });
+      await ctx.reply(success(`Loop mode: **${mode}**.`));
+      return;
+    }
+    requireSameVoice(ctx);
     await music(ctx).loop(ctx.guild.id, mode);
     music(ctx).refreshNowPlaying(ctx.guild.id);
     await ctx.reply(success(`Loop mode: **${mode}**.`));
@@ -395,6 +515,12 @@ const shuffleCommand: Command = {
   examples: ["shuffle"],
   slash: new SlashCommandBuilder().setName("shuffle").setDescription("Shuffle the queue"),
   async execute(ctx) {
+    const target = fleetTarget(ctx);
+    if (target) {
+      await fleetControl(ctx, target, "shuffle", {});
+      await ctx.reply(success("Queue shuffled."));
+      return;
+    }
     requireSameVoice(ctx);
     await music(ctx).shuffle(ctx.guild.id);
     music(ctx).refreshNowPlaying(ctx.guild.id);
@@ -413,8 +539,16 @@ const removeCommand: Command = {
     .setDescription("Remove a queue track")
     .addIntegerOption((option) => option.setName("index").setDescription("Queue index").setRequired(true).setMinValue(1)),
   async execute(ctx) {
-    requireSameVoice(ctx);
     await requireDj(ctx);
+    const target = fleetTarget(ctx);
+    if (target) {
+      const result = (await target.fleet.control(target.nodeId, "remove", { index: Number(ctx.args[0]) })) as { removed?: unknown };
+      const { state } = await target.fleet.nodeState(target.nodeId);
+      await music(ctx).refreshNowPlaying(ctx.guild.id, state, target.channelId);
+      await ctx.reply(success(`Removed **${typeof result?.removed === "string" ? result.removed : "track"}**.`));
+      return;
+    }
+    requireSameVoice(ctx);
     const removed = await music(ctx).remove(ctx.guild.id, Number(ctx.args[0]));
     music(ctx).refreshNowPlaying(ctx.guild.id);
     await ctx.reply(success(`Removed **${removed.title}**.`));
@@ -422,8 +556,35 @@ const removeCommand: Command = {
 };
 
 async function confirmClearQueue(ctx: CommandContext): Promise<void> {
-  requireSameVoice(ctx);
   await requireDj(ctx);
+  const target = fleetTarget(ctx);
+  if (target) {
+    const confirmId = "music:clear:confirm";
+    const cancelId = "music:clear:cancel";
+    const message = await ctx.reply(
+      confirmCard({
+        title: "Clear the queue?",
+        body: "This removes every upcoming track on this voice channel's player. The current song keeps playing.",
+        confirmId,
+        cancelId,
+        confirmLabel: "Clear queue",
+      }),
+    );
+    if (!message) return;
+    attachConfirmation({
+      message,
+      userId: ctx.author.id,
+      confirmId,
+      cancelId,
+      onConfirm: async () => {
+        await fleetControl(ctx, target, "clear", {});
+        return card({ title: "Queue cleared", body: "Every upcoming track was removed." });
+      },
+      onCancel: () => card({ title: "Cancelled", body: "The queue was not changed." }),
+    });
+    return;
+  }
+  requireSameVoice(ctx);
   const confirmId = "music:clear:confirm";
   const cancelId = "music:clear:cancel";
   const message = await ctx.reply(
@@ -475,8 +636,14 @@ const moveCommand: Command = {
     .addIntegerOption((option) => option.setName("from").setDescription("From index").setRequired(true).setMinValue(1))
     .addIntegerOption((option) => option.setName("to").setDescription("To index").setRequired(true).setMinValue(1)),
   async execute(ctx) {
-    requireSameVoice(ctx);
     await requireDj(ctx);
+    const target = fleetTarget(ctx);
+    if (target) {
+      await fleetControl(ctx, target, "move", { from: Number(ctx.args[0]), to: Number(ctx.args[1]) });
+      await ctx.reply(success("Track moved."));
+      return;
+    }
+    requireSameVoice(ctx);
     await music(ctx).move(ctx.guild.id, Number(ctx.args[0]), Number(ctx.args[1]));
     music(ctx).refreshNowPlaying(ctx.guild.id);
     await ctx.reply(success("Track moved."));
@@ -494,8 +661,14 @@ const jumpCommand: Command = {
     .setDescription("Jump to a queue track")
     .addIntegerOption((option) => option.setName("index").setDescription("Queue index").setRequired(true).setMinValue(1)),
   async execute(ctx) {
-    requireSameVoice(ctx);
     await requireDj(ctx);
+    const target = fleetTarget(ctx);
+    if (target) {
+      await fleetControl(ctx, target, "jump", { index: Number(ctx.args[0]) });
+      await ctx.reply(success("Jumped."));
+      return;
+    }
+    requireSameVoice(ctx);
     await music(ctx).jump(ctx.guild.id, Number(ctx.args[0]));
     await ctx.reply(success("Jumped."));
   },
@@ -511,6 +684,13 @@ const disconnectCommand: Command = {
   slash: new SlashCommandBuilder().setName("disconnect").setDescription("Disconnect from voice"),
   async execute(ctx) {
     await requireDj(ctx);
+    const target = fleetTarget(ctx);
+    if (target) {
+      await target.fleet.control(target.nodeId, "disconnect", {});
+      music(ctx).setFleetNode(ctx.guild.id, target.channelId, null);
+      await ctx.reply(success("Disconnected."));
+      return;
+    }
     await music(ctx).disconnect(ctx.guild.id);
     await ctx.reply(success("Disconnected."));
   },
@@ -529,9 +709,15 @@ const autoplayCommand: Command = {
       option.setName("value").setDescription("on or off").setRequired(true).addChoices({ name: "on", value: "on" }, { name: "off", value: "off" }),
     ),
   async execute(ctx) {
-    requireSameVoice(ctx);
     const value = ctx.args[0]?.toLowerCase();
     if (value !== "on" && value !== "off") throw new UserError("Use on or off.");
+    const target = fleetTarget(ctx);
+    if (target) {
+      await fleetControl(ctx, target, "autoplay", { enabled: value === "on" });
+      await ctx.reply(success(`Autoplay **${value}**.`));
+      return;
+    }
+    requireSameVoice(ctx);
     await music(ctx).autoplay(ctx.guild.id, value === "on");
     await ctx.reply(success(`Autoplay **${value}**.`));
   },
@@ -559,12 +745,18 @@ const filtersCommand: Command = {
         ),
     ),
   async execute(ctx) {
-    requireSameVoice(ctx);
-    await requireDj(ctx);
     const preset = ctx.args[0]?.toLowerCase();
     if (preset !== "off" && preset !== "bassboost" && preset !== "nightcore" && preset !== "vaporwave") {
       throw new UserError("Use off, bassboost, nightcore, or vaporwave.");
     }
+    await requireDj(ctx);
+    const target = fleetTarget(ctx);
+    if (target) {
+      await fleetControl(ctx, target, "filters", { preset });
+      await ctx.reply(success(`Filter preset: **${preset}**.`));
+      return;
+    }
+    requireSameVoice(ctx);
     await music(ctx).filters(ctx.guild.id, preset);
     music(ctx).refreshNowPlaying(ctx.guild.id);
     await ctx.reply(success(`Filter preset: **${preset}**.`));
