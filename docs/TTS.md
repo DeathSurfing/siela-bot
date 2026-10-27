@@ -71,8 +71,10 @@ procedure.
 - Model `KittenML/kitten-tts-nano-0.8` baked into the image, voice `Bruno`
   (`TTS_VOICE`), speed `1.0` (`TTS_SPEED`), 24 kHz WAV.
 - The model loads lazily on the first synthesis, `/warmup`, or `/tts on`. It is
-  dropped again on `/tts off` (and on the 30s idle timeout), returning the
-  memory to the OS.
+  dropped again on `/tts off` (and on the 30s idle timeout) when no TTS session
+  or Tambola game still needs it, returning most of the memory to the OS. The
+  ONNX Runtime environment stays alive across reloads because ORT allows only
+  one per process.
 - `GET /healthz` reports `{"status":"ok","loaded":<bool>}`.
 - `POST /warmup` loads the model, `POST /unload` drops it.
 - `GET /healthz`, `POST /synthesize` (buffered WAV), `POST /synthesize-stream`

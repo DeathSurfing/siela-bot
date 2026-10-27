@@ -11,7 +11,7 @@ use ort::session::Session;
 use ort::value::Tensor;
 use std::collections::HashMap;
 use std::io::Read;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::espeak;
 use crate::phonemizer;
@@ -20,6 +20,25 @@ use crate::pipeline;
 pub const SAMPLE_RATE: u32 = 24_000;
 /// Mirrors `outputs[0][..., :-5000]`.
 const TRIM_SAMPLES: usize = 5000;
+
+/// ONNX Runtime allows one environment per process, and the `ort` crate
+/// refuses a second `init()` even after the first is dropped. Build it once
+/// and reuse it for every lazy load and unload.
+fn shared_environment() -> Result<Arc<ort::environment::Environment>, String> {
+    static ENV: OnceLock<Result<Arc<ort::environment::Environment>, String>> = OnceLock::new();
+    ENV.get_or_init(|| {
+        ort::init()
+            .with_name("siela-tts")
+            // CPU-only everywhere: default platform EPs (e.g. CoreML on
+            // macOS) reject the model's dynamic shapes. The server target
+            // is x86_64 Linux CPU anyway.
+            .with_execution_providers([ort::ep::CPU::default().build()])
+            .build()
+            .map(Arc::new)
+            .map_err(|e| format!("ort env: {e}"))
+    })
+    .clone()
+}
 
 pub struct Synthesizer {
     _env: std::sync::Arc<ort::environment::Environment>,
@@ -114,14 +133,7 @@ impl Synthesizer {
         default_voice: String,
         default_speed: f32,
     ) -> Result<Self, String> {
-        let env = ort::init()
-            .with_name("siela-tts")
-            // CPU-only everywhere: default platform EPs (e.g. CoreML on
-            // macOS) reject the model's dynamic shapes. The server target
-            // is x86_64 Linux CPU anyway.
-            .with_execution_providers([ort::ep::CPU::default().build()])
-            .build()
-            .map_err(|e| format!("ort env: {e}"))?;
+        let env = shared_environment()?;
         let session = Session::builder(&env)
             .map_err(|e| format!("ort builder: {e}"))?
             .with_intra_threads(1)
@@ -144,7 +156,7 @@ impl Synthesizer {
         espeak::set_voice("en-us");
 
         Ok(Self {
-            _env: std::sync::Arc::new(env),
+            _env: env,
             session,
             voices,
             default_voice,
