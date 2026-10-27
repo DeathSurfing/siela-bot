@@ -80,3 +80,18 @@ done
 echo "wrote ${OUT} with ${COUNT} worker(s)"
 echo "add to deploy/podman/.env:"
 echo "NODES=${NODES}"
+echo
+echo "invite each worker to the guild (same scopes/permissions as the commander):"
+for i in $(seq 1 "${COUNT}"); do
+  CLIENT_ID="$(grep -E '^DISCORD_CLIENT_ID=' "${ENV_DIR}/.env.voice-${i}" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r"' || true)"
+  GUILD_ID="$(grep -E '^GUILD_ID=' "${ENV_DIR}/.env" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r"' || true)"
+  if [[ -n "${CLIENT_ID}" ]]; then
+    URL="https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&scope=bot%20applications.commands&permissions=322292816"
+    if [[ -n "${GUILD_ID:-}" ]]; then
+      URL="${URL}&guild_id=${GUILD_ID}&disable_guild_select=true"
+    fi
+    echo "voice-${i}: ${URL}"
+  else
+    echo "voice-${i}: set DISCORD_CLIENT_ID in .env.voice-${i} to print its invite URL"
+  fi
+done
