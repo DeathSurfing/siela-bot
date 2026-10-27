@@ -35,7 +35,7 @@ export const activityCommand: Command = {
       `**Voice** · ${formatDuration(row?.voiceSeconds ?? 0)}`,
       `**Last active** · ${row?.lastActiveAt ? `<t:${Math.floor(row.lastActiveAt.getTime() / 1000)}:R>` : "never"}`,
     ].join("\n");
-    await ctx.reply(card({ title: "Activity", subtitle: member.displayName, body }));
+    await ctx.reply(card({ theme: "primary", title: "Activity", subtitle: member.displayName, body }));
   },
 };
 

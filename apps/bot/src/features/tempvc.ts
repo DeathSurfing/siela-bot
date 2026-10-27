@@ -1,3 +1,4 @@
+import { brandedContainer } from "./ui.js";
 import {
   ButtonBuilder,
   ButtonStyle,
@@ -138,8 +139,7 @@ export class TempVcService {
     const status = row.locked ? "Locked" : "Open";
     const limit = row.userLimit === 0 ? "unlimited" : String(row.userLimit);
     const memberCount = [...channel.members.values()].filter((member) => !member.user.bot).length;
-    const container = new ContainerBuilder()
-      .setAccentColor(UI_ACCENT)
+    const container = brandedContainer("voice", "YOUR PRIVATE CORNER")
       .addTextDisplayComponents(text(`## ${channel.name}`))
       .addTextDisplayComponents(
         text(`-# <@${row.ownerId}> · ${status} · ${memberCount}/${limit} members`),

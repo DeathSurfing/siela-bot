@@ -13,7 +13,7 @@ function onOff(value: string | undefined): boolean {
 }
 
 function configCard(settings: Awaited<ReturnType<CommandContext["services"]["settings"]["getTempVc"]>>) {
-  return card({
+  return card({ theme: "admin",
     title: "Temporary VC",
     body: [
       `**Enabled** · ${settings.enabled ? "On" : "Off"}`,

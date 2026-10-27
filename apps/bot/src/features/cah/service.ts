@@ -1,3 +1,4 @@
+import { brandedContainer } from "../ui.js";
 import { randomBytes } from "node:crypto";
 import {
   MessageFlags,
@@ -607,7 +608,7 @@ export class CahService {
   // ---------- payload builders ----------
 
   private buildLobbyPayload(game: CahGameState): ReplyPayload {
-    const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+    const container = brandedContainer("games", "CARDS AGAINST HUMANITY");
     container.addTextDisplayComponents(text("## CAH · Lobby"));
     container.addTextDisplayComponents(
       text(`Host · <@${game.hostId}> · Players ${game.players.size}/${game.maxPlayers} · Goal ${game.pointsGoal}`),
@@ -652,7 +653,7 @@ export class CahService {
 
   private buildRoundPayload(game: CahGameState): ReplyPayload {
     const round = game.round!;
-    const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+    const container = brandedContainer("games", "CARDS AGAINST HUMANITY");
     container.addTextDisplayComponents(text("## CAH · Round"));
     container.addTextDisplayComponents(text(`Black card · ${this.cardText(round.blackCardId, "black")}`));
     container.addTextDisplayComponents(text(`Judge · <@${round.judgeId}>`));
@@ -732,7 +733,7 @@ export class CahService {
   }
 
   private buildFinalPayload(game: CahGameState, note?: string): ReplyPayload {
-    const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+    const container = brandedContainer("games", "CARDS AGAINST HUMANITY");
     const title = game.status === "cancelled" ? "CAH · Cancelled" : "CAH · Finished";
     container.addTextDisplayComponents(text(`## ${title}`));
     if (note) container.addTextDisplayComponents(text(note));
@@ -753,7 +754,7 @@ export class CahService {
   private buildHandPayload(game: CahGameState, userId: string): ReplyPayload {
     const player = game.players.get(userId);
     if (!player) throw new UserError("You are not in this game.");
-    const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+    const container = brandedContainer("games", "CARDS AGAINST HUMANITY");
     container.addTextDisplayComponents(text("## Your hand"));
     const isJudge = game.round?.judgeId === userId;
     const alreadySubmitted = game.round
@@ -793,7 +794,7 @@ export class CahService {
   }
 
   private buildScoresPayload(game: CahGameState): ReplyPayload {
-    const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+    const container = brandedContainer("games", "CARDS AGAINST HUMANITY");
     container.addTextDisplayComponents(text("## CAH · Scores"));
     const rows = [...game.players.values()]
       .sort((a, b) => b.score - a.score)
@@ -803,7 +804,7 @@ export class CahService {
   }
 
   private buildEndConfirmPayload(game: CahGameState): ReplyPayload {
-    const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+    const container = brandedContainer("games", "CARDS AGAINST HUMANITY");
     container.addTextDisplayComponents(text("## End CAH?"));
     container.addTextDisplayComponents(text("This ends the game for everyone."));
     container.addSeparatorComponents(separator());
@@ -823,7 +824,7 @@ export class CahService {
   }
 
   private buildRulesPayload(): ReplyPayload {
-    const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+    const container = brandedContainer("games", "CARDS AGAINST HUMANITY");
     container.addTextDisplayComponents(text("## CAH · Rules"));
     container.addTextDisplayComponents(
       text(

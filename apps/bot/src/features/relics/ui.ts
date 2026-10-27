@@ -1,3 +1,4 @@
+import { brandedContainer } from "../ui.js";
 import {
   ActionRowBuilder,
   AttachmentBuilder,
@@ -66,7 +67,7 @@ function gallery(art: Buffer, serial: number): MediaGalleryBuilder {
 }
 
 function baseContainer(accent = RELIC_ACCENT): ContainerBuilder {
-  return new ContainerBuilder().setAccentColor(accent);
+  return brandedContainer("economy", "SIELA RELICS / ONE OF ONE").setAccentColor(accent);
 }
 
 function finish(

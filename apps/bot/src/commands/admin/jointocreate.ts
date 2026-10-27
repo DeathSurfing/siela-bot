@@ -15,7 +15,7 @@ function normalizeId(value: string | undefined): string | undefined {
 }
 
 function configCard(settings: Awaited<ReturnType<CommandContext["services"]["settings"]["getTempVc"]>>) {
-  return card({
+  return card({ theme: "admin",
     title: "Join to create",
     body: [
       `**Enabled** · ${settings.enabled ? "On" : "Off"}`,

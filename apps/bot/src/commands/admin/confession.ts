@@ -86,16 +86,16 @@ export const confessionCommand: Command = {
         cancelId,
         onConfirm: async () => {
           await ctx.services.confession.delete(ctx.guild.id, number, ctx.author.id);
-          return card({ title: "Deleted", body: `Confession #${number} was deleted.` });
+          return card({ theme: "admin", title: "Deleted", body: `Confession #${number} was deleted.` });
         },
-        onCancel: () => card({ title: "Cancelled", body: "The confession was not deleted." }),
+        onCancel: () => card({ theme: "admin", title: "Cancelled", body: "The confession was not deleted." }),
       });
       return;
     }
     if (sub === "status") {
       const channelId = await ctx.services.confession.getChannel(ctx.guild.id);
       await ctx.reply(
-        card({
+        card({ theme: "admin",
           title: "Confession wall",
           body: channelId ? `**Channel** · <#${channelId}>` : "No confession wall configured.",
           ephemeral: true,

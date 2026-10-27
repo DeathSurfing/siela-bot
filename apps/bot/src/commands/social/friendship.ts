@@ -39,7 +39,7 @@ export const friendshipCommand: Command = {
     const progress = friendshipProgress(xp);
     const next = progress.next === null ? "maxed" : `${progress.next - xp} XP to ${friendshipTier(progress.next).label}`;
     await ctx.reply(
-      card({
+      card({ theme: "social",
         title: `${tier.emoji} ${ctx.member.displayName} & ${target.displayName}`,
         subtitle: `${tier.label} · ${xp} XP`,
         body: [

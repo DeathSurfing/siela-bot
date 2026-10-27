@@ -14,7 +14,7 @@ function onOff(value: string | undefined): boolean {
 }
 
 function configCard(prefix: string, settings: Awaited<ReturnType<CommandContext["services"]["settings"]["getWelcome"]>>) {
-  return card({
+  return card({ theme: "admin",
     title: "Welcome",
     body: [
       `**Enabled** · ${settings.enabled ? "On" : "Off"}`,

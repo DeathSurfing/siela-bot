@@ -6,7 +6,7 @@ import {
 } from "@siela/shared";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { fetchInteractionGif } from "../../features/social.js";
-import { attachPagination, card, pagedCard, rankLabel, success, text, UI_ACCENT } from "../../features/ui.js";
+import { attachPagination, brandedContainer, card, pagedCard, rankLabel, success, text, UI_ACCENT } from "../../features/ui.js";
 
 function isKind(value: string | undefined): value is InteractionKind {
   return Boolean(value && INTERACTION_KINDS.includes(value as InteractionKind));
@@ -53,8 +53,7 @@ function socialCommand(kind: InteractionKind): Command {
         await ctx.services.economy.award(ctx.guild.id, ctx.author.id, 1, "social", idempotencyKey).catch(() => undefined);
       }
       const gif = await fetchInteractionGif(kind);
-      const container = new ContainerBuilder()
-        .setAccentColor(UI_ACCENT)
+      const container = brandedContainer("social", "A LITTLE LOVE / YOUR PEOPLE")
         .addTextDisplayComponents(
           text(`### ${meta.emoji} ${ctx.member.displayName} ${meta.verb} ${target.displayName}`),
           text(`-# ${count} ${meta.label.toLowerCase()} interaction${count === 1 ? "" : "s"}`),
@@ -103,7 +102,7 @@ export const socialStatsCommand: Command = {
     }
     const givenLine = `**Given**: ${INTERACTION_KINDS.map((kind) => `${INTERACTION_META[kind].label} ${given.get(kind) ?? 0}`).join(" · ")}`;
     const receivedLine = `**Received**: ${INTERACTION_KINDS.map((kind) => `${INTERACTION_META[kind].label} ${received.get(kind) ?? 0}`).join(" · ")}`;
-    await ctx.reply(card({ title: "Interaction stats", subtitle: member.displayName, body: [givenLine, receivedLine].join("\n") }));
+    await ctx.reply(card({ theme: "social", title: "Interaction stats", subtitle: member.displayName, body: [givenLine, receivedLine].join("\n") }));
   },
 };
 

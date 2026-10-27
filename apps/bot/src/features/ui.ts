@@ -1,10 +1,13 @@
 import {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   ComponentType,
   ContainerBuilder,
   MessageFlags,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
   SeparatorBuilder,
   SeparatorSpacingSize,
   TextDisplayBuilder,
@@ -14,8 +17,35 @@ import {
 } from "discord.js";
 import { COLORS } from "@siela/shared";
 import type { ReplyPayload } from "../framework/types.js";
+import { renderCardHero } from "./ui-art.js";
 
 export const UI_ACCENT = COLORS.primary;
+
+export const UI_THEMES = {
+  primary: { color: 0xa78bfa, label: "YOUR COMMUNITY, IN HARMONY", icon: "✦" },
+  social: { color: 0xe7a0c3, label: "LITTLE MOMENTS / BIG FEELINGS", icon: "♡" },
+  music: { color: 0x65d6d1, label: "THE LISTENING ROOM", icon: "♫" },
+  economy: { color: 0xe5bd75, label: "THE COMMUNITY ECONOMY", icon: "◈" },
+  games: { color: 0xa6adff, label: "THE AFTER-HOURS ARCADE", icon: "✧" },
+  voice: { color: 0x87bdf2, label: "A ROOM FOR YOUR PEOPLE", icon: "◉" },
+  admin: { color: 0x94cbb4, label: "YOUR SERVER / YOUR WAY", icon: "⌘" },
+  success: { color: 0x85cba8, label: "ALL TAKEN CARE OF", icon: "✓" },
+  warning: { color: 0xe5bd75, label: "ONE THING BEFORE WE CONTINUE", icon: "!" },
+} as const;
+export type UiTheme = keyof typeof UI_THEMES;
+
+/** Use the same visual identity in custom players, tickets, and other panels. */
+export function brandedContainer(theme: UiTheme = "primary", label?: string, compact = false): ContainerBuilder {
+  const look = UI_THEMES[theme];
+  const container = new ContainerBuilder().setAccentColor(look.color);
+  if (!compact) container.addTextDisplayComponents(text(`-# ${look.icon}  SIELA  /  ${label ?? look.label}`));
+  return container;
+}
+
+export function cardFooter(container: ContainerBuilder, value = "Made for the moments in between."): void {
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small));
+  container.addTextDisplayComponents(text(`-# ✦ ${value}`));
+}
 
 export const EMOJI = {
   music: "🎵",
@@ -103,19 +133,44 @@ export function card(options: {
   subtitle?: string;
   body?: string;
   accent?: number;
+  theme?: UiTheme;
+  eyebrow?: string;
+  footer?: string | false;
+  fields?: Array<{ label: string; value: string }>;
+  hero?: { title: string; kicker: string };
   rows?: ActionRowBuilder<MessageActionRowComponentBuilder>[];
   ephemeral?: boolean;
 }): ReplyPayload {
-  const container = new ContainerBuilder().setAccentColor(options.accent ?? UI_ACCENT);
-  if (options.title) container.addTextDisplayComponents(text(`## ${options.title}`));
-  if (options.subtitle) container.addTextDisplayComponents(text(`-# ${options.subtitle}`));
-  if (options.title || options.subtitle) container.addSeparatorComponents(separator());
+  const theme = options.theme ?? "primary";
+  const container = brandedContainer(theme, options.eyebrow);
+  if (options.accent !== undefined) container.setAccentColor(options.accent);
+  const files: AttachmentBuilder[] = [];
+  if (options.hero) {
+    const name = "siela-card-hero.png";
+    const art = renderCardHero({ ...options.hero, color: UI_THEMES[theme].color });
+    files.push(new AttachmentBuilder(art, { name }));
+    container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
+      new MediaGalleryItemBuilder().setURL(`attachment://${name}`).setDescription(options.hero.title),
+    ));
+  }
+  const heading = [options.title ? `## ${options.title}` : "", options.subtitle ? `-# ${options.subtitle}` : ""].filter(Boolean).join("\n");
+  if (heading) container.addTextDisplayComponents(text(heading));
+  if ((options.title || options.subtitle) && (options.body || options.fields?.length)) container.addSeparatorComponents(separator());
+  if (options.fields?.length) {
+    for (const field of options.fields) container.addTextDisplayComponents(text(`-# ${field.label}\n### ${field.value}`));
+    if (options.body) container.addSeparatorComponents(separator());
+  }
   if (options.body) container.addTextDisplayComponents(text(options.body));
-  if (options.rows?.length) container.addActionRowComponents(...options.rows);
+  if (options.rows?.length) {
+    container.addSeparatorComponents(separator());
+    container.addActionRowComponents(...options.rows);
+  }
+  if (options.footer !== false) cardFooter(container, options.footer || undefined);
   return {
     components: [container],
     flags: MessageFlags.IsComponentsV2,
     ephemeral: options.ephemeral,
+    ...(files.length ? { files } : {}),
   };
 }
 
@@ -146,6 +201,9 @@ export function confirmCard(options: {
   confirmLabel?: string;
 }): ReplyPayload {
   return card({
+    theme: "warning",
+    eyebrow: "CONFIRM YOUR NEXT MOVE",
+    footer: "Only you can confirm this action. The controls expire automatically.",
     title: options.title,
     body: options.body,
     ephemeral: true,

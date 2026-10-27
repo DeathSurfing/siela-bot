@@ -7,7 +7,7 @@ function normalizeRoleId(value: string | undefined): string | undefined {
 }
 
 function configCard(settings: Awaited<ReturnType<CommandContext["services"]["settings"]["getMusic"]>>) {
-  return card({
+  return card({ theme: "admin",
     title: "Music",
     body: [
       `**DJ roles** · ${settings.djRoleIds.length ? settings.djRoleIds.map((id) => `<@&${id}>`).join(", ") : "everyone"}`,

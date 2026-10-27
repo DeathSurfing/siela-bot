@@ -21,6 +21,6 @@ export const pingCommand: Command = {
       `**Uptime** · ${formatDuration(ctx.client.uptime ?? 0)}`,
       `**Music** · ${music ? "up" : "down"}`,
     ].join("\n");
-    await ctx.reply(card({ title: `${ICONS.utility} Status`, subtitle: `${APP_NAME} ${APP_VERSION}`, body }));
+    await ctx.reply(card({ theme: "primary", title: `${ICONS.utility} Status`, subtitle: `${APP_NAME} ${APP_VERSION}`, body }));
   },
 };

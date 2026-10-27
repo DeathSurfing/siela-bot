@@ -1,3 +1,4 @@
+import { brandedContainer } from "./ui.js";
 import { AttachmentBuilder, ContainerBuilder, MessageFlags, SeparatorBuilder, SeparatorSpacingSize } from "discord.js";
 import { escapeMarkdown, truncate, type MusicTrackInfo } from "@siela/shared";
 import type { ReplyPayload } from "../framework/types.js";
@@ -27,7 +28,7 @@ function filename(track: MusicTrackInfo): string {
 }
 
 export function buildLyricsPayload(track: MusicTrackInfo, result: LyricsResult): ReplyPayload {
-  const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
+  const container = brandedContainer("music", "LINER NOTES / LYRICS");
   container.addTextDisplayComponents(text(`## ${ICONS.lyrics} Lyrics`));
   container.addTextDisplayComponents(
     text(`**${escapeMarkdown(truncate(track.title, 80))}** · ${escapeMarkdown(truncate(track.author, 48))}`),

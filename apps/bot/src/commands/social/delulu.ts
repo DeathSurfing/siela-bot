@@ -4,7 +4,7 @@ import {
 } from "discord.js";
 import { BTS_MEMBERS } from "@siela/shared";
 import type { Command, CommandContext, Services } from "../../framework/types.js";
-import { card } from "../../features/ui.js";
+import { buildDeluluPayload } from "../../features/delulu-ui.js";
 import { UserError } from "../../lib/errors.js";
 import { normalizeMember } from "./bias.js";
 
@@ -164,11 +164,7 @@ async function runDelulu(ctx: DeluluContext, bias: string, nsfw: boolean): Promi
     try {
       const scenario = await ctx.services.delulu.generate(bias, nsfw);
       await ctx.edit(
-        card({
-          title: `${bias} notices you`,
-          subtitle: nsfw ? "NSFW delulu scenario" : "Delulu scenario",
-          body: scenario,
-        }),
+        buildDeluluPayload({ bias, scenario, nsfw, cost, use: used + 1 }),
       );
     } catch (error) {
       try {

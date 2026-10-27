@@ -143,7 +143,7 @@ export const tambolaCommand: Command = {
         await ctx.reply(privateReply(ctx, success("You joined. Your ticket was sent by DM.")));
       } else if (ctx.source === "prefix") {
         await ctx.reply(
-          card({
+          card({ theme: "social",
             title: "Tambola ticket",
             body: "I couldn't DM your ticket. Enable DMs and use `/tambola ticket` to open it privately.",
           }),
@@ -174,7 +174,7 @@ export const tambolaCommand: Command = {
         await ctx.reply(privateReply(ctx, success("Your ticket was sent by DM.")));
       } else if (ctx.source === "prefix") {
         await ctx.reply(
-          card({
+          card({ theme: "social",
             title: "Tambola ticket",
             body: "I couldn't DM your ticket. Enable DMs and use `/tambola ticket` to open it privately.",
           }),
@@ -210,7 +210,7 @@ export const tambolaCommand: Command = {
 
     if (action === "status") {
       const payload = tambola.status(ctx.guild.id);
-      await ctx.reply(payload ?? card({ title: "Tambola", body: "No Tambola game is running." }));
+      await ctx.reply(payload ?? card({ theme: "social", title: "Tambola", body: "No Tambola game is running." }));
       return;
     }
 

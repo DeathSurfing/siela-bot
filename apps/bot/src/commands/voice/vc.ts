@@ -110,7 +110,7 @@ export const vcCommand: Command = {
         const row = await ctx.services.tempVc.getRow(channel.id);
         if (!row) throw new UserError("This is not a temporary VC.");
         await ctx.reply(
-          card({
+          card({ theme: "voice",
             title: `${ICONS.voice} ${channel.name}`,
             subtitle: `Owner <@${row.ownerId}> · created <t:${Math.floor(row.createdAt.getTime() / 1000)}:R>`,
             body: `**${row.locked ? "Locked" : "Open"}** · limit ${row.userLimit === 0 ? "unlimited" : row.userLimit}`,

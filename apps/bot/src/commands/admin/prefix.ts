@@ -30,7 +30,7 @@ export const prefixCommand: Command = {
     if (action === "show") {
       const prefix = await ctx.services.settings.getPrefix(ctx.guild.id);
       await ctx.reply(
-        card({
+        card({ theme: "admin",
           title: "Server prefix",
           body: `Current prefix · **${prefix}**\n-# Try \`${prefix}help\`.`,
         }),
@@ -76,6 +76,6 @@ export const prefixCommand: Command = {
       before: { prefix: before },
       after: { prefix: next },
     });
-    await ctx.reply(card({ title: "Prefix updated", body: `**${before}** → **${next}**` }));
+    await ctx.reply(card({ theme: "admin", title: "Prefix updated", body: `**${before}** → **${next}**` }));
   },
 };

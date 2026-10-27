@@ -1,3 +1,4 @@
+import { brandedContainer } from "./ui.js";
 import {
   ButtonBuilder,
   ButtonStyle,
@@ -27,8 +28,7 @@ export function buildMusicPayload(
   if (!state?.current) {
     return {
       components: [
-        new ContainerBuilder()
-          .setAccentColor(UI_ACCENT)
+        brandedContainer("music", "THE LISTENING ROOM")
           .addTextDisplayComponents(text(`## ${ICONS.music} Nothing playing`))
           .addTextDisplayComponents(text("-# Use `/play` to start a track.")),
       ],
@@ -43,15 +43,9 @@ export function buildMusicPayload(
     : `${progressBar(state.position, length, 14)}  \`${formatDuration(state.position)} / ${formatDuration(length)}\``;
   const next = state.upcoming[0];
 
-  const container = new ContainerBuilder().setAccentColor(UI_ACCENT);
-  if (notice) {
-    container.addTextDisplayComponents(text(`-# ${notice}`));
-    container.addSeparatorComponents(
-      new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
-    );
-  }
+  const container = brandedContainer("music", `THE LISTENING ROOM  /  ${state.paused ? "PAUSED" : "NOW PLAYING"}${notice ? `\n-# ${notice}` : ""}`);
 
-  const titleText = text(`### ${ICONS.music} ${escapeMarkdown(truncate(track.title, 80))}`);
+  const titleText = text(`## ${escapeMarkdown(truncate(track.title, 80))}`);
   const artistText = text(`-# ${escapeMarkdown(truncate(track.author, 48))}${track.isStream ? ` · ${ICONS.live} LIVE` : ""}`);
   if (track.artworkUrl) {
     container.addSectionComponents(
@@ -60,12 +54,12 @@ export function buildMusicPayload(
         .setThumbnailAccessory(new ThumbnailBuilder({ media: { url: track.artworkUrl } })),
     );
   } else {
-    container.addTextDisplayComponents(titleText, artistText);
+    container.addTextDisplayComponents(text(`${titleText.data.content}\n${artistText.data.content}`));
   }
-  container.addTextDisplayComponents(text(progress));
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
   container.addTextDisplayComponents(
     text(
-      `-# Volume ${state.volume}% · Loop ${state.loop} · ${state.upcoming.length} queued`,
+      `**${state.paused ? "Paused at" : "Listening now"}**\n${progress}\n-# VOLUME  ${state.volume}%     /     LOOP  ${state.loop.toUpperCase()}     /     QUEUE  ${state.upcoming.length} tracks${channelId ? `  ·  <#${channelId}>` : ""}`,
     ),
   );
   if (next) {
@@ -73,7 +67,7 @@ export function buildMusicPayload(
       text(`**Next** · ${escapeMarkdown(truncate(next.title, 70))} — ${escapeMarkdown(truncate(next.author, 32))}`),
     );
   }
-
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
   container.addActionRowComponents(
     actionRow(
       new ButtonBuilder()
@@ -107,6 +101,7 @@ export function buildMusicPayload(
     );
 
   container.addActionRowComponents(actionRow(more));
+  container.addTextDisplayComponents(text("-# ✦ The best tracks are the ones you share."));
 
   return {
     components: [container],
@@ -123,8 +118,7 @@ export function buildQueuePayload(
   if (!state || (!state.current && !state.upcoming.length)) {
     return {
       components: [
-        new ContainerBuilder()
-          .setAccentColor(UI_ACCENT)
+        brandedContainer("music", "THE LISTENING ROOM")
           .addTextDisplayComponents(text(`## ${ICONS.music} Nothing playing`))
           .addTextDisplayComponents(text("-# Use `/play` to start a track.")),
       ],
@@ -143,8 +137,7 @@ export function buildQueuePayload(
     return `**${start + index + 1}.** ${escapeMarkdown(truncate(track.title, 56))} — ${escapeMarkdown(truncate(track.author, 28))} \`${duration}\``;
   });
 
-  const container = new ContainerBuilder()
-    .setAccentColor(UI_ACCENT)
+  const container = brandedContainer("music", "THE LISTENING ROOM")
     .addTextDisplayComponents(
       text(`## ${ICONS.music} Queue`),
       text(

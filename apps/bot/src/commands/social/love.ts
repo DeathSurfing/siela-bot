@@ -48,7 +48,7 @@ export const loveCalcCommand: Command = {
     const result = loveResult(ctx.guild.id, first.id, second.id);
     await ctx.services.friendship.addXp(ctx.guild.id, first.id, second.id, 1).catch(() => undefined);
     await ctx.reply(
-      card({
+      card({ theme: "social",
         title: "Love calculator",
         subtitle: `${result.score}% · ${result.title}`,
         body: [

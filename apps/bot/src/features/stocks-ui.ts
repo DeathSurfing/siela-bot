@@ -40,7 +40,7 @@ export function marketPayload(view: MarketView): ReplyPayload {
     ...lines,
   ].join("\n");
 
-  return card({
+  return card({ theme: "economy",
     title: "Siela Exchange",
     body: latest?.lastEvent ? `${body}\n\n-# Latest: ${latest.lastEvent}` : body,
     rows: [
@@ -72,7 +72,7 @@ export function portfolioPayload(view: PortfolioView): ReplyPayload {
       )
     : ["No positions yet. Buy your first stock from the market."];
 
-  return card({
+  return card({ theme: "economy",
     title: "Portfolio",
     subtitle: `Cash ${coins(view.cash)} · Holdings ${coins(view.holdingsValue)} · Net ${coins(view.netWorth)}`,
     body: [`**Unrealized** · ${signed(view.unrealized)} SC`, "", ...lines].join("\n"),

@@ -329,11 +329,15 @@ function buildOverview(commands: CommandMetadata[], categories: CommandCategory[
     .filter((command): command is CommandMetadata => Boolean(command));
 
   const body = [
-    popular.length ? `**Popular** · ${popular.map((command) => `\`${command.name}\``).join(" · ")}` : "",
+    "### What are we doing today?",
+    "**♫ Press play**\nMusic, playlists, lyrics, and a room that sounds like you.",
+    "**♡ Find your people**\nFriendships, family trees, Delulu, and little shared moments.",
+    "**◈ Make it rewarding**\nCoins, daily streaks, stocks, and one-of-one Relics.",
+    popular.length ? `**Popular / jump right in**\n${popular.map((command) => `\`${command.name}\``).join(" · ")}` : "",
     `-# Pick a category below, or use \`${prefix}help <command>\` for a direct answer.`,
   ]
     .filter(Boolean)
-    .join("\n");
+    .join("\n\n");
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId("help:category")
@@ -347,8 +351,10 @@ function buildOverview(commands: CommandMetadata[], categories: CommandCategory[
       })),
     );
 
-  return card({
+  return card({ theme: "primary",
+    eyebrow: "THE LITTLE GUIDE TO EVERYTHING",
     title: `${EMOJI.help} Siela Help`,
+    footer: "Explore a category, search a command, or make yourself at home.",
     subtitle: `${commandCountLabel(commands.length)} · prefix \`${prefix}\` · slash works too`,
     body,
     rows: [actionRow(menu), actionRow(searchButton(), closeButton())],
@@ -380,7 +386,7 @@ function buildCategory(
     "Choose a command…",
   );
 
-  return card({
+  return card({ theme: "primary",
     title: `${EMOJI[category]} ${CATEGORY_LABELS[category]}`,
     subtitle: `${commandCountLabel(categoryCommands.length)} · select one for usage`,
     body: `${body}${overflow}`,
@@ -418,7 +424,7 @@ function buildCommand(command: CommandMetadata, prefix: string): ReplyPayload {
     lines.push("", `**Cooldown** · ${command.cooldownMs / 1000}s`);
   }
 
-  return card({
+  return card({ theme: "primary",
     title: `${EMOJI[command.category]} ${command.name}`,
     subtitle: `${CATEGORY_LABELS[command.category]}${access}`,
     body: lines.join("\n"),
@@ -451,7 +457,7 @@ function buildSearch(
   } else {
     bodyLines.push(`-# Pick one below, or use \`${prefix}help <command>\` for a direct answer.`);
   }
-  return card({
+  return card({ theme: "primary",
     title: `${EMOJI.search} Search`,
     subtitle: `${matches.length} match${matches.length === 1 ? "" : "es"} for \`${truncate(query, 40)}\``,
     body: bodyLines.join("\n"),
@@ -474,7 +480,7 @@ function buildNoMatch(
   }
   bodyLines.push(`-# You can also use \`${prefix}help <command>\`.`);
 
-  return card({
+  return card({ theme: "primary",
     title: `${EMOJI.search} No match`,
     subtitle: "Search",
     body: bodyLines.join("\n"),
@@ -484,7 +490,7 @@ function buildNoMatch(
 }
 
 function buildLockedCategory(): ReplyPayload {
-  return card({
+  return card({ theme: "primary",
     title: `${EMOJI.lock} Admin`,
     subtitle: "Restricted category",
     body: "Admin commands are only visible to server admins.",
