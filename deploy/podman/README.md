@@ -71,7 +71,7 @@ Workers only exist when `scripts/make-voice-overlay.sh <N>` has generated the ov
 |---|---|---|
 | `postgres` | `postgres:17-alpine` | Data on `pgdata`; `data` network only |
 | `valkey` | `valkey/valkey:8-alpine` | Append-only cache; `VALKEY_URL=redis://valkey:6379` |
-| `llm` | `ghcr.io/ggml-org/llama.cpp:server-cuda` | Model `DeathSurfing/tinyTanLLM-delulu-gemma` (`delulu-gemma-q4_k_m.gguf`, ctx 1024, q8_0 KV, flash attention, n-gram speculation, single slot); all 27 layers in VRAM (~2 GB), ~210-250 MB host RAM, 90-120 tok/s. Weights cached in `llmcache`. |
+| `llm` | `ghcr.io/ggml-org/llama.cpp:server-cuda` | Model `DeathSurfing/tinyTanLLM-delulu-gemma` (`delulu-gemma-q4_k_m.gguf`, ctx 1024, q8_0 KV, flash attention, n-gram speculation, single slot, no host prompt cache); all 27 layers in VRAM (~2 GB), ~220-250 MB host RAM, 90-120 tok/s. Weights cached in `llmcache`. |
 | `tts` | `localhost/siela-tts:latest` | CPU; KittenTTS model baked at build but loaded lazily; `/healthz`, `/warmup`, `/unload`, `/synthesize`, `/synthesize-stream` |
 | `migrate` | `localhost/siela-bot:latest` | One-shot migration runner; exits after the schema is current |
 | `bot` | `localhost/siela-bot:latest` | `oven/bun` image with yt-dlp, mpv, and ffmpeg; commander by default (`NODE_ROLE=commander`) |
