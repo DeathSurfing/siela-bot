@@ -67,7 +67,7 @@ WATCHTOWER_TOKEN="$(rand_secret)"
 
 WATCHTOWER_ENABLED="${WATCHTOWER_ENABLED:-false}"
 WATCHTOWER_REPO_DIR="${WATCHTOWER_REPO_DIR:-${ROOT_DIR}}"
-WATCHTOWER_REPO_URL="${WATCHTOWER_REPO_URL:-https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot.git}"
+WATCHTOWER_REPO_URL="${WATCHTOWER_REPO_URL:-https://github.com/DeathSurfing/siela-bot.git}"
 WATCHTOWER_BRANCH="${WATCHTOWER_BRANCH:-main}"
 
 umask 077

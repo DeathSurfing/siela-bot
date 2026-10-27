@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security report
-    url: https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot/security/advisories/new
+    url: https://github.com/DeathSurfing/siela-bot/security/advisories/new
     about: Report a vulnerability privately. Do not open a public issue.
   - name: Setup and operations guide
-    url: https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot/blob/main/GET_STARTED.md
+    url: https://github.com/DeathSurfing/siela-bot/blob/main/GET_STARTED.md
     about: Read the setup guide before opening a deployment question.

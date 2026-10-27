@@ -67,8 +67,8 @@ The stack needs outbound access to Discord, container registries, Hugging Face, 
 ## 4. Clone and generate the environment
 
 ```bash
-git clone https://github.com/DeathSurfing/siela-nogseuui-seobeo-bot.git
-cd siela-nogseuui-seobeo-bot
+git clone https://github.com/DeathSurfing/siela-bot.git
+cd siela-bot
 
 export DISCORD_TOKEN="..."
 export GUILD_ID="..."   # recommended for a single-guild install
