@@ -4,18 +4,15 @@ The dashboard is a self-hosted control panel for the bot. It shows bot health, c
 
 ## Set up the dashboard
 
-Generate a dashboard password and a separate session signing secret. Keep both in the private `.env` file.
+`scripts/podman-init.sh` generates `DASHBOARD_PASSWORD` and `DASHBOARD_SESSION_SECRET` with the rest of the stack secrets and prints where the password is stored. Read it with:
 
 ```sh
-openssl rand -base64 24
-openssl rand -base64 48
+grep DASHBOARD_PASSWORD deploy/podman/.env
 ```
 
-Set the first value as `DASHBOARD_PASSWORD`. Set the second as `DASHBOARD_SESSION_SECRET`. The password must have at least 12 characters. The session secret must have at least 32 characters. The dashboard exits at startup when either value is missing or too short.
+To set your own values, export them before running the init script or edit `.env` afterwards. The password must have at least 12 characters. The session secret must have at least 32 characters. The dashboard exits at startup when either value is missing or too short.
 
-If `scripts/podman-init.sh` created `.env`, add both values before starting the stack. The script leaves them blank so the dashboard cannot start with a public placeholder password.
-
-Set `MCP_TOKEN` to the same bearer token used by the bot control API. Set `CONTROL_API_URL` to the bot control service address. In the Podman stack, the default is `http://bot-control:3001`.
+`MCP_TOKEN` is the same bearer token used by the bot control API. `CONTROL_API_URL` is the bot control service address. In the Podman stack, the default is `http://bot-control:3001`.
 
 Build and start the dashboard with the rest of the stack:
 
@@ -23,7 +20,15 @@ Build and start the dashboard with the rest of the stack:
 podman compose -p siela -f deploy/podman/compose.yaml up -d --build dashboard
 ```
 
-The dashboard listens on `DASHBOARD_HOST` and `DASHBOARD_PORT`. Compose publishes the host port from `DASHBOARD_PORT`. Put a TLS reverse proxy in front of any public-facing deployment. Do not expose the bot control API.
+The dashboard listens on `DASHBOARD_HOST` and `DASHBOARD_PORT` inside its container. Compose publishes the host port from `DASHBOARD_PORT` and defaults to `3000`. Set `DASHBOARD_PORT` to change the host port. Put a TLS reverse proxy in front of any public-facing deployment. Do not expose the bot control API.
+
+## Operating notes
+
+Feature switches apply immediately. The dashboard shows an Undo action after each change, and a failed write reverts the switch and shows the API message inline.
+
+The music tab needs a voice channel ID. A browser cannot report which Discord voice channel its operator is in, so paste the target channel's ID into the field above **Add to queue**. The dashboard stores it per server in browser storage. Right-click a voice channel in Discord and choose **Copy ID**; enable Developer Mode under Discord's advanced settings if that item is missing.
+
+Settings save one section at a time. Boolean switches save their visible state, and role ID fields accept a comma-separated list.
 
 ## Browser API
 

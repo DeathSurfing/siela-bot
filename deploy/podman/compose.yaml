@@ -3,7 +3,7 @@
 # Kept to the compose subset that works with both `podman compose`
 # (Docker Compose provider) and `podman-compose`.
 # No top-level `name`, no `profiles`, no `deploy`, no `secrets`,
-# and no `build.target`. The dashboard uses a bot health condition.
+# no `build.target`, and no `depends_on.condition`.
 #
 # Use the stack wrapper:
 #   scripts/podman-stack.sh up -d
@@ -229,8 +229,8 @@ services:
     env_file: .env
     networks: [edge, control]
     depends_on:
-      bot:
-        condition: service_healthy
+      - bot
+      - migrate
     environment:
       DASHBOARD_HOST: 0.0.0.0
       DASHBOARD_PORT: 3000

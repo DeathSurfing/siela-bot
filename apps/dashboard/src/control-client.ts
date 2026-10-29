@@ -40,6 +40,7 @@ export function createControlClient(baseUrl: string, token: string, fetcher: Con
         method: options.method ?? "GET",
         headers: {
           authorization: `Bearer ${token}`,
+          "x-actor": "dashboard",
           ...(options.guildId ? { "x-guild-id": options.guildId } : {}),
           ...(options.body === undefined ? {} : { "content-type": "application/json" }),
         },

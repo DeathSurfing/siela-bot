@@ -18,8 +18,22 @@ const editableFields = {
   music: ["djRoleIds", "defaultVolume", "maxQueueSize", "musicChannelId", "aloneTimeoutSeconds"],
 };
 
+const hints = {
+  channelId: "Right-click a channel in Discord and copy its ID.",
+  goodbyeChannelId: "Right-click a channel in Discord and copy its ID.",
+  hubChannelId: "The voice channel members join to create their own room.",
+  categoryId: "The category new temporary rooms are placed in.",
+  musicChannelId: "Optional text channel for player prompts.",
+  roleIds: "Comma-separated role IDs.",
+  djRoleIds: "Comma-separated role IDs that can control music.",
+  message: "Placeholders: {mention}, {user}, {server}.",
+  dmMessage: "Sent only when direct messages are enabled.",
+  goodbyeMessage: "Placeholders: {user}, {server}.",
+  nameTemplate: "Use {user} for the owner's name.",
+};
+
 const labels = {
-  prefix: "Command prefix",
+  prefix: "Prefix",
   enabled: "Enabled",
   channelId: "Welcome channel ID",
   message: "Welcome message",
@@ -80,7 +94,7 @@ function fmtDuration(seconds) {
   return days ? `${days}d ${hours}h` : hours ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
-function fmtTrackTime(milliseconds) {
+export function fmtTrackTime(milliseconds) {
   const value = Number(milliseconds);
   if (!Number.isFinite(value) || value < 0) return "0:00";
   const total = Math.floor(value / 1000);
@@ -194,7 +208,7 @@ function renderServers(data) {
   const guilds = list(data, "guilds");
   const rows = guilds.map((guild) => {
     const iconImage = guild.iconUrl ? `<img class="guild-avatar" src="${escapeHtml(guild.iconUrl)}" alt="" width="36" height="36" loading="lazy">` : `<span class="guild-avatar guild-avatar-fallback">${escapeHtml((guild.name ?? "?").slice(0, 1).toUpperCase())}</span>`;
-    return `<tr><td><div class="guild-cell">${iconImage}<span><strong>${escapeHtml(guild.name ?? "Unnamed server")}</strong><small>${escapeHtml(guild.id)}</small></span></div></td><td class="numeric-cell">${fmtNumber(guild.memberCount)}</td><td><span class="owner-id">${escapeHtml(guild.ownerId ?? "Not reported")}</span></td><td><span class="status-inline status-${guild.available ? "ok" : "danger"}"><i class="status-dot"></i>${guild.available ? "Available" : "Unavailable"}</span></td><td><a class="row-link" href="#/g/${encodeURIComponent(guild.id)}/overview" data-server="${escapeHtml(guild.id)}">Open server ${icon("launch")}</a></td></tr>`;
+    return `<tr><td><div class="guild-cell">${iconImage}<span><strong>${escapeHtml(guild.name ?? "Unnamed server")}</strong><button class="copy-id" type="button" data-copy="${escapeHtml(guild.id)}" aria-label="Copy server ID ${escapeHtml(guild.id)}"><small>${escapeHtml(guild.id)}</small><span class="copy-hint" aria-hidden="true">Copy</span></button></span></div></td><td class="numeric-cell">${fmtNumber(guild.memberCount)}</td><td><span class="owner-id">${escapeHtml(guild.ownerId ?? "Not reported")}</span></td><td><span class="status-inline status-${guild.available ? "ok" : "danger"}"><i class="status-dot"></i>${guild.available ? "Available" : "Unavailable"}</span></td><td><a class="row-link" href="#/g/${encodeURIComponent(guild.id)}/overview" data-server="${escapeHtml(guild.id)}">Open <span aria-hidden="true">→</span></a></td></tr>`;
   }).join("");
   return `${pageHeader("GUILD DIRECTORY", "Servers", `${fmtNumber(guilds.length)} Discord ${guilds.length === 1 ? "server" : "servers"} connected to this bot.`)}<section class="panel table-panel"><div class="table-topline"><span class="table-meta">CONNECTED GUILDS</span><span class="panel-counter">${String(guilds.length).padStart(2, "0")} TOTAL</span></div>${guilds.length ? `<div class="table-scroll"><table><thead><tr><th scope="col">Server</th><th scope="col" class="numeric-cell">Members</th><th scope="col">Owner ID</th><th scope="col">Connection</th><th scope="col"><span class="sr-only">Open server</span></th></tr></thead><tbody>${rows}</tbody></table></div>` : emptyState("No servers connected", "Invite the bot to a Discord server, then refresh this view.", `<button class="button button-secondary" type="button" data-action="retry">${icon("renew")}Refresh servers</button>`)}</section>`;
 }
@@ -209,9 +223,9 @@ function renderFeatures(data) {
     const category = feature.category || "Other";
     groups.set(category, [...(groups.get(category) ?? []), feature]);
   }
-  const groupHtml = Array.from(groups, ([category, entries]) => `<section class="feature-group"><div class="group-heading"><h2>${escapeHtml(category)}</h2><span>${String(entries.filter((feature) => feature.enabled).length).padStart(2, "0")} / ${String(entries.length).padStart(2, "0")} ON</span></div><div class="feature-list">${entries.map((feature) => renderFeature(feature)).join("")}</div></section>`).join("");
+  const groupHtml = Array.from(groups, ([category, entries]) => `<section class="feature-group"><div class="group-heading"><h2>${escapeHtml(category)}</h2><span data-category-count="${escapeHtml(category)}">${String(entries.filter((feature) => feature.enabled).length).padStart(2, "0")} / ${String(entries.length).padStart(2, "0")} ON</span></div><div class="feature-list">${entries.map((feature) => renderFeature(feature)).join("")}</div></section>`).join("");
   const countText = `${enabled} of ${features.length} enabled`;
-  return `${pageHeader("GUILD CONFIGURATION", "Features", "Control which bot capabilities are available in this server.", `<span class="enabled-count"><strong class="tabular">${enabled}</strong><span>of ${features.length} enabled</span></span>`)}<div class="toolbar-row">${searchBox("Search features")}</div>${features.length ? (visible.length ? `<div class="feature-categories">${groupHtml}</div>` : emptyState("No matching features", `No results for “${state.search}”. Clear the search to see all features.`)) : emptyState("Features are unavailable", "The control API has not returned a feature list for this server yet.", `<button class="button button-secondary" type="button" data-action="retry">${icon("renew")}Retry</button>`)}<p class="sr-only" role="status">${escapeHtml(countText)}</p>`;
+  return `${pageHeader("GUILD CONFIGURATION", "Features", "Control which bot capabilities are available in this server.", `<span class="enabled-count" data-feature-summary><strong class="tabular" data-enabled-count>${enabled}</strong><span>of <span data-total-count>${features.length}</span> enabled</span></span>`)}<div class="toolbar-row">${searchBox("Search features")}</div>${features.length ? (visible.length ? `<div class="feature-categories">${groupHtml}</div>` : emptyState("No matching features", `No results for “${state.search}”. Clear the search to see all features.`)) : emptyState("Features are unavailable", "The control API has not returned a feature list for this server yet.", `<button class="button button-secondary" type="button" data-action="retry">${icon("renew")}Retry</button>`)}<p class="sr-only" role="status" data-feature-count-text>${escapeHtml(countText)}</p>`;
 }
 
 function renderFeature(feature) {
@@ -246,11 +260,11 @@ function renderMusic(data) {
   const playLabel = paused ? "Resume playback" : playing ? "Pause playback" : "Choose a track to play";
   const seekDisabled = !current || current.isStream || duration <= 0;
 
-  return `${pageHeader("PLAYBACK CONTROL", "Music", `Playback and queue for ${escapeHtml(currentGuildName)}.`)}
+  return `${pageHeader("PLAYBACK CONTROL", "Music", `Playback and queue for ${currentGuildName}.`)}
     <div class="music-layout">
       <section class="panel player-panel">
         <div class="player-topline"><span class="table-meta">NOW PLAYING</span><span class="status-inline status-${playing ? "ok" : paused ? "warn" : "unknown"}"><i class="status-dot"></i>${playing ? "Playing" : paused ? "Paused" : "Idle"}</span></div>
-        <div class="track-art" aria-hidden="true"><span class="disc-ring"></span><span class="disc-core">${icon("music")}</span><span class="disc-line"></span></div>
+        <div class="track-art ${playing && !paused ? "is-playing" : ""}" aria-hidden="true"><span class="disc-ring"></span><span class="disc-core">${icon("music")}</span><span class="disc-line"></span></div>
         <div class="track-info"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(artist)}</p></div>
         <div class="player-progress"><output id="track-position" class="tabular">${escapeHtml(positionLabel)}</output><label class="sr-only" for="track-seek">Seek within current track</label><input id="track-seek" class="progress-line" type="range" min="0" max="${Math.max(duration, 1)}" value="${position}" aria-valuetext="${escapeHtml(`${positionLabel} of ${durationLabel}`)}" ${seekDisabled ? "disabled" : ""}><span class="tabular">${escapeHtml(durationLabel)}</span></div>
         <div class="transport">
@@ -260,7 +274,7 @@ function renderMusic(data) {
           <button type="button" class="loop-button" data-action="music" data-music-action="loop" data-loop-mode="${loopNext}" aria-label="Change repeat mode. Currently ${escapeHtml(loop)}.">${icon("repeat")}<span>${escapeHtml(loop)} repeat</span></button>
         </div>
         <div class="volume-row">${icon("volume-up")}<label for="volume-control">Volume</label><input id="volume-control" type="range" min="0" max="150" value="${volume}" aria-valuetext="${volume} percent"><output for="volume-control" class="tabular">${volume}%</output></div>
-        <form class="play-form" id="play-form"><label for="track-query">Add to queue</label><div class="input-action"><input id="track-query" name="query" type="search" placeholder="Song or artist…" autocomplete="off" required><button class="button button-primary" type="submit">Add track</button></div></form>
+        <form class="play-form" id="play-form"><label for="voice-channel">Voice channel ID</label><input id="voice-channel" name="voiceChannelId" type="text" inputmode="numeric" placeholder="Right-click a voice channel in Discord, then Copy ID" autocomplete="off" value="${escapeHtml(state.voiceChannelId ?? "")}"><label for="track-query">Add to queue</label><div class="input-action"><input id="track-query" name="query" type="search" placeholder="Song or artist…" autocomplete="off" required><button class="button button-primary" type="submit">Add track</button></div></form>
         <div class="player-actions"><button type="button" class="button button-secondary" data-action="music" data-music-action="join">Join voice</button><button type="button" class="button button-quiet" data-action="music" data-music-action="disconnect">Disconnect</button><button type="button" class="button button-quiet danger-text" data-action="music" data-music-action="stop" ${playing || paused ? "" : "disabled"}>Stop playback</button></div>
       </section>
       <section class="panel queue-panel"><div class="panel-heading"><h2>Queue <span class="queue-count">${String(queue.length).padStart(2, "0")}</span></h2><button type="button" class="button button-quiet" data-action="music" data-music-action="clear" ${queue.length ? "" : "disabled"}>Clear queue</button></div><ol class="queue-list">${queueHtml}</ol></section>
@@ -291,33 +305,36 @@ function renderSettings(data) {
 
 function renderConfigField(field, value) {
   const label = labels[field] ?? field.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`).replace(/^./, (letter) => letter.toUpperCase());
+  const hint = hints[field] ? `<small>${escapeHtml(hints[field])}</small>` : "";
   if (typeof value === "boolean") {
-    return `<div class="setting-field setting-switch-field"><div><strong>${escapeHtml(label)}</strong><small>${escapeHtml(field)}</small></div><button type="button" class="switch" role="switch" aria-checked="${value}" aria-label="${escapeHtml(label)}" data-setting-toggle="${escapeHtml(field)}"><span></span></button></div>`;
+    return `<div class="setting-field setting-switch-field"><div><strong>${escapeHtml(label)}</strong>${hint}</div><button type="button" class="switch" role="switch" aria-checked="${value}" aria-label="${escapeHtml(label)}" data-setting-toggle="${escapeHtml(field)}"><span></span></button></div>`;
   }
-  const complex = value !== null && typeof value === "object";
+  const isList = Array.isArray(value);
   const longText = field === "message" || field === "dmMessage" || field === "goodbyeMessage";
   const type = typeof value === "number" ? "number" : "text";
-  const valueString = complex ? JSON.stringify(value, null, 2) : value == null ? "" : String(value);
-  const control = complex
-    ? `<textarea id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="json" data-config-empty="${Array.isArray(value) ? "[]" : "null"}" rows="3" spellcheck="false">${escapeHtml(valueString)}</textarea>`
+  const valueString = isList ? value.join(", ") : value == null ? "" : String(value);
+  const control = isList
+    ? `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="list" type="text" value="${escapeHtml(valueString)}" placeholder="Comma-separated IDs" autocomplete="off" inputmode="numeric">`
     : longText
       ? `<textarea id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="text" rows="3">${escapeHtml(valueString)}</textarea>`
     : `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="${type}" type="${type}" value="${escapeHtml(valueString)}" ${type === "number" ? "step=1" : "autocomplete=off"}>`;
-  return `<label class="setting-field" for="setting-${escapeHtml(field)}"><span><strong>${escapeHtml(label)}</strong><small>${escapeHtml(field)}</small></span>${control}</label>`;
+  return `<label class="setting-field" for="setting-${escapeHtml(field)}"><span><strong>${escapeHtml(label)}</strong>${hint}</span>${control}</label>`;
 }
 
 function renderAudit(data) {
   const entries = list(data, "entries");
   const rows = entries.map((entry) => `<tr><td><strong>${escapeHtml(entry.action ?? entry.type ?? "Control action")}</strong><small class="table-subline">${escapeHtml(entry.source ?? "control")}</small></td><td>${escapeHtml(entry.actorId ?? entry.actor ?? "Unknown")}</td><td>${escapeHtml(entry.targetId ?? entry.target ?? "Not reported")}</td><td><time datetime="${escapeHtml(entry.createdAt ?? "")}">${escapeHtml(fmtDate(entry.createdAt))}</time></td></tr>`).join("");
-  return `${pageHeader("CHANGE HISTORY", "Audit", `Recent control actions for ${state.guildId ? escapeHtml(state.guilds.find((guild) => guild.id === state.guildId)?.name ?? "the selected server") : "the selected server"}.`, `<span class="panel-counter">LAST 50</span>`)}<section class="panel table-panel">${entries.length ? `<div class="table-scroll"><table><thead><tr><th scope="col">Action</th><th scope="col">Actor</th><th scope="col">Target</th><th scope="col">Time</th></tr></thead><tbody>${rows}</tbody></table></div>` : emptyState("No audit entries", "Changes made through the dashboard will appear here.", `<button class="button button-secondary" type="button" data-action="retry">${icon("renew")}Refresh audit</button>`)}</section>`;
+  return `${pageHeader("CHANGE HISTORY", "Audit", `Recent control actions for ${state.guildId ? (state.guilds.find((guild) => guild.id === state.guildId)?.name ?? "the selected server") : "the selected server"}.`, `<span class="panel-counter">LAST 50</span>`)}<section class="panel table-panel">${entries.length ? `<div class="table-scroll"><table><thead><tr><th scope="col">Action</th><th scope="col">Actor</th><th scope="col">Target</th><th scope="col">Time</th></tr></thead><tbody>${rows}</tbody></table></div>` : emptyState("No audit entries", "Changes made through the dashboard will appear here.", `<button class="button button-secondary" type="button" data-action="retry">${icon("renew")}Refresh audit</button>`)}</section>`;
 }
 
 function renderCommands(data) {
   const commands = list(data, "commands");
   const search = state.search.toLowerCase().trim();
   const visible = commands.filter((command) => [command.name, command.category, command.description, command.usage].join(" ").toLowerCase().includes(search));
-  const rows = visible.map((command) => `<tr><td><code class="command-name">/${escapeHtml(command.name)}</code>${Array.isArray(command.aliases) && command.aliases.length ? `<small class="table-subline">Also ${command.aliases.map((alias) => `/${escapeHtml(alias)}`).join(", ")}</small>` : ""}</td><td><span class="category-tag">${escapeHtml(command.category ?? "General")}</span></td><td>${escapeHtml(command.description ?? "")}</td><td><code class="usage-code">${escapeHtml(command.usage ?? `/${command.name}`)}</code></td></tr>`).join("");
-  const message = commands.length ? (visible.length ? `<div class="table-scroll"><table><thead><tr><th scope="col">Command</th><th scope="col">Category</th><th scope="col">Description</th><th scope="col">Usage</th></tr></thead><tbody>${rows}</tbody></table></div>` : emptyState("No matching commands", `No results for “${state.search}”.`)) : emptyState("No commands returned", "The command registry is empty or unavailable.", `<button class="button button-secondary" type="button" data-action="retry">${icon("renew")}Reload commands</button>`);
+  const hasUsage = visible.some((command) => String(command.usage ?? "").trim());
+  const rows = visible.map((command) => `<tr><td><code class="command-name">/${escapeHtml(command.name)}</code>${Array.isArray(command.aliases) && command.aliases.length ? `<small class="table-subline">Also ${command.aliases.map((alias) => `/${escapeHtml(alias)}`).join(", ")}</small>` : ""}</td><td><span class="category-tag">${escapeHtml(command.category ?? "General")}</span></td><td>${escapeHtml(command.description ?? "")}</td>${hasUsage ? `<td>${String(command.usage ?? "").trim() ? `<code class="usage-code">${escapeHtml(command.usage)}</code>` : `<span class="usage-empty">—</span>`}</td>` : ""}</tr>`).join("");
+  const usageHead = hasUsage ? `<th scope="col">Usage</th>` : "";
+  const message = commands.length ? (visible.length ? `<div class="table-scroll"><table><thead><tr><th scope="col">Command</th><th scope="col">Category</th><th scope="col">Description</th>${usageHead}</tr></thead><tbody>${rows}</tbody></table></div>` : emptyState("No matching commands", `No results for “${state.search}”.`)) : emptyState("No commands returned", "The command registry is empty or unavailable.", `<button class="button button-secondary" type="button" data-action="retry">${icon("renew")}Reload commands</button>`);
   return `${pageHeader("COMMAND REGISTRY", "Commands", `${fmtNumber(commands.length)} registered commands and aliases.`)}<div class="toolbar-row">${searchBox("Search commands")}</div><section class="panel table-panel">${message}</section>`;
 }
 

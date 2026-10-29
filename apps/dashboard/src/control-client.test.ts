@@ -17,8 +17,8 @@ describe("control API client", () => {
       "http://bot-control:3001/v1/features",
       "http://bot-control:3001/v1/features",
     ]);
-    expect(calls[0]?.init.headers).toEqual({ authorization: "Bearer secret-control-token", "x-guild-id": "123" });
-    expect(calls[1]?.init.headers).toEqual({ authorization: "Bearer secret-control-token", "x-guild-id": "123", "content-type": "application/json" });
+    expect(calls[0]?.init.headers).toEqual({ authorization: "Bearer secret-control-token", "x-actor": "dashboard", "x-guild-id": "123" });
+    expect(calls[1]?.init.headers).toEqual({ authorization: "Bearer secret-control-token", "x-actor": "dashboard", "x-guild-id": "123", "content-type": "application/json" });
     expect(calls[1]?.init.body).toBe(JSON.stringify({ featureId: "music-playback", enabled: false }));
   });
 
