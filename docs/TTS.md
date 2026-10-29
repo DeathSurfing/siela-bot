@@ -38,9 +38,9 @@ stateDiagram-v2
   Event --> Idle: audio ends
 ```
 
-A TTS session binds to exactly one node until it ends. The commander takes the session when its voice is free, otherwise a free fleet node does, and speech forwards to that node. Session preempt skips TTS-active nodes so scheduled events never cut it off.
+A TTS session binds to exactly one node until it ends. The commander takes the session when its voice is free, otherwise a free fleet node does, and speech forwards to that node. Auto-placement never moves a node that is connected to another channel; a node already in the requested channel takes the session, with the Rust worker mixing speech over its music. Session preempt skips TTS-active nodes so scheduled events never cut it off.
 
-Tambola and standalone TTS stop music, preserve the queue, and lock the voice channel for the session. Music commands are rejected while the lock is active. Random voice drops and scheduled events skip the channel while music, Tambola, or TTS is using voice.
+Tambola and standalone TTS stop music, preserve the queue, and lock the voice channel for the session. Tambola stops a fleet player bound to its own channel first. Music commands are rejected while the lock is active, and `/play` refuses the Tambola channel while a game is live. Random voice drops and scheduled events skip the channel while music, Tambola, or TTS is using voice.
 
 ## Tambola voice
 
@@ -50,12 +50,12 @@ Tambola creates its own `TambolaVoice` per game via `apps/bot/src/features/tambo
 
 Order in `TambolaVoice.speak()` / `synthesizeNow()`:
 
-1. Remote streaming: `POST {TTS_SERVICE_URL}/synthesize-stream`, used when `TTS_SERVICE_URL` is set and `TTS_STREAM=true`. Audio streams directly into the Discord player.
+1. Remote streaming: `POST {TTS_SERVICE_URL}/synthesize-stream`, used when `TTS_SERVICE_URL` is set and `TTS_STREAM=true`. Audio streams directly into the Discord player. Response headers are bounded to 10s; the body itself is not cut mid-clip.
 2. Remote buffered: `POST {TTS_SERVICE_URL}/synthesize`, written to the cache file, then played.
 3. Local backend: only when `TTS_SERVICE_URL` is unset.
    - `TTS_BACKEND=edge` (default): `python3 -m edge_tts --voice en-IN-NeerjaNeural --rate=-5%`, MP3 output, 2 attempts, 30s timeout.
    - `TTS_BACKEND=kitten` / `kitten-mini`: daemon scripts via `TTS_PYTHON` + `KITTEN_TTS_SCRIPT` (defaults `/app/assets/tts/kitten_tts_daemon.py` / `kitten_tts_mini_daemon.py`), WAV output.
-   - `TTS_VOICE` overrides the kitten voice (default `Bruno`, `Jasper` for kitten-mini).
+   - `TTS_VOICE` overrides the kitten voice (default `Bruno`, `Jasper` for kitten-mini). A blank value means the default.
 
 ## Primary TTS service (compose)
 
@@ -98,7 +98,7 @@ procedure.
 ## Cache
 
 - Dir `/tmp/siela-tambola-tts` (compose bot uses a tmpfs `/tmp`).
-- Key: SHA-1 of `voice + \0 + rate + \0 + text`. Extension `.wav` for kitten, `.mp3` otherwise.
+- Key: SHA-1 of `engine + \0 + effective voice + \0 + rate + \0 + text`. Extension `.wav` for the remote service and kitten, `.mp3` for local Edge.
 - Hit returns the cached file if non-empty. Pruned every 20 syntheses down to 300 newest files. Safe to delete anytime.
 
 ## Failure behavior
