@@ -1,7 +1,7 @@
 import { eq, sql } from "drizzle-orm";
-import { drizzle, type BunSQLDatabase } from "drizzle-orm/bun-sql";
-import { migrate } from "drizzle-orm/bun-sql/migrator";
-import { SQL } from "bun";
+import { createRequire } from "node:module";
+import type { BunSQLDatabase } from "drizzle-orm/bun-sql";
+import type { SQL } from "bun";
 import * as schema from "./schema.js";
 
 export type Database = BunSQLDatabase<typeof schema>;
@@ -12,8 +12,23 @@ export interface DatabaseHandle {
   close(): Promise<void>;
 }
 
+const require = createRequire(import.meta.url);
+
+/**
+ * Load the Bun SQL driver only when a database is actually opened. Tests run
+ * under Node and import this module for its schema helpers; an eager import
+ * of `drizzle-orm/bun-sql` would pull in the `bun` builtin and fail there.
+ */
+function loadDriver(): { drizzle: typeof import("drizzle-orm/bun-sql").drizzle; SQL: new (url: string) => SQL } {
+  const driver = require("drizzle-orm/bun-sql") as typeof import("drizzle-orm/bun-sql");
+  const bun = (globalThis as { Bun?: { SQL: new (url: string) => SQL } }).Bun;
+  if (!bun?.SQL) throw new Error("createDatabase requires the Bun runtime");
+  return { drizzle: driver.drizzle, SQL: bun.SQL };
+}
+
 export function createDatabase(url: string): DatabaseHandle {
-  const client = new SQL(url);
+  const { drizzle, SQL: BunSQL } = loadDriver();
+  const client = new BunSQL(url);
   const db = drizzle(client, { schema });
   return {
     db,
@@ -25,6 +40,7 @@ export function createDatabase(url: string): DatabaseHandle {
 }
 
 export async function runMigrations(handle: DatabaseHandle, migrationsFolder: string): Promise<void> {
+  const { migrate } = require("drizzle-orm/bun-sql/migrator") as typeof import("drizzle-orm/bun-sql/migrator");
   await migrate(handle.db, { migrationsFolder });
 }
 
