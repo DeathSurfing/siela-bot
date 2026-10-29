@@ -73,11 +73,18 @@ export const featuresCommand: Command = {
       return;
     }
 
-    const enabled = action === "enable" || action === "on" ? true : action === "disable" || action === "off" ? false : null;
+    const enabled =
+      action === "set"
+        ? parseToggle(toggleArg)
+        : action === "enable" || action === "on"
+          ? true
+          : action === "disable" || action === "off"
+            ? false
+            : null;
     if (enabled === null) {
       throw new UserError("Use `features`, `features on <id>`, or `features off <id>`.", "validation_error");
     }
-    const featureId = featureArg ?? toggleArg;
+    const featureId = featureArg;
     if (!featureId) throw new UserError("Name the feature id to toggle.", "validation_error");
     if (!isFeatureId(featureId)) {
       throw new UserError(`Unknown feature \`${featureId}\`. Run \`features\` for the list.`, "unknown_feature");
