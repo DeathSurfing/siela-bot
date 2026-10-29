@@ -63,8 +63,8 @@ export class TtsService {
     await unloadTtsService(this.logger);
   }
 
-  private fleet(): FleetClient {
-    return new FleetClient(this.config.ROUTER_URL ?? null, this.config.MCP_TOKEN, this.logger);
+  private fleet(guildId: string): FleetClient {
+    return new FleetClient(this.config.ROUTER_URL ?? null, this.config.MCP_TOKEN, this.logger, guildId);
   }
 
   /** Reset the 30s no-text idle timer. Any spoken text keeps the session. */
@@ -167,7 +167,7 @@ export class TtsService {
     if (session && !session.voice && session.nodeId !== this.config.NODE_ID) {
       // Remote session: tell the owning worker to stand down, then forget it.
       try {
-        await this.fleet().ttsDisable(session.nodeId);
+        await this.fleet(guildId).ttsDisable(session.nodeId);
       } catch (error) {
         this.logger.warn({ err: error, guildId, nodeId: session.nodeId }, "remote TTS disable failed");
       }
@@ -220,7 +220,7 @@ export class TtsService {
 
   private async forwardUtterance(guildId: string, nodeId: string, utterance: string, speakerId?: string): Promise<void> {
     try {
-      await this.fleet().ttsSpeak(nodeId, utterance, speakerId);
+      await this.fleet(guildId).ttsSpeak(nodeId, utterance, speakerId);
     } catch (error) {
       this.logger.warn({ err: error, guildId, nodeId }, "remote TTS speak failed");
     }

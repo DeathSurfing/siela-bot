@@ -31,7 +31,7 @@ function fleetTarget(ctx: CommandContext): FleetTarget | null {
   const nodeId = service.getFleetNode(ctx.guild.id, channelId);
   if (!nodeId || !ctx.services.config.ROUTER_URL) return null;
   return {
-    fleet: new FleetClient(ctx.services.config.ROUTER_URL, ctx.services.config.MCP_TOKEN, service.logger),
+    fleet: new FleetClient(ctx.services.config.ROUTER_URL, ctx.services.config.MCP_TOKEN, service.logger, ctx.guild.id),
     nodeId,
     channelId,
   };
@@ -112,7 +112,7 @@ const playCommand: Command = {
     }
     try {
       const service = music(ctx);
-      const fleet = new FleetClient(ctx.services.config.ROUTER_URL ?? null, ctx.services.config.MCP_TOKEN, service.logger);
+      const fleet = new FleetClient(ctx.services.config.ROUTER_URL ?? null, ctx.services.config.MCP_TOKEN, service.logger, ctx.guild.id);
       const targetChannel = ctx.args[1] ?? ctx.member.voice?.channelId ?? undefined;
 
       if (targetChannel && fleet.enabled) {
@@ -407,7 +407,7 @@ const nowPlayingCommand: Command = {
     const channelId = ctx.member.voice?.channelId ?? undefined;
     const fleetNode = channelId ? service.getFleetNode(ctx.guild.id, channelId) : null;
     if (fleetNode && ctx.services.config.ROUTER_URL) {
-      const fleet = new FleetClient(ctx.services.config.ROUTER_URL, ctx.services.config.MCP_TOKEN, service.logger);
+      const fleet = new FleetClient(ctx.services.config.ROUTER_URL, ctx.services.config.MCP_TOKEN, service.logger, ctx.guild.id);
       const { state } = await fleet.nodeState(fleetNode).catch(() => ({ state: null, channelId: null }));
       const message = await ctx.reply(buildMusicPayload(ctx.guild.id, state, undefined, channelId));
       if (message) service.setNowPlayingMessage(ctx.guild.id, message);

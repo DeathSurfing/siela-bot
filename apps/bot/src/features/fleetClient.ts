@@ -29,6 +29,8 @@ export class FleetClient {
     private readonly routerUrl: string | null,
     private readonly token: string,
     private readonly logger: Logger,
+    /** Guild every request targets. The router and workers scope by this. */
+    private readonly guildId: string | null = null,
   ) {}
 
   get enabled(): boolean {
@@ -41,7 +43,11 @@ export class FleetClient {
   }
 
   private auth(): Record<string, string> {
-    return { "content-type": "application/json", authorization: `Bearer ${this.token}` };
+    return {
+      "content-type": "application/json",
+      authorization: `Bearer ${this.token}`,
+      ...(this.guildId ? { "x-guild-id": this.guildId } : {}),
+    };
   }
 
   private async request(
@@ -56,7 +62,12 @@ export class FleetClient {
     try {
       response = await fetch(`${this.base()}${path}`, {
         method,
-        headers: method === "GET" ? { authorization: `Bearer ${this.token}` } : this.auth(),
+        headers: method === "GET"
+          ? {
+              authorization: `Bearer ${this.token}`,
+              ...(this.guildId ? { "x-guild-id": this.guildId } : {}),
+            }
+          : this.auth(),
         body: method === "GET" ? undefined : JSON.stringify(body ?? {}),
         signal: AbortSignal.timeout(timeoutMs),
       });
