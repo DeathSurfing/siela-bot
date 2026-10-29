@@ -43,7 +43,7 @@ export class RouterServer {
     this.registry = new FleetRegistry(this.store, staticNodes);
     this.pool = new FleetPool(
       (guildId) => this.listNodes(guildId),
-      (node) => this.readPlaybackState(node),
+      (node, guildId) => this.readPlaybackState(node, guildId),
     );
     this.app = Fastify({ logger: false, bodyLimit: 16 * 1024 });
     this.app.addHook("preHandler", async (request, reply) => {
@@ -85,20 +85,28 @@ export class RouterServer {
     return this.options.guildId ?? null;
   }
 
+  private requestGuildId(request: FastifyRequest, body?: Record<string, unknown>): string | null {
+    const header = request.headers["x-guild-id"];
+    if (typeof header === "string" && header) return header;
+    if (body && typeof body.guildId === "string" && body.guildId) return body.guildId;
+    return this.guildId();
+  }
+
   private listNodes(guildId?: string | null): Promise<FleetNode[]> {
     return this.registry.list(guildId ?? this.guildId());
   }
 
-  private async resolveNode(nodeId: string): Promise<FleetNode> {
-    return findNode(await this.listNodes(), nodeId);
+  private async resolveNode(nodeId: string, guildId?: string | null): Promise<FleetNode> {
+    return findNode(await this.listNodes(guildId), nodeId);
   }
 
-  private async nodeJson(node: FleetNode, path: string, opts?: { method?: string; body?: unknown; timeoutMs?: number }): Promise<unknown> {
+  private async nodeJson(node: FleetNode, path: string, opts?: { method?: string; body?: unknown; timeoutMs?: number; guildId?: string | null }): Promise<unknown> {
     try {
       return await fetchNodeJson(node, path, {
         token: this.options.token,
         method: opts?.method ?? "GET",
         body: opts?.body,
+        guildId: opts?.guildId,
         timeoutMs: opts?.timeoutMs ?? STATE_TIMEOUT_MS,
       });
     } catch (error) {
@@ -107,12 +115,12 @@ export class RouterServer {
     }
   }
 
-  private async readPlaybackState(node: FleetNode): Promise<NodePlaybackState> {
+  private async readPlaybackState(node: FleetNode, guildId?: string | null): Promise<NodePlaybackState> {
     const [state, tts] = await Promise.all([
-      this.nodeJson(node, "/internal/music/state") as Promise<
+      this.nodeJson(node, "/internal/music/state", { guildId }) as Promise<
         { playing?: unknown; current?: unknown; channelId?: unknown } | null
       >,
-      this.nodeJson(node, "/internal/tts/state") as Promise<
+      this.nodeJson(node, "/internal/tts/state", { guildId }) as Promise<
         { enabled?: unknown; channelId?: unknown } | null
       >,
     ]);
@@ -129,17 +137,17 @@ export class RouterServer {
     };
   }
 
-  private async assertObjectState(node: FleetNode, path: string, label: string): Promise<Record<string, unknown>> {
-    const parsed = await this.nodeJson(node, path);
+  private async assertObjectState(node: FleetNode, path: string, label: string, guildId?: string | null): Promise<Record<string, unknown>> {
+    const parsed = await this.nodeJson(node, path, { guildId });
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || "raw" in parsed) {
       throw asError(502, `Node ${node.id} returned invalid ${label}.`);
     }
     return parsed as Record<string, unknown>;
   }
 
-  private async musicBusy(node: FleetNode): Promise<boolean> {
+  private async musicBusy(node: FleetNode, guildId?: string | null): Promise<boolean> {
     try {
-      const state = await this.readPlaybackState(node);
+      const state = await this.readPlaybackState(node, guildId);
       return state.playing || state.hasCurrent;
     } catch {
       return true;
@@ -151,9 +159,9 @@ export class RouterServer {
    * connected. TTS can only share a channel, never move a bot that is
    * already streaming somewhere else.
    */
-  private async musicChannel(node: FleetNode): Promise<string | null> {
+  private async musicChannel(node: FleetNode, guildId?: string | null): Promise<string | null> {
     try {
-      const state = (await this.nodeJson(node, "/internal/music/state")) as {
+      const state = (await this.nodeJson(node, "/internal/music/state", { guildId })) as {
         channelId?: unknown;
       } | null;
       return typeof state?.channelId === "string" ? state.channelId : null;
@@ -162,24 +170,25 @@ export class RouterServer {
     }
   }
 
-  private async ttsEnabled(node: FleetNode): Promise<boolean> {
+  private async ttsEnabled(node: FleetNode, guildId?: string | null): Promise<boolean> {
     try {
-      const state = (await this.nodeJson(node, "/internal/tts/state")) as { enabled?: unknown } | null;
+      const state = (await this.nodeJson(node, "/internal/tts/state", { guildId })) as { enabled?: unknown } | null;
       return (state as { enabled?: unknown } | null)?.enabled === true;
     } catch {
       return true;
     }
   }
 
-  private async isTtsActive(node: FleetNode): Promise<boolean> {
-    return this.ttsEnabled(node).catch(() => false);
+  private async isTtsActive(node: FleetNode, guildId?: string | null): Promise<boolean> {
+    return this.ttsEnabled(node, guildId).catch(() => false);
   }
 
-  private async forward(node: FleetNode, path: string, body: unknown, timeoutMs: number): Promise<unknown> {
+  private async forward(node: FleetNode, path: string, body: unknown, timeoutMs: number, guildId?: string | null): Promise<unknown> {
     return fetchNodeJson(node, path, {
       token: this.options.token,
       method: "POST",
       body: body ?? {},
+      guildId,
       timeoutMs,
     });
   }
@@ -187,8 +196,8 @@ export class RouterServer {
   private registerRoutes(): void {
     this.app.get("/healthz", async () => ({ ok: true }));
 
-    this.app.get("/v1/music/nodes", async () => ({
-      nodes: (await this.listNodes()).map((node) => ({ nodeId: node.id })),
+    this.app.get("/v1/music/nodes", async (request) => ({
+      nodes: (await this.listNodes(this.requestGuildId(request))).map((node) => ({ nodeId: node.id })),
     }));
 
     // Session preempt: one guild is one session. Scheduled events call this
@@ -196,15 +205,17 @@ export class RouterServer {
     // every idle node's queue, disconnects voice, and drops pool
     // reservations. Nodes with an active TTS session are skipped so sticky
     // TTS keeps speaking.
-    this.app.post("/v1/session/preempt", async () => {
-      const nodes = await this.listNodes();
+    this.app.post("/v1/session/preempt", async (request) => {
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      const guildId = this.requestGuildId(request, body);
+      const nodes = await this.listNodes(guildId);
       const settled = await Promise.allSettled(
         nodes.map(async (node) => {
-          if (await this.isTtsActive(node)) {
+          if (await this.isTtsActive(node, guildId)) {
             return { nodeId: node.id, ok: true as const, skipped: "tts" as const };
           }
           for (const op of ["clear", "disconnect"] as const) {
-            await this.forward(node, `/internal/music/${op}`, {}, DEFAULT_TIMEOUT_MS);
+            await this.forward(node, `/internal/music/${op}`, {}, DEFAULT_TIMEOUT_MS, guildId);
           }
           return { nodeId: node.id, ok: true as const };
         }),
@@ -222,16 +233,18 @@ export class RouterServer {
       if (typeof query.nodeId !== "string" || !query.nodeId) {
         throw asError(400, "nodeId query parameter is required.");
       }
-      const node = await this.resolveNode(query.nodeId);
-      return this.assertObjectState(node, "/internal/music/state", "state");
+      const guildId = this.requestGuildId(request);
+      const node = await this.resolveNode(query.nodeId, guildId);
+      return this.assertObjectState(node, "/internal/music/state", "state", guildId);
     });
 
-    this.app.get("/v1/music/state-all", async () => {
-      const nodes = await this.listNodes();
+    this.app.get("/v1/music/state-all", async (request) => {
+      const guildId = this.requestGuildId(request);
+      const nodes = await this.listNodes(guildId);
       const settled = await Promise.allSettled(
         nodes.map(async (node) => {
           try {
-            const state = await this.assertObjectState(node, "/internal/music/state", "state");
+            const state = await this.assertObjectState(node, "/internal/music/state", "state", guildId);
             return { nodeId: node.id, ok: true as const, state };
           } catch (error) {
             throw new Error(error instanceof Error ? error.message : String(error));
@@ -252,21 +265,23 @@ export class RouterServer {
       }
       const body = (request.body ?? {}) as Record<string, unknown>;
       const nodeId = typeof body.nodeId === "string" ? body.nodeId : undefined;
+      const guildId = this.requestGuildId(request, body);
       if (nodeId || op !== "play") {
         if (!nodeId) {
           throw asError(400, "nodeId is required for this operation.");
         }
-        const node = await this.resolveNode(nodeId);
+        const node = await this.resolveNode(nodeId, guildId);
         return this.forward(
           node,
           workerPath(op),
           stripNodeId(body),
           op === "play" ? PLAY_TIMEOUT_MS : DEFAULT_TIMEOUT_MS,
+          guildId,
         );
       }
       // Auto-route: semaphore over free nodes. Rejects 429 when the fleet is full.
       const voiceChannelId = typeof body.voiceChannelId === "string" ? body.voiceChannelId : undefined;
-      const node = await this.pool.acquire(this.guildId(), voiceChannelId);
+      const node = await this.pool.acquire(guildId, voiceChannelId);
       try {
         return {
           nodeId: node.id,
@@ -275,6 +290,7 @@ export class RouterServer {
             workerPath(op),
             stripNodeId(body),
             PLAY_TIMEOUT_MS,
+            guildId,
           ),
         };
       } finally {
@@ -295,22 +311,23 @@ export class RouterServer {
       const body = (request.body ?? {}) as Record<string, unknown>;
       const channelId = typeof body.channelId === "string" ? body.channelId : undefined;
       if (!channelId) throw asError(400, "channelId is required.");
+      const guildId = this.requestGuildId(request, body);
       const nodeId = typeof body.nodeId === "string" ? body.nodeId : undefined;
       if (nodeId) {
-        const node = await this.resolveNode(nodeId);
-        await this.forward(node, "/internal/tts/enable", { channelId }, DEFAULT_TIMEOUT_MS);
+        const node = await this.resolveNode(nodeId, guildId);
+        await this.forward(node, "/internal/tts/enable", { channelId }, DEFAULT_TIMEOUT_MS, guildId);
         return { nodeId };
       }
-      const nodes = await this.listNodes();
+      const nodes = await this.listNodes(guildId);
 
       // First pass: an idle node with no TTS session, so speech does not have
       // to share a channel when it does not need to.
       const states = await Promise.all(
         nodes.map(async (node) => {
           const [busy, tts, channel] = await Promise.all([
-            this.musicBusy(node),
-            this.ttsEnabled(node),
-            this.musicChannel(node),
+            this.musicBusy(node, guildId),
+            this.ttsEnabled(node, guildId),
+            this.musicChannel(node, guildId),
           ]);
           return { node, busy, tts, channel };
         }),
@@ -322,7 +339,7 @@ export class RouterServer {
         // other connection would be moved (or refuse to join, as on the
         // commander), so leave it alone.
         if (channel && channel !== channelId) continue;
-        await this.forward(node, "/internal/tts/enable", { channelId }, DEFAULT_TIMEOUT_MS);
+        await this.forward(node, "/internal/tts/enable", { channelId }, DEFAULT_TIMEOUT_MS, guildId);
         return { nodeId: node.id };
       }
 
@@ -332,7 +349,7 @@ export class RouterServer {
       for (const { node, tts, channel } of states) {
         if (tts || !node.ttsMix) continue;
         if (channel !== channelId) continue;
-        await this.forward(node, "/internal/tts/enable", { channelId }, DEFAULT_TIMEOUT_MS);
+        await this.forward(node, "/internal/tts/enable", { channelId }, DEFAULT_TIMEOUT_MS, guildId);
         return { nodeId: node.id, mixed: true };
       }
 
@@ -346,8 +363,9 @@ export class RouterServer {
       const body = (request.body ?? {}) as Record<string, unknown>;
       const nodeId = typeof body.nodeId === "string" ? body.nodeId : undefined;
       if (!nodeId) throw asError(400, "nodeId is required.");
-      const node = await this.resolveNode(nodeId);
-      await this.forward(node, "/internal/tts/disable", {}, DEFAULT_TIMEOUT_MS);
+      const guildId = this.requestGuildId(request, body);
+      const node = await this.resolveNode(nodeId, guildId);
+      await this.forward(node, "/internal/tts/disable", {}, DEFAULT_TIMEOUT_MS, guildId);
       return { ok: true };
     });
 
@@ -356,12 +374,14 @@ export class RouterServer {
       const nodeId = typeof body.nodeId === "string" ? body.nodeId : undefined;
       const utterance = typeof body.utterance === "string" ? body.utterance : undefined;
       if (!nodeId || !utterance) throw asError(400, "nodeId and utterance are required.");
-      const node = await this.resolveNode(nodeId);
+      const guildId = this.requestGuildId(request, body);
+      const node = await this.resolveNode(nodeId, guildId);
       await this.forward(
         node,
         "/internal/tts/speak",
         { utterance, speakerId: typeof body.speakerId === "string" ? body.speakerId : undefined },
         DEFAULT_TIMEOUT_MS,
+        guildId,
       );
       return { ok: true };
     });
@@ -371,8 +391,9 @@ export class RouterServer {
       if (typeof query.nodeId !== "string" || !query.nodeId) {
         throw asError(400, "nodeId query parameter is required.");
       }
-      const node = await this.resolveNode(query.nodeId);
-      return this.assertObjectState(node, "/internal/tts/state", "tts state");
+      const guildId = this.requestGuildId(request);
+      const node = await this.resolveNode(query.nodeId, guildId);
+      return this.assertObjectState(node, "/internal/tts/state", "tts state", guildId);
     });
   }
 
@@ -383,6 +404,10 @@ export class RouterServer {
     const headers: Record<string, string> = { authorization: `Bearer ${this.options.token}` };
     const contentType = request.headers["content-type"];
     if (typeof contentType === "string") headers["content-type"] = contentType;
+    const guildHeader = request.headers["x-guild-id"];
+    if (typeof guildHeader === "string" && guildHeader) headers["x-guild-id"] = guildHeader;
+    const actorHeader = request.headers["x-actor"];
+    if (typeof actorHeader === "string" && actorHeader) headers["x-actor"] = actorHeader;
     let response: Response;
     try {
       response = await fetch(target, {

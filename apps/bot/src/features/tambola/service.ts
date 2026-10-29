@@ -782,7 +782,7 @@ export class TambolaService {
     const fleetNode = this.music.getFleetNode(guildId, session.voiceChannelId);
     if (fleetNode && this.config.ROUTER_URL) {
       try {
-        await new FleetClient(this.config.ROUTER_URL, this.config.MCP_TOKEN, this.logger)
+        await new FleetClient(this.config.ROUTER_URL, this.config.MCP_TOKEN, this.logger, guildId)
           .control(fleetNode, "disconnect");
         this.logger.info(
           { guildId, nodeId: fleetNode, channelId: session.voiceChannelId },

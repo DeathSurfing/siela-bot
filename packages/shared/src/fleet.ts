@@ -12,7 +12,10 @@ export const FLEET_HEARTBEAT_INTERVAL_MS = 15_000;
 export interface FleetNodeRecord {
   nodeId: string;
   baseUrl: string;
+  /** Primary guild. Kept for readers that predate multi-guild nodes. */
   guildId: string | null;
+  /** Every guild this node serves. Present on multi-guild commanders. */
+  guildIds?: string[];
   role: "commander" | "voice";
   startedAt: string;
   /**

@@ -79,16 +79,24 @@ function findAudio(name: string): string | null {
   return null;
 }
 
+interface GuildState {
+  prayerDate: string | null;
+  prayerStart: Date | null;
+  ran: Set<string>;
+}
+
+interface Playback {
+  connection: VoiceConnection | null;
+  player: AudioPlayer | null;
+  ytdlp: ChildProcess | null;
+  ffmpeg: ChildProcess | null;
+}
+
 export class ScheduledEventService {
-  private guild: Guild | null = null;
+  private readonly guilds = new Map<string, Guild>();
+  private readonly states = new Map<string, GuildState>();
+  private readonly playbacks = new Map<string, Playback>();
   private timer: NodeJS.Timeout | null = null;
-  private prayerDate: string | null = null;
-  private prayerStart: Date | null = null;
-  private readonly ran = new Set<string>();
-  private activeConnection: VoiceConnection | null = null;
-  private activePlayer: AudioPlayer | null = null;
-  private ytdlpProcess: ChildProcess | null = null;
-  private ffmpegProcess: ChildProcess | null = null;
 
   constructor(
     private readonly music: MusicService | null,
@@ -101,6 +109,24 @@ export class ScheduledEventService {
     private readonly routerUrl: string | null = null,
     private readonly routerToken: string | null = null,
   ) {}
+
+  private stateFor(guildId: string): GuildState {
+    let state = this.states.get(guildId);
+    if (!state) {
+      state = { prayerDate: null, prayerStart: null, ran: new Set() };
+      this.states.set(guildId, state);
+    }
+    return state;
+  }
+
+  private playbackFor(guildId: string): Playback {
+    let playback = this.playbacks.get(guildId);
+    if (!playback) {
+      playback = { connection: null, player: null, ytdlp: null, ffmpeg: null };
+      this.playbacks.set(guildId, playback);
+    }
+    return playback;
+  }
 
   /**
    * Session preempt: one guild is one session. Before event audio plays,
@@ -117,7 +143,7 @@ export class ScheduledEventService {
           "content-type": "application/json",
           authorization: `Bearer ${this.routerToken}`,
         },
-        body: "{}",
+        body: JSON.stringify({ guildId }),
         signal: AbortSignal.timeout(30_000),
       });
       if (!response.ok) throw new Error(`router preempt returned ${response.status}`);
@@ -134,7 +160,8 @@ export class ScheduledEventService {
       this.logger.info("scheduled voice events are disabled");
       return;
     }
-    this.guild = guild;
+    this.guilds.set(guild.id, guild);
+    if (this.timer) return;
     this.timer = setInterval(() => {
       void this.tick().catch((error) => this.logger.warn({ err: error }, "scheduled event tick failed"));
     }, TICK_MS);
@@ -142,13 +169,20 @@ export class ScheduledEventService {
     void this.tick().catch((error) => this.logger.warn({ err: error }, "scheduled event startup tick failed"));
   }
 
-  stop(): void {
+  stop(guildId?: string): void {
+    if (guildId) {
+      this.guilds.delete(guildId);
+      this.states.delete(guildId);
+      this.stopPlayback(guildId);
+      if (this.guilds.size > 0) return;
+    }
+    this.guilds.clear();
+    this.states.clear();
+    for (const id of [...this.playbacks.keys()]) this.stopPlayback(id);
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
     }
-    this.stopPlayback();
-    this.guild = null;
   }
 
   private async fetchPrayerStart(date: string): Promise<Date> {
@@ -166,32 +200,41 @@ export class ScheduledEventService {
   }
 
   private async tick(): Promise<void> {
-    const guild = this.guild;
-    if (!guild) return;
-    const today = delhiDate();
-    if (this.prayerDate !== today || !this.prayerStart) {
+    for (const guild of this.guilds.values()) {
       try {
-        this.prayerStart = await this.fetchPrayerStart(today);
-        this.prayerDate = today;
-        this.ran.clear();
+        await this.tickGuild(guild);
+      } catch (error) {
+        this.logger.warn({ err: error, guildId: guild.id }, "scheduled event tick failed");
+      }
+    }
+  }
+
+  private async tickGuild(guild: Guild): Promise<void> {
+    const state = this.stateFor(guild.id);
+    const today = delhiDate();
+    if (state.prayerDate !== today || !state.prayerStart) {
+      try {
+        state.prayerStart = await this.fetchPrayerStart(today);
+        state.prayerDate = today;
+        state.ran.clear();
         this.logger.info(
-          { date: today, prayer: this.prayer, at: this.prayerStart.toISOString() },
+          { guildId: guild.id, date: today, prayer: this.prayer, at: state.prayerStart.toISOString() },
           "scheduled prayer time loaded",
         );
       } catch (error) {
-        this.logger.warn({ err: error, date: today }, "could not load Delhi prayer time");
+        this.logger.warn({ err: error, guildId: guild.id, date: today }, "could not load Delhi prayer time");
         return;
       }
     }
 
     const now = Date.now();
     for (const phase of PHASES) {
-      const target = this.prayerStart.getTime() + phase.offsetMs;
+      const target = state.prayerStart.getTime() + phase.offsetMs;
       if (now < target || now > target + RUN_WINDOW_MS) continue;
       const runKey = `${today}:${phase.key}`;
-      if (this.ran.has(runKey)) continue;
-      this.ran.add(runKey);
-      void this.runPhase(guild, phase).catch((error) => this.logger.warn({ err: error, phase: phase.key }, "scheduled phase failed"));
+      if (state.ran.has(runKey)) continue;
+      state.ran.add(runKey);
+      void this.runPhase(guild, phase).catch((error) => this.logger.warn({ err: error, guildId: guild.id, phase: phase.key }, "scheduled phase failed"));
     }
   }
 
@@ -253,11 +296,12 @@ export class ScheduledEventService {
       adapterCreator: guild.voiceAdapterCreator,
       selfDeaf: true,
     });
-    this.activeConnection = connection;
+    const playback = this.playbackFor(guild.id);
+    playback.connection = connection;
     await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
 
     const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Play } });
-    this.activePlayer = player;
+    playback.player = player;
     connection.subscribe(player);
     const resource = createAudioResource(createReadStream(path), {
       inputType: path.endsWith(".ogg") ? StreamType.OggOpus : StreamType.Arbitrary,
@@ -285,11 +329,12 @@ export class ScheduledEventService {
       adapterCreator: guild.voiceAdapterCreator,
       selfDeaf: true,
     });
-    this.activeConnection = connection;
+    const playback = this.playbackFor(guild.id);
+    playback.connection = connection;
     await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
 
     const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Play } });
-    this.activePlayer = player;
+    playback.player = player;
     connection.subscribe(player);
 
     const ytdlp = spawn(
@@ -310,14 +355,14 @@ export class ScheduledEventService {
       ],
       { cwd: "/tmp", stdio: ["ignore", "pipe", "pipe"] },
     );
-    this.ytdlpProcess = ytdlp;
+    playback.ytdlp = ytdlp;
 
     const ffmpeg = spawn(
       this.ffmpegPath,
       ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"],
       { cwd: "/tmp", stdio: ["pipe", "pipe", "pipe"] },
     );
-    this.ffmpegProcess = ffmpeg;
+    playback.ffmpeg = ffmpeg;
 
     ytdlp.stdout?.on("error", () => undefined);
     ytdlp.stderr?.on("data", () => undefined);
@@ -386,7 +431,7 @@ export class ScheduledEventService {
     }
 
     try {
-      this.stopPlayback();
+      this.stopPlayback(guild.id);
       await this.music?.stop(guild.id).catch(() => undefined);
       await this.music?.disconnect(guild.id).catch(() => undefined);
       if (await this.preemptSession(guild.id, phase.key)) {
@@ -405,20 +450,19 @@ export class ScheduledEventService {
       } else {
         throw new Error(`Phase ${phase.key} has no audio source.`);
       }
-      this.logger.info({ phase: phase.key, channelId: channel.id }, "scheduled voice event completed");
+      this.logger.info({ guildId: guild.id, phase: phase.key, channelId: channel.id }, "scheduled voice event completed");
     } finally {
-      this.stopPlayback();
+      this.stopPlayback(guild.id);
     }
   }
 
-  private stopPlayback(): void {
-    this.activePlayer?.stop(true);
-    this.activeConnection?.destroy();
-    this.ytdlpProcess?.kill("SIGKILL");
-    this.ffmpegProcess?.kill("SIGKILL");
-    this.ytdlpProcess = null;
-    this.ffmpegProcess = null;
-    this.activePlayer = null;
-    this.activeConnection = null;
+  private stopPlayback(guildId: string): void {
+    const playback = this.playbacks.get(guildId);
+    if (!playback) return;
+    playback.player?.stop(true);
+    playback.connection?.destroy();
+    playback.ytdlp?.kill("SIGKILL");
+    playback.ffmpeg?.kill("SIGKILL");
+    this.playbacks.delete(guildId);
   }
 }

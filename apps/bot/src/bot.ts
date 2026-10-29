@@ -106,11 +106,12 @@ export class SielaBot {
   private readonly nodeId: string;
   private readonly valkey: ValkeyService;
   private readonly fleetHeartbeat: FleetHeartbeat | null;
-  private readonly randomVc: RandomVcService;
+  private readonly randomVc = new Map<string, RandomVcService>();
   private readonly scheduledEvents: ScheduledEventService;
-  private guildId: string | null = null;
-  private initializedGuildId: string | null = null;
+  private readonly initializedGuilds = new Set<string>();
+  private readonly isVoiceBusy: (guildId: string) => boolean;
   private music: MusicService | null = null;
+  private globalSchedulersStarted = false;
   private stopping = false;
 
   constructor(
@@ -143,7 +144,7 @@ export class SielaBot {
         this.nodeId,
         this.config.NODE_ADVERTISE_URL,
         this.config.NODE_ROLE,
-        () => this.guildId,
+        () => this.servedGuildIds(),
       )
       : null;
     const economy = new EconomyService(this.dbHandle.db, this.valkey, this.logger);
@@ -192,14 +193,13 @@ export class SielaBot {
       logger: this.logger,
       isVoiceBusy: isBotInVoice,
     });
-    const isVoiceBusy = (guildId: string): boolean => Boolean(tambola.get(guildId));
-    this.randomVc = new RandomVcService(music, this.logger, isVoiceBusy);
+    this.isVoiceBusy = (guildId: string): boolean => Boolean(tambola.get(guildId));
     this.scheduledEvents = new ScheduledEventService(
       music,
       this.logger,
       this.config.EVENT_SCHEDULE_ENABLED,
       this.config.EVENT_PRAYER,
-      isVoiceBusy,
+      this.isVoiceBusy,
       this.config.YTDLP_PATH,
       this.config.FFMPEG_PATH,
       this.config.ROUTER_URL ?? null,
@@ -242,7 +242,8 @@ export class SielaBot {
       token: this.config.MCP_TOKEN,
       logger: this.logger,
       getStatus: () => this.status(),
-      getGuildId: () => this.guildId,
+      getDefaultGuildId: () => this.defaultGuildId(),
+      getGuildIds: () => this.servedGuildIds(),
     });
     // Every node (commander and voice workers) serves the internal worker
     // API so the router can treat the fleet uniformly. Only the commander
@@ -252,18 +253,41 @@ export class SielaBot {
       client: this.client,
       token: this.config.MCP_TOKEN,
       logger: this.logger,
-      getGuildId: () => this.guildId,
+      getGuildId: () => this.defaultGuildId(),
+      getGuildIds: () => this.servedGuildIds(),
     });
     this.healthServer = new HealthServer({
       host: this.config.HEALTH_HOST,
       port: this.config.HEALTH_PORT,
       logger: this.logger,
       isReady: async () => {
-        const ready = Boolean(this.client.isReady() && this.guildId);
+        const ready = Boolean(this.client.isReady() && this.servedGuildIds().length > 0);
         const dbUp = await pingDatabase(this.dbHandle.db);
-        return { ready: ready && dbUp, details: { gateway: this.client.isReady(), guild: Boolean(this.guildId), database: dbUp } };
+        return {
+          ready: ready && dbUp,
+          details: { gateway: this.client.isReady(), guild: this.servedGuildIds().length > 0, database: dbUp },
+        };
       },
     });
+  }
+
+  /** The guild list this node serves. A configured GUILD_ID pins the node. */
+  private servedGuildIds(): string[] {
+    if (this.config.guildId) {
+      return this.client.guilds.cache.has(this.config.guildId) ? [this.config.guildId] : [];
+    }
+    return [...this.client.guilds.cache.keys()];
+  }
+
+  private defaultGuildId(): string | null {
+    if (this.config.guildId) return this.client.guilds.cache.has(this.config.guildId) ? this.config.guildId : null;
+    const ids = this.servedGuildIds();
+    return ids.length === 1 ? ids[0]! : null;
+  }
+
+  private isServing(guildId: string): boolean {
+    if (this.config.guildId) return guildId === this.config.guildId;
+    return this.client.guilds.cache.has(guildId);
   }
 
   async start(): Promise<void> {
@@ -285,9 +309,7 @@ export class SielaBot {
   private registerEvents(): void {
     this.client.once(Events.ClientReady, () => void this.onReady());
     this.client.on(Events.GuildCreate, (guild) => void this.onGuildCreate(guild));
-    this.client.on(Events.GuildDelete, (guild) => {
-      if (guild.id === this.guildId) this.logger.warn({ guildId: guild.id }, "bound guild removed");
-    });
+    this.client.on(Events.GuildDelete, (guild) => void this.onGuildDelete(guild));
     this.client.on(Events.MessageCreate, (message) => void this.onMessage(message));
     this.client.on(Events.MessageReactionAdd, (reaction, user) => void this.onReactionAdd(reaction, user));
     this.client.on(Events.InteractionCreate, (interaction) => void this.onInteraction(interaction));
@@ -311,45 +333,40 @@ export class SielaBot {
   }
 
   private async onReady(): Promise<void> {
-    this.logger.info({ guilds: this.client.guilds.cache.size }, "gateway ready");
-    const guild = this.resolveGuild();
-    if (guild) {
-      await this.initGuild(guild);
-    } else {
-      this.logger.warn("no guild bound yet; waiting for the first guild join");
+    const guilds = [...this.client.guilds.cache.values()].filter((guild) => this.isServing(guild.id));
+    this.logger.info({ guilds: this.client.guilds.cache.size, serving: guilds.length }, "gateway ready");
+    if (guilds.length === 0) {
+      this.logger.warn("no guild to serve yet; waiting for the first guild join");
+      return;
     }
-  }
-
-  private resolveGuild(): Guild | null {
-    if (this.config.guildId) {
-      return this.client.guilds.cache.get(this.config.guildId) ?? null;
+    for (const guild of guilds) {
+      await this.initGuild(guild).catch((error) => this.logger.error({ err: error, guildId: guild.id }, "guild init failed"));
     }
-    if (this.client.guilds.cache.size === 1) {
-      return this.client.guilds.cache.first() ?? null;
-    }
-    return null;
   }
 
   private async onGuildCreate(guild: Guild): Promise<void> {
-    if (this.config.guildId && guild.id !== this.config.guildId) {
+    if (!this.isServing(guild.id)) {
       this.logger.warn({ guildId: guild.id, configuredGuildId: this.config.guildId }, "leaving unconfigured guild");
       await guild.leave().catch(() => undefined);
       return;
     }
-    if (!this.guildId) {
-      await this.initGuild(guild);
-      return;
-    }
-    if (guild.id !== this.guildId) {
-      this.logger.warn({ guildId: guild.id, boundGuildId: this.guildId }, "leaving unbound guild");
-      await guild.leave().catch(() => undefined);
-    }
+    await this.initGuild(guild).catch((error) => this.logger.error({ err: error, guildId: guild.id }, "guild init failed"));
+  }
+
+  private onGuildDelete(guild: Guild): void {
+    this.initializedGuilds.delete(guild.id);
+    this.services.activity.forgetGuild(guild.id);
+    this.randomVc.get(guild.id)?.stop();
+    this.randomVc.delete(guild.id);
+    this.scheduledEvents.stop(guild.id);
+    this.services.relics.stop(guild.id);
+    this.logger.warn({ guildId: guild.id, remaining: this.servedGuildIds().length }, "guild removed");
+    void this.updatePresence();
   }
 
   private async initGuild(guild: Guild): Promise<void> {
-    if (this.initializedGuildId === guild.id) return;
-    this.guildId = guild.id;
-    this.initializedGuildId = guild.id;
+    if (this.initializedGuilds.has(guild.id)) return;
+    this.initializedGuilds.add(guild.id);
     if (this.isVoiceWorker) {
       this.logger.info({ guildId: guild.id, nodeId: this.nodeId }, "voice worker bound (commands and schedulers disabled)");
       return;
@@ -357,19 +374,37 @@ export class SielaBot {
     await this.services.settings.ensure(guild.id);
     await this.registerCommands(guild);
     await this.services.tempVc.reconcile(guild).catch((error) => this.logger.warn({ err: error }, "temp VC reconcile failed"));
-    await this.services.activity.purgeOld().catch((error) => this.logger.warn({ err: error }, "activity purge failed"));
-    await this.services.activity.reconcile(guild).catch((error) => this.logger.warn({ err: error }, "activity reconcile failed"));
-    await this.services.leveling.reconcile(guild).catch((error) => this.logger.warn({ err: error }, "leveling reconcile failed"));
-    this.services.activity.start();
-    this.randomVc.start(guild);
+    await this.services.activity.reconcile(guild).catch((error) => this.logger.warn({ err: error, guildId: guild.id }, "activity reconcile failed"));
+    await this.services.leveling.reconcile(guild).catch((error) => this.logger.warn({ err: error, guildId: guild.id }, "leveling reconcile failed"));
+    this.startGlobalSchedulers();
+    const randomVc = new RandomVcService(this.music, this.logger, this.isVoiceBusy);
+    randomVc.start(guild);
+    this.randomVc.set(guild.id, randomVc);
     this.scheduledEvents.start(guild);
-    this.services.birthday.start();
     this.services.relics.start(guild);
-    await this.client.user?.setPresence({
-      activities: [{ name: `${guild.name} • ${DEFAULTS.prefix}help`, type: ActivityType.Watching }],
+    await this.updatePresence();
+    this.logger.info({ guildId: guild.id }, "guild initialized");
+  }
+
+  private startGlobalSchedulers(): void {
+    if (this.globalSchedulersStarted) return;
+    this.globalSchedulersStarted = true;
+    this.services.activity.start();
+    this.services.birthday.start();
+    void this.services.activity.purgeOld().catch((error) => this.logger.warn({ err: error }, "activity purge failed"));
+  }
+
+  private async updatePresence(): Promise<void> {
+    if (this.isVoiceWorker) return;
+    const count = this.servedGuildIds().length;
+    if (count === 0) return;
+    const name = count === 1
+      ? `${this.client.guilds.cache.get(this.servedGuildIds()[0]!)?.name ?? "server"} • ${DEFAULTS.prefix}help`
+      : `${count} servers • ${DEFAULTS.prefix}help`;
+    this.client.user?.setPresence({
+      activities: [{ name, type: ActivityType.Watching }],
       status: "online",
     });
-    this.logger.info({ guildId: guild.id }, "guild initialized");
   }
 
   private async registerCommands(guild: Guild): Promise<void> {
@@ -382,7 +417,7 @@ export class SielaBot {
     try {
       if (this.isVoiceWorker) return;
       if (message.author.bot || !message.inGuild() || message.webhookId) return;
-      if (!this.guildId || message.guild.id !== this.guildId) return;
+      if (!this.isServing(message.guild.id)) return;
       this.services.activity.recordMessage(message.guild.id, message.author.id);
       void this.services.leveling.awardMessage(message.guild.id, message.author.id).catch(() => undefined);
       if (this.services.tts.isEnabledChannel(message.guild.id, message.channel.id)) {
@@ -400,9 +435,10 @@ export class SielaBot {
         for (const [userId, timestamp] of this.unknownCommandNotices) {
           if (now - timestamp > 15_000) this.unknownCommandNotices.delete(userId);
         }
-        const last = this.unknownCommandNotices.get(message.author.id) ?? 0;
+        const noticeKey = `${message.guild.id}:${message.author.id}`;
+        const last = this.unknownCommandNotices.get(noticeKey) ?? 0;
         if (now - last > 15_000) {
-          this.unknownCommandNotices.set(message.author.id, now);
+          this.unknownCommandNotices.set(noticeKey, now);
           await message.react("❓").catch(() => undefined);
         }
         return;
@@ -446,7 +482,7 @@ export class SielaBot {
         const message = await reaction.message.fetch().catch(() => null);
         guildId = message?.guildId ?? null;
       }
-      if (!guildId || guildId !== this.guildId) return;
+      if (!guildId || !this.isServing(guildId)) return;
       this.services.activity.recordReaction(guildId, user.id);
       void this.services.leveling.awardReaction(guildId, user.id).catch(() => undefined);
       if (reaction.emoji?.name === "💰") {
@@ -468,7 +504,7 @@ export class SielaBot {
         return;
       }
       if ((interaction.isButton() || interaction.isModalSubmit()) && interaction.customId.startsWith(DELULU_SETUP_PREFIX)) {
-        if (!this.guildId || interaction.guildId !== this.guildId) return;
+        if (!interaction.guildId || !this.isServing(interaction.guildId)) return;
         await handleDeluluSetup(interaction, this.services);
         return;
       }
@@ -550,7 +586,7 @@ export class SielaBot {
 
   private async onChatInput(interaction: ChatInputCommandInteraction): Promise<void> {
     if (!interaction.inGuild() || !interaction.guild) return;
-    if (!this.guildId || interaction.guild!.id !== this.guildId) return;
+    if (!this.isServing(interaction.guild!.id)) return;
     const command = this.registry.get(interaction.commandName);
     if (!command) return;
     const member = interaction.member instanceof Object && "roles" in interaction.member
@@ -680,7 +716,7 @@ export class SielaBot {
     guildId: string,
     channelId?: string,
   ): Promise<void> {
-    if (!this.guildId || guildId !== this.guildId) return;
+    if (!guildId || !this.isServing(guildId)) return;
     const guild = interaction.guild;
     if (!guild) return;
     const music = this.services.music;
@@ -823,7 +859,7 @@ export class SielaBot {
     nodeId: string,
     channelId?: string | null,
   ): Promise<void> {
-    const fleet = new FleetClient(this.config.ROUTER_URL ?? null, this.config.MCP_TOKEN, this.logger);
+    const fleet = new FleetClient(this.config.ROUTER_URL ?? null, this.config.MCP_TOKEN, this.logger, guild.id);
 
     const replyError = async (message: string): Promise<void> => {
       if (interaction.deferred) {
@@ -961,7 +997,7 @@ export class SielaBot {
 
   private async onMusicFilterSelect(interaction: StringSelectMenuInteraction): Promise<void> {
     const [prefix, kind, guildId, channelId] = interaction.customId.split(":");
-    if (prefix !== "music" || kind !== "filter" || !guildId || !this.guildId || guildId !== this.guildId) return;
+    if (prefix !== "music" || kind !== "filter" || !guildId || !this.isServing(guildId)) return;
     const guild = interaction.guild;
     if (!guild) return;
     const music = this.services.music;
@@ -985,7 +1021,7 @@ export class SielaBot {
     // against the worker's channel instead.
     const fleetNode = channelId ? music.getFleetNode(guild.id, channelId) : null;
     if (fleetNode && this.config.ROUTER_URL) {
-      const fleet = new FleetClient(this.config.ROUTER_URL, this.config.MCP_TOKEN, this.logger);
+      const fleet = new FleetClient(this.config.ROUTER_URL, this.config.MCP_TOKEN, this.logger, guild.id);
       await interaction.deferUpdate();
       try {
         const playback = await fleet.nodeState(fleetNode);
@@ -1080,7 +1116,7 @@ export class SielaBot {
   ): Promise<void> {
     return this.services.audit
       .log({
-        guildId: interaction.guildId ?? this.guildId ?? "",
+        guildId: interaction.guildId ?? this.defaultGuildId() ?? "",
         actorId: interaction.user.id,
         actorType: "user",
         source: "discord",
@@ -1301,7 +1337,7 @@ export class SielaBot {
     }
     const cooldown = command.cooldownMs ?? 0;
     if (cooldown > 0) {
-      const key = `${command.name}:${ctx.author.id}`;
+      const key = `${ctx.guild.id}:${command.name}:${ctx.author.id}`;
       const remaining = this.cooldowns.remaining(key, cooldown);
       if (remaining > 0) {
         await ctx.reply({ content: `Wait ${Math.ceil(remaining / 1000)}s before using that again.`, ephemeral: true });
@@ -1325,7 +1361,7 @@ export class SielaBot {
   }
 
   private async onMemberAdd(member: GuildMember): Promise<void> {
-    if (this.isVoiceWorker || member.guild.id !== this.guildId) return;
+    if (this.isVoiceWorker || !this.isServing(member.guild.id)) return;
     await Promise.allSettled([
       this.services.welcome.onMemberJoin(member),
       this.services.autoRole.onMemberJoin(member),
@@ -1333,7 +1369,7 @@ export class SielaBot {
   }
 
   private async onMemberRemove(member: GuildMember | PartialGuildMember): Promise<void> {
-    if (this.isVoiceWorker || member.guild.id !== this.guildId) return;
+    if (this.isVoiceWorker || !this.isServing(member.guild.id)) return;
     this.services.tambola.onMemberRemove(member.guild.id, member.user.id);
     this.services.cah.onMemberRemove(member.guild.id, member.user.id);
     await Promise.allSettled([
@@ -1343,7 +1379,7 @@ export class SielaBot {
   }
 
   private async onVoiceState(oldState: VoiceState, newState: VoiceState): Promise<void> {
-    if (this.isVoiceWorker || oldState.guild.id !== this.guildId) return;
+    if (this.isVoiceWorker || !this.isServing(oldState.guild.id)) return;
     await this.services.activity.handleVoiceState(oldState, newState).catch((error) => {
       this.logger.warn({ err: error }, "activity voice handling failed");
     });
@@ -1355,12 +1391,16 @@ export class SielaBot {
   async status(): Promise<BotStatus> {
     const database = (await pingDatabase(this.dbHandle.db)) ? "up" : "down";
     const music = this.music ? await this.music.isUp().catch(() => false) : false;
-    const activeTempVcs = this.guildId ? await this.services.tempVc.activeCount(this.guildId).catch(() => 0) : 0;
+    const guildIds = this.servedGuildIds();
+    const activeTempVcs = (
+      await Promise.all(guildIds.map((guildId) => this.services.tempVc.activeCount(guildId).catch(() => 0)))
+    ).reduce((sum, count) => sum + count, 0);
     return {
-      ready: Boolean(this.client.isReady() && this.guildId),
+      ready: Boolean(this.client.isReady() && guildIds.length > 0),
       uptimeSeconds: Math.floor((this.client.uptime ?? 0) / 1000),
       gatewayPing: this.client.ws.ping >= 0 ? this.client.ws.ping : null,
-      guildId: this.guildId,
+      guildId: this.defaultGuildId(),
+      guildCount: guildIds.length,
       database,
       music: this.music ? (music ? "up" : "down") : "unknown",
       activePlayers: this.music ? this.music.activePlayers() : 0,
@@ -1380,7 +1420,8 @@ export class SielaBot {
     this.services.tts.stop();
     this.services.voiceSfx.stop();
     this.services.tempVc.stop();
-    this.randomVc.stop();
+    for (const service of this.randomVc.values()) service.stop();
+    this.randomVc.clear();
     this.scheduledEvents.stop();
     await this.services.activity.stop();
     await this.services.friendship.stop();

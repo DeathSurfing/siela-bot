@@ -69,6 +69,23 @@ describe("FleetRegistry", () => {
     expect(await registry.list("g1")).toEqual([{ id: "commander", baseUrl: "http://x:3101" }]);
   });
 
+  it("matches a multi-guild node against every guild it heartbeats", async () => {
+    const registry = new FleetRegistry(
+      store({
+        "siela:fleet:node:commander": JSON.stringify({
+          nodeId: "commander",
+          baseUrl: "http://commander:3101",
+          guildId: "g1",
+          guildIds: ["g1", "g2"],
+        }),
+      }),
+      [],
+    );
+    expect((await registry.list("g1")).map((node) => node.id)).toEqual(["commander"]);
+    expect((await registry.list("g2")).map((node) => node.id)).toEqual(["commander"]);
+    expect(await registry.list("g3")).toEqual([]);
+  });
+
   it("unions static and live without a guild scope", async () => {
     const registry = new FleetRegistry(
       store({ "siela:fleet:node:voice-1": live("voice-1", "g9") }),

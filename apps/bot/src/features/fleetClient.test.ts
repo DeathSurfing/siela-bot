@@ -47,6 +47,21 @@ describe("FleetClient", () => {
     await expect(client.autoPlay("song")).rejects.toBeInstanceOf(UserError);
   });
 
+  it("sends the guild header on every request", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown, init?: RequestInit) => {
+        calls.push({ url: String(url), init });
+        return jsonResponse({ nodeId: "voice-1", result: { added: 2, first: { title: "Song" } } });
+      }),
+    );
+    const client = new FleetClient("http://router:3100", "token-1234567890123456", logger, "111111111111111111");
+    await client.autoPlay("song", "123");
+    const headers = calls[0]?.init?.headers as Record<string, string>;
+    expect(headers["x-guild-id"]).toBe("111111111111111111");
+  });
+
   it("is disabled without a router URL", () => {
     expect(new FleetClient(null, "token-1234567890123456", logger).enabled).toBe(false);
   });

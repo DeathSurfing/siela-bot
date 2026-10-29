@@ -75,6 +75,7 @@ function csv(value: string | undefined): string[] {
 const botSchema = z.object({
   ...baseProcessEnv,
   DISCORD_TOKEN: z.string().min(20, "DISCORD_TOKEN is required"),
+  // Pins the bot to one guild. Unset means every guild the bot joins is served.
   GUILD_ID: optionalSnowflake,
   DISCORD_CLIENT_ID: optionalSnowflake,
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
@@ -152,8 +153,9 @@ const routerSchema = z.object({
   // Fleet session: static fallback. Live membership comes from Valkey
   // heartbeats (siela:fleet:node:* with TTL) when VALKEY_URL is set.
   VALKEY_URL: z.string().url().optional(),
-  // Guild scope for the session. Semaphore capacity counts only nodes
-  // heartbeating for this guild: 1 for a lone commander, more with workers.
+  // Fallback guild scope when a request carries no x-guild-id. Semaphore
+  // capacity counts only nodes heartbeating for the guild: 1 for a lone
+  // commander, more with workers.
   GUILD_ID: optionalSnowflake,
   NODES: z.string().optional(),
 });

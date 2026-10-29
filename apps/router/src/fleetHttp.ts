@@ -16,6 +16,8 @@ export interface NodeFetchOptions {
   method?: string;
   body?: unknown;
   timeoutMs?: number;
+  /** Guild the operation targets. Voice nodes multiplex guilds by this header. */
+  guildId?: string | null;
 }
 
 export async function readJsonSafe(response: Response): Promise<unknown> {
@@ -54,7 +56,7 @@ export async function fetchNodeJson(
   path: string,
   options: NodeFetchOptions,
 ): Promise<unknown> {
-  const { token, method = "GET", body, timeoutMs = 15_000 } = options;
+  const { token, method = "GET", body, timeoutMs = 15_000, guildId } = options;
   const url = `${node.baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
   let response: Response;
   try {
@@ -62,6 +64,7 @@ export async function fetchNodeJson(
       method,
       headers: {
         ...(method === "GET" ? {} : { "content-type": "application/json" }),
+        ...(guildId ? { "x-guild-id": guildId } : {}),
         authorization: `Bearer ${token}`,
       },
       body: method === "GET" || method === "HEAD" ? undefined : JSON.stringify(body ?? {}),

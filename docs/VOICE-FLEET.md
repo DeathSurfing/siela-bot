@@ -227,7 +227,7 @@ TTS binds to exactly one node until `/tts off`:
 - Voice-busy checks (`isVoiceBusy`, music voice locks) are per-process, not
   per-fleet. Two nodes can be told to join channels at the same time; the
   last writer wins per channel.
-- All nodes share one guild (`GUILD_ID`). Multi-guild fleets are out of scope.
+- Nodes advertise the guilds they serve in the heartbeat (`guildIds`). The router scopes each request with `x-guild-id`, so one fleet can carry several guilds. Voice workers still leave every guild except `GUILD_ID` when that variable is set; leave it unset to let them serve any guild the router sends. See [MULTI-GUILD.md](MULTI-GUILD.md).
 
 ## Troubleshooting
 

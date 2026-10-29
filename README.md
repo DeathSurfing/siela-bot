@@ -5,7 +5,7 @@
 [![Runtime: Bun](https://img.shields.io/badge/runtime-Bun%201.4-f9f1e1)](https://bun.sh)
 [![Deploy: Podman](https://img.shields.io/badge/deploy-Podman%205%2B-892ca0)](https://podman.io)
 
-Siela Bot is a self-hosted Discord bot for a single community server. It combines music, a coin economy, daily trading-card auctions, Tambola, social features, text-to-speech, temporary voice channels, welcome automation, and a bearer-token control API.
+Siela Bot is a self-hosted Discord bot for one or many community servers. It combines music, a coin economy, daily trading-card auctions, Tambola, social features, text-to-speech, temporary voice channels, welcome automation, and a bearer-token control API.
 
 The project is open source under the MIT license. Contributions, bug reports, and documentation fixes are welcome.
 
@@ -19,6 +19,7 @@ The project is open source under the MIT license. Contributions, bug reports, an
 - **Delulu.** Generates short bias scenarios through a local llama.cpp service. Falls back to Hugging Face, Pollinations, and built-in scenarios when the local service is unavailable.
 - **TTS.** Reads enabled voice-channel chat with KittenTTS Nano ONNX and the Bruno voice. Edge TTS remains available as a fallback.
 - **Community features.** Welcome cards, auto-role, temporary voice channels, confessions, birthdays, friendship levels, family trees, activity tracking, and scheduled prayer-time voice events.
+- **Multi-server.** Serves every guild it joins, with per-guild settings, schedulers, and a guild-scoped control API. Set `GUILD_ID` to pin one server. See [docs/MULTI-GUILD.md](docs/MULTI-GUILD.md).
 - **Operations.** Runs as a rootless Podman stack with PostgreSQL, Valkey, llama.cpp, KittenTTS, health endpoints, a bearer-token control API, and an optional watchtower that auto-deploys commits from GitHub. The bot registers 63 commands.
 
 ## Architecture
@@ -81,7 +82,7 @@ git clone https://github.com/DeathSurfing/siela-bot.git
 cd siela-bot
 
 export DISCORD_TOKEN="..."
-export GUILD_ID="..."   # recommended for a single-guild install
+export GUILD_ID="..."   # optional: pins the bot to one server
 
 ./scripts/podman-init.sh
 ./scripts/podman-stack.sh up -d --build
@@ -145,6 +146,7 @@ For local development, use a PostgreSQL container and a `.env` file inside `apps
 
 - [GET_STARTED.md](GET_STARTED.md) is the short path from clone to a working bot.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains process structure, command flow, boot order, and storage.
+- [docs/MULTI-GUILD.md](docs/MULTI-GUILD.md) explains server binding, per-guild state, and the guild-scoped control API.
 - [docs/RUNBOOK.md](docs/RUNBOOK.md) covers deployment, updates, backups, and troubleshooting.
 - [docs/ECONOMY.md](docs/ECONOMY.md) explains Siela Coins and pricing.
 - [docs/ECONOMY_V2.md](docs/ECONOMY_V2.md) explains the earning, AI-gating, and exchange design choices.

@@ -34,6 +34,7 @@ import {
 import type { Services } from "../framework/types.js";
 import type { Logger } from "../lib/logger.js";
 import { UserError, errorMessage } from "../lib/errors.js";
+import { selectGuildId } from "./guildScope.js";
 
 export interface ControlServerOptions {
   services: Services;
@@ -41,7 +42,10 @@ export interface ControlServerOptions {
   token: string;
   logger: Logger;
   getStatus: () => BotStatus | Promise<BotStatus>;
-  getGuildId: () => string | null;
+  /** The guild used when a request does not name one. Null while several are served. */
+  getDefaultGuildId: () => string | null;
+  /** Every guild this node serves. */
+  getGuildIds: () => string[];
 }
 
 type Handler = (request: FastifyRequest, reply: FastifyReply) => Promise<unknown>;
@@ -74,14 +78,28 @@ export class ControlServer {
     return provided.length === expected.length && timingSafeEqual(provided, expected);
   }
 
-  private guildId(): string {
-    const guildId = this.options.getGuildId();
-    if (!guildId) throw new UserError("The bot is not bound to a guild yet.", "not_ready");
-    return guildId;
+  /**
+   * Guild scoping for automation. `x-guild-id` (or a `guildId` query value)
+   * names the guild; without it a single-guild node uses its only guild and a
+   * multi-guild node refuses ambiguous writes.
+   */
+  private guildId(request: FastifyRequest): string {
+    const header = request.headers["x-guild-id"];
+    const query = (request.query ?? {}) as { guildId?: unknown };
+    const explicit = typeof header === "string" && header
+      ? header
+      : typeof query.guildId === "string" && query.guildId
+        ? query.guildId
+        : null;
+    return selectGuildId({
+      explicit,
+      served: this.options.getGuildIds(),
+      fallback: this.options.getDefaultGuildId(),
+    });
   }
 
-  private guild(): Guild {
-    const guild = this.options.client.guilds.cache.get(this.guildId());
+  private guild(request: FastifyRequest): Guild {
+    const guild = this.options.client.guilds.cache.get(this.guildId(request));
     if (!guild) throw new UserError("Guild not available.", "not_ready");
     return guild;
   }
@@ -123,15 +141,30 @@ export class ControlServer {
   private registerRoutes(): void {
     const { services } = this.options;
 
-    this.route("GET", "/v1/status", async () => this.options.getStatus());
-    this.route("GET", "/v1/commands", async () => services.registry.metadata());
+    this.route("GET", "/v1/status", async (request) => this.options.getStatus());
+    this.route("GET", "/v1/guilds", async (request) => ({
+      guilds: this.options.getGuildIds().flatMap((guildId) => {
+        const guild = this.options.client.guilds.cache.get(guildId);
+        if (!guild) return [];
+        return [{
+          id: guild.id,
+          name: guild.name,
+          iconUrl: guild.iconURL({ size: 128 }),
+          memberCount: guild.memberCount,
+          ownerId: guild.ownerId,
+          joinedAt: guild.joinedTimestamp,
+          available: true,
+        }];
+      }),
+    }));
+    this.route("GET", "/v1/commands", async (request) => services.registry.metadata());
 
-    this.route("GET", "/v1/prefix", async () => ({
-      prefix: await services.settings.getPrefix(this.guildId()),
+    this.route("GET", "/v1/prefix", async (request) => ({
+      prefix: await services.settings.getPrefix(this.guildId(request)),
     }));
     this.route("PATCH", "/v1/prefix", async (request) => {
       const body = this.parse(prefixSetSchema, request.body);
-      const guildId = this.guildId();
+      const guildId = this.guildId(request);
       const before = await services.settings.getPrefix(guildId);
       const prefix = await services.settings.setPrefix(guildId, body.prefix, this.actor(request));
       await services.audit.log({
@@ -147,10 +180,10 @@ export class ControlServer {
       return { prefix };
     });
 
-    this.route("GET", "/v1/welcome", async () => services.settings.getWelcome(this.guildId()));
+    this.route("GET", "/v1/welcome", async (request) => services.settings.getWelcome(this.guildId(request)));
     this.route("PATCH", "/v1/welcome", async (request) => {
       const body = this.parse(welcomeUpdateSchema, request.body);
-      const guildId = this.guildId();
+      const guildId = this.guildId(request);
       const before = await services.settings.getWelcome(guildId);
       const after = await services.settings.updateWelcome(guildId, body, this.actor(request));
       await services.audit.log({
@@ -167,22 +200,22 @@ export class ControlServer {
     });
     this.route("POST", "/v1/welcome/test", async (request) => {
       const body = this.parse(welcomeTestSchema, request.body ?? {});
-      const member = await this.guild().members.fetch(this.options.client.user!.id);
+      const member = await this.guild(request).members.fetch(this.options.client.user!.id);
       await services.welcome.sendTest(member, body.channelId, body.message);
       return { sent: true };
     });
 
-    this.route("GET", "/v1/autorole", async () => {
-      const settings = await services.settings.getAutoRole(this.guildId());
-      const validation = await services.autoRole.validateRoles(this.guild(), settings.roleIds);
+    this.route("GET", "/v1/autorole", async (request) => {
+      const settings = await services.settings.getAutoRole(this.guildId(request));
+      const validation = await services.autoRole.validateRoles(this.guild(request), settings.roleIds);
       return { ...settings, validation };
     });
     this.route("PATCH", "/v1/autorole", async (request) => {
       const body = this.parse(autoroleUpdateSchema, request.body);
-      const guildId = this.guildId();
+      const guildId = this.guildId(request);
       const before = await services.settings.getAutoRole(guildId);
       if (body.roleIds) {
-        const validation = await services.autoRole.validateRoles(this.guild(), body.roleIds);
+        const validation = await services.autoRole.validateRoles(this.guild(request), body.roleIds);
         if (validation.errors.length) throw new UserError(validation.errors.join("; "), "invalid_autorole");
       }
       const after = await services.settings.updateAutoRole(guildId, body, this.actor(request));
@@ -198,18 +231,18 @@ export class ControlServer {
       });
       return after;
     });
-    this.route("POST", "/v1/autorole/validate", async () => {
-      const settings = await services.settings.getAutoRole(this.guildId());
-      return services.autoRole.validateRoles(this.guild(), settings.roleIds);
+    this.route("POST", "/v1/autorole/validate", async (request) => {
+      const settings = await services.settings.getAutoRole(this.guildId(request));
+      return services.autoRole.validateRoles(this.guild(request), settings.roleIds);
     });
     this.route("POST", "/v1/autorole/sync", async (request) => {
       const body = this.parse(autoroleSyncSchema, request.body ?? {});
       if (!body.dryRun && !body.confirm) {
         throw new UserError("Set confirm: true to apply a sync.", "confirmation_required");
       }
-      const result = await services.autoRole.sync(this.guild(), body.dryRun ?? true);
+      const result = await services.autoRole.sync(this.guild(request), body.dryRun ?? true);
       await services.audit.log({
-        guildId: this.guildId(),
+        guildId: this.guildId(request),
         actorId: this.actor(request),
         actorType: "mcp",
         source: "control",
@@ -222,18 +255,18 @@ export class ControlServer {
 
     this.route("GET", "/v1/counters", async (request) => {
       const query = this.parse(countersQuerySchema, request.query);
-      return services.counters.query({ ...query, guildId: this.guildId() });
+      return services.counters.query({ ...query, guildId: this.guildId(request) });
     });
     this.route("GET", "/v1/counters/leaderboard", async (request) => {
       const query = request.query as { kind?: string; limit?: string };
-      return services.counters.leaderboard(this.guildId(), query.kind as never, Number(query.limit ?? 10));
+      return services.counters.leaderboard(this.guildId(request), query.kind as never, Number(query.limit ?? 10));
     });
-    this.route("GET", "/v1/optouts", async () => services.counters.listOptouts(this.guildId()));
+    this.route("GET", "/v1/optouts", async (request) => services.counters.listOptouts(this.guildId(request)));
     this.route("POST", "/v1/counters/reset", async (request) => {
       const body = this.parse(countersResetSchema, request.body);
-      const removed = await services.counters.reset(this.guildId(), body);
+      const removed = await services.counters.reset(this.guildId(request), body);
       await services.audit.log({
-        guildId: this.guildId(),
+        guildId: this.guildId(request),
         actorId: this.actor(request),
         actorType: "mcp",
         source: "control",
@@ -244,10 +277,10 @@ export class ControlServer {
       return { removed };
     });
 
-    this.route("GET", "/v1/tempvc/config", async () => services.settings.getTempVc(this.guildId()));
+    this.route("GET", "/v1/tempvc/config", async (request) => services.settings.getTempVc(this.guildId(request)));
     this.route("PATCH", "/v1/tempvc/config", async (request) => {
       const body = this.parse(tempvcSettingsUpdateSchema, request.body);
-      const guildId = this.guildId();
+      const guildId = this.guildId(request);
       const before = await services.settings.getTempVc(guildId);
       const after = await services.settings.updateTempVc(guildId, body, this.actor(request));
       await services.audit.log({
@@ -262,7 +295,7 @@ export class ControlServer {
       });
       return after;
     });
-    this.route("GET", "/v1/tempvc/channels", async () => services.tempVc.list(this.guildId()));
+    this.route("GET", "/v1/tempvc/channels", async (request) => services.tempVc.list(this.guildId(request)));
     this.route("GET", "/v1/tempvc/channels/:id", async (request) => {
       const { id } = request.params as { id: string };
       const row = await services.tempVc.getRow(id);
@@ -320,10 +353,10 @@ export class ControlServer {
       return { deleted: true };
     });
 
-    this.route("GET", "/v1/music/config", async () => services.settings.getMusic(this.guildId()));
+    this.route("GET", "/v1/music/config", async (request) => services.settings.getMusic(this.guildId(request)));
     this.route("PATCH", "/v1/music/config", async (request) => {
       const body = this.parse(musicSettingsUpdateSchema, request.body);
-      const guildId = this.guildId();
+      const guildId = this.guildId(request);
       const before = await services.settings.getMusic(guildId);
       const after = await services.settings.updateMusic(guildId, body, this.actor(request));
       await services.audit.log({
@@ -338,88 +371,88 @@ export class ControlServer {
       });
       return after;
     });
-    this.route("GET", "/v1/music/state", async () => {
+    this.route("GET", "/v1/music/state", async (request) => {
       const music = this.requireMusic();
-      return music.state(this.guildId()) ?? { playing: false, paused: false, volume: 0, loop: "off", position: 0, current: null, upcoming: [] };
+      return music.state(this.guildId(request)) ?? { playing: false, paused: false, volume: 0, loop: "off", position: 0, current: null, upcoming: [] };
     });
     this.route("POST", "/v1/music/join", async (request) => {
       const body = this.parse(musicJoinSchema, request.body ?? {});
-      const member = await this.guild().members.fetch(this.options.client.user!.id);
+      const member = await this.guild(request).members.fetch(this.options.client.user!.id);
       const channelId = await this.requireMusic().join(member, body.voiceChannelId);
       return { channelId };
     });
     this.route("POST", "/v1/music/play", async (request) => {
       const body = this.parse(musicPlaySchema, request.body);
       const music = this.requireMusic();
-      const member = await this.guild().members.fetch(this.options.client.user!.id);
+      const member = await this.guild(request).members.fetch(this.options.client.user!.id);
       return music.play(member, body.query, body.voiceChannelId, body.next);
     });
-    this.route("POST", "/v1/music/pause", async () => {
-      await this.requireMusic().pause(this.guildId());
+    this.route("POST", "/v1/music/pause", async (request) => {
+      await this.requireMusic().pause(this.guildId(request));
       return { ok: true };
     });
-    this.route("POST", "/v1/music/resume", async () => {
-      await this.requireMusic().resume(this.guildId());
+    this.route("POST", "/v1/music/resume", async (request) => {
+      await this.requireMusic().resume(this.guildId(request));
       return { ok: true };
     });
     this.route("POST", "/v1/music/skip", async (request) => {
       const body = this.parse(musicSkipSchema, request.body ?? {});
-      await this.requireMusic().skip(this.guildId(), body.count);
+      await this.requireMusic().skip(this.guildId(request), body.count);
       return { ok: true };
     });
-    this.route("POST", "/v1/music/stop", async () => {
-      await this.requireMusic().stop(this.guildId());
+    this.route("POST", "/v1/music/stop", async (request) => {
+      await this.requireMusic().stop(this.guildId(request));
       return { ok: true };
     });
     this.route("POST", "/v1/music/volume", async (request) => {
       const body = this.parse(musicVolumeSchema, request.body);
-      return { volume: await this.requireMusic().volume(this.guildId(), body.volume) };
+      return { volume: await this.requireMusic().volume(this.guildId(request), body.volume) };
     });
     this.route("POST", "/v1/music/seek", async (request) => {
       const body = this.parse(musicSeekSchema, request.body);
-      await this.requireMusic().seek(this.guildId(), body.positionMs);
+      await this.requireMusic().seek(this.guildId(request), body.positionMs);
       return { ok: true };
     });
     this.route("POST", "/v1/music/loop", async (request) => {
       const body = this.parse(musicLoopSchema, request.body);
-      await this.requireMusic().loop(this.guildId(), body.mode);
+      await this.requireMusic().loop(this.guildId(request), body.mode);
       return { ok: true };
     });
-    this.route("POST", "/v1/music/shuffle", async () => {
-      await this.requireMusic().shuffle(this.guildId());
+    this.route("POST", "/v1/music/shuffle", async (request) => {
+      await this.requireMusic().shuffle(this.guildId(request));
       return { ok: true };
     });
     this.route("POST", "/v1/music/remove", async (request) => {
       const body = this.parse(musicRemoveSchema, request.body);
-      const removed = await this.requireMusic().remove(this.guildId(), body.index);
+      const removed = await this.requireMusic().remove(this.guildId(request), body.index);
       return { removed: removed.title };
     });
-    this.route("POST", "/v1/music/clear", async () => {
-      await this.requireMusic().clear(this.guildId());
+    this.route("POST", "/v1/music/clear", async (request) => {
+      await this.requireMusic().clear(this.guildId(request));
       return { ok: true };
     });
     this.route("POST", "/v1/music/move", async (request) => {
       const body = this.parse(musicMoveSchema, request.body);
-      await this.requireMusic().move(this.guildId(), body.from, body.to);
+      await this.requireMusic().move(this.guildId(request), body.from, body.to);
       return { ok: true };
     });
     this.route("POST", "/v1/music/jump", async (request) => {
       const body = this.parse(musicJumpSchema, request.body);
-      await this.requireMusic().jump(this.guildId(), body.index);
+      await this.requireMusic().jump(this.guildId(request), body.index);
       return { ok: true };
     });
     this.route("POST", "/v1/music/autoplay", async (request) => {
       const body = this.parse(musicAutoplaySchema, request.body);
-      await this.requireMusic().autoplay(this.guildId(), body.enabled);
+      await this.requireMusic().autoplay(this.guildId(request), body.enabled);
       return { ok: true };
     });
     this.route("POST", "/v1/music/filters", async (request) => {
       const body = this.parse(musicFilterSchema, request.body);
-      await this.requireMusic().filters(this.guildId(), body.preset);
+      await this.requireMusic().filters(this.guildId(request), body.preset);
       return { ok: true };
     });
-    this.route("POST", "/v1/music/disconnect", async () => {
-      await this.requireMusic().disconnect(this.guildId());
+    this.route("POST", "/v1/music/disconnect", async (request) => {
+      await this.requireMusic().disconnect(this.guildId(request));
       return { ok: true };
     });
 
@@ -432,7 +465,7 @@ export class ControlServer {
       const sendable = channel as unknown as { send: (options: unknown) => Promise<{ id: string }> };
       const sent = await sendable.send(styleMessage({ content: body.content, allowedMentions: { parse: [] } }));
       await services.audit.log({
-        guildId: this.guildId(),
+        guildId: this.guildId(request),
         actorId: this.actor(request),
         actorType: "mcp",
         source: "control",
@@ -447,7 +480,7 @@ export class ControlServer {
 
     this.route("GET", "/v1/audit", async (request) => {
       const query = this.parse(auditQuerySchema, request.query);
-      return services.audit.tail(this.guildId(), query.limit);
+      return services.audit.tail(this.guildId(request), query.limit);
     });
 
     this.route("DELETE", "/v1/users/:id/data", async (request) => {
@@ -455,9 +488,9 @@ export class ControlServer {
       const query = request.query as { confirm?: string };
       if (query.confirm !== "true") throw new UserError("Set confirm=true to delete.", "confirmation_required");
       const parsed = this.parse(privacyDeleteSchema, { userId: id, confirm: true });
-      await services.privacy.deleteUserData(this.guildId(), parsed.userId);
+      await services.privacy.deleteUserData(this.guildId(request), parsed.userId);
       await services.audit.log({
-        guildId: this.guildId(),
+        guildId: this.guildId(request),
         actorId: this.actor(request),
         actorType: "mcp",
         source: "control",

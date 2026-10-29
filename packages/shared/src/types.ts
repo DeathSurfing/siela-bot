@@ -100,6 +100,7 @@ export interface BotStatus {
   uptimeSeconds: number;
   gatewayPing: number | null;
   guildId: string | null;
+  guildCount: number;
   database: "up" | "down";
   music: "up" | "down" | "unknown";
   activePlayers: number;

@@ -14,6 +14,7 @@ export interface StubFleetOptions {
   /** Hosts connected to a voice channel, mapped to that channel. */
   musicChannel?: Record<string, string>;
   onCall?: (method: string, target: string) => void;
+  onHeaders?: (method: string, target: string, headers: Headers) => void;
 }
 
 /** Fetch stub that passes localhost through and answers worker endpoints. */
@@ -28,6 +29,7 @@ export function stubFleetFetch(options: StubFleetOptions = {}): { calls: string[
       const method = init?.method ?? "GET";
       calls.push(`${method} ${target}`);
       options.onCall?.(method, target);
+      options.onHeaders?.(method, target, new Headers(init?.headers as RequestInit["headers"]));
       const host = target.split("/")[2] ?? "";
       if (target.endsWith("/internal/music/state")) {
         const busy = (options.musicBusy ?? []).includes(host);

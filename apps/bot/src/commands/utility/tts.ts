@@ -31,6 +31,7 @@ export const ttsCommand: Command = {
         ctx.services.config.ROUTER_URL ?? null,
         ctx.services.config.MCP_TOKEN,
         ctx.services.tts.logger,
+        ctx.guild.id,
       );
       if (commanderBusy && fleet.enabled) {
         // Commander's voice is taken: bind sticky TTS to a free fleet node

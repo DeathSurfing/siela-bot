@@ -71,14 +71,14 @@ git clone https://github.com/DeathSurfing/siela-bot.git
 cd siela-bot
 
 export DISCORD_TOKEN="..."
-export GUILD_ID="..."   # recommended for a single-guild install
+export GUILD_ID="..."   # optional: pins the bot to one server
 
 ./scripts/podman-init.sh
 ```
 
 The script writes `deploy/podman/.env` with mode 600. It derives `DISCORD_CLIENT_ID`, generates `POSTGRES_PASSWORD` and the control API bearer (`MCP_TOKEN`), and prints an invite URL with the recommended permission bitfield.
 
-Set `GUILD_ID` on the first install. If it is unset and the bot joins a different guild first, it binds to that guild and leaves the others.
+Leave `GUILD_ID` empty to serve every server the bot joins. Set it to pin the bot to one server; the bot then leaves any other server it is invited to. See [docs/MULTI-GUILD.md](docs/MULTI-GUILD.md).
 
 Do not run the init script with `FORCE=1` against an existing `pgdata` volume unless you intend to rotate the database password. PostgreSQL keeps the old password on an existing data directory.
 
@@ -189,7 +189,7 @@ For local music, install `ffmpeg`, `mpv`, and `yt-dlp`. For local TTS, install `
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `Used disallowed intents` | Privileged intents are disabled | Enable Server Members and Message Content in the Developer Portal |
-| Bot is online but no guild is ready | Wrong guild or no invite | Set `GUILD_ID` and re-invite |
+| Bot is online but no guild is ready | No invite, or `GUILD_ID` names another server | Check `GUILD_ID` and re-invite |
 | Container exits with `/dev/nvidia0` missing | Host has no NVIDIA GPU | Use local development or provide a GPU host |
 | vLLM reports `libcuda.so` missing | `/opt/nvidia-libs` is empty | Populate the driver library directory |
 | `password authentication failed` | `.env` password changed against an existing volume | Restore the old password or recreate the volume |

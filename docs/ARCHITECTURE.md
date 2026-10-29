@@ -203,9 +203,10 @@ To add durable state, update `packages/db/src/schema.ts`, generate a migration, 
 
 ## Known constraints
 
-- The bot is single-guild by design. It binds to `GUILD_ID` or the only guild it can see and leaves other guilds.
+- The bot serves every guild it joins. Set `GUILD_ID` to pin a deployment to one guild. See [MULTI-GUILD.md](MULTI-GUILD.md).
 - Context-menu commands are not implemented. The registry supports slash and prefix commands.
 - Active Tambola games and blackjack hands are not persisted. A restart cancels them.
 - The bot container does not need GPU access. The llama.cpp container runs on CPU.
 - Fleet voice-busy checks are per process, not per fleet. Two nodes can be told to join the same channel; the last writer wins.
 - Tambola, scheduled events, random VC drops, and activity tracking run on the commander only.
+- Guild-scoped schedulers run one instance per served guild. The relic scheduler uses one interval and iterates guilds sequentially.
