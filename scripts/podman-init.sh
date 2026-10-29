@@ -6,7 +6,7 @@
 #
 # Optional:
 #   DISCORD_CLIENT_ID  (otherwise derived from the token)
-#   GUILD_ID           (otherwise auto-detected by the bot)
+#   GUILD_ID           (otherwise the bot serves every guild it joins)
 #   WATCHTOWER_ENABLED (true starts the auto-deploy watchtower; default false)
 #   WATCHTOWER_REPO_URL (fork URL to follow instead of upstream)
 #   WATCHTOWER_BRANCH  (default main)
