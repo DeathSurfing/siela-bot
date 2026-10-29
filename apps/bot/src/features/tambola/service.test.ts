@@ -1,7 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
-import { MessageFlags } from "discord.js";
+import { ChannelType, MessageFlags } from "discord.js";
 import { TambolaService } from "./service.js";
 import { rowNumbers, ticketNumbers } from "./game.js";
+
+const voiceSpies = vi.hoisted(() => ({
+  join: vi.fn(async () => true),
+  leave: vi.fn(),
+  speak: vi.fn(async () => undefined),
+}));
+
+vi.mock("./voice.js", () => ({
+  TambolaVoice: class {
+    connected = true;
+    join = voiceSpies.join;
+    leave = voiceSpies.leave;
+    speak = voiceSpies.speak;
+  },
+}));
 
 function fakeUser(id: string, name: string) {
   const sent: unknown[] = [];
@@ -84,13 +99,15 @@ function createService() {
     isConnected: () => false,
     lockVoice: vi.fn(),
     unlockVoice: vi.fn(),
+    getFleetNode: vi.fn().mockReturnValue(null),
+    setFleetNode: vi.fn(),
   };
-  const client = {
-    users: { fetch: async (id: string) => fakeUser(id, id) },
-    guilds: { cache: new Map() },
+  const config = {
+    adminRoleIds: [],
+    botOwnerId: null,
+    ROUTER_URL: "http://router:3100",
+    MCP_TOKEN: "token-1234567890123456",
   };
-  const config = { adminRoleIds: [], botOwnerId: null };
-  const service = new TambolaService(client as never, music as never, config as never, logger as never);
   const edits: unknown[] = [];
   const message = {
     id: "msg",
@@ -104,13 +121,19 @@ function createService() {
     isTextBased: () => true,
     send: vi.fn(async () => message),
   };
+  const channelCache = new Map<string, unknown>();
   const guild = {
     id: "guild",
     ownerId: "host",
-    channels: { cache: new Map(), fetch: async () => null },
+    channels: { cache: channelCache, fetch: async (id: string) => channelCache.get(id) ?? null },
     members: { fetch: async (id: string) => fakeMember(id, id) },
   };
-  return { service, channel, guild, edits };
+  const client = {
+    users: { fetch: async (id: string) => fakeUser(id, id) },
+    guilds: { cache: new Map([["guild", guild]]) },
+  };
+  const service = new TambolaService(client as never, music as never, config as never, logger as never);
+  return { service, channel, guild, edits, music };
 }
 
 describe("TambolaService", () => {
@@ -307,6 +330,101 @@ describe("TambolaService", () => {
       await service.handleInteraction(interaction as never);
       const replied = interaction.getState().replied as { content?: string } | null;
       expect(JSON.stringify(replied)).toContain("That Tambola game is no longer active.");
+    }
+  });
+
+  it("stops fleet music in the selected channel before joining", async () => {
+    const { service, channel, guild, music } = createService();
+    const host = fakeMember("host", "Host");
+    const voiceChannel = {
+      id: "vc1",
+      type: ChannelType.GuildVoice,
+      guild: { id: "guild", members: { me: null, fetchMe: async () => null }, voiceAdapterCreator: {} },
+    };
+    (guild.channels.cache as Map<string, unknown>).set("vc1", voiceChannel);
+    music.getFleetNode.mockReturnValue("voice-1");
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    voiceSpies.join.mockClear();
+
+    await service.host({
+      guild: guild as never,
+      channel: channel as never,
+      host: host as never,
+      maxPlayers: 20,
+      autoMark: false,
+      voiceChannelId: "vc1",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/music/disconnect"),
+      expect.objectContaining({ body: expect.stringContaining('"nodeId":"voice-1"') }),
+    );
+    expect(music.setFleetNode).toHaveBeenCalledWith("guild", "vc1", null);
+    expect(voiceSpies.join).toHaveBeenCalled();
+    service.stop();
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps the voice lock while the game socket reconnects", async () => {
+    const { service, channel, guild } = createService();
+    const host = fakeMember("host", "Host");
+    const voiceChannel = {
+      id: "vc1",
+      type: ChannelType.GuildVoice,
+      guild: { id: "guild", members: { me: null, fetchMe: async () => null }, voiceAdapterCreator: {} },
+    };
+    (guild.channels.cache as Map<string, unknown>).set("vc1", voiceChannel);
+    const session = await service.host({
+      guild: guild as never,
+      channel: channel as never,
+      host: host as never,
+      maxPlayers: 20,
+      autoMark: false,
+      voiceChannelId: "vc1",
+    });
+    expect(service.isUsingVoice("guild")).toBe(true);
+    (session.voice as unknown as { connected: boolean }).connected = false;
+    expect(service.isUsingVoice("guild")).toBe(true);
+    service.stop();
+  });
+
+  it("leaves voice six seconds after a game ends", async () => {
+    vi.useFakeTimers();
+    const { service, channel, guild } = createService();
+    try {
+      const host = fakeMember("host", "Host");
+      const player = fakeMember("player", "Player");
+      const voiceChannel = {
+        id: "vc1",
+        type: ChannelType.GuildVoice,
+        guild: { id: "guild", members: { me: null, fetchMe: async () => null }, voiceAdapterCreator: {} },
+      };
+      (guild.channels.cache as Map<string, unknown>).set("vc1", voiceChannel);
+      voiceSpies.leave.mockClear();
+      await service.host({
+        guild: guild as never,
+        channel: channel as never,
+        host: host as never,
+        maxPlayers: 20,
+        autoMark: false,
+        voiceChannelId: "vc1",
+      });
+      await service.join("guild", player as never);
+      await service.join("guild", host as never);
+      await service.start("guild", host as never);
+      await service.end("guild", host as never);
+      expect(voiceSpies.leave).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect(voiceSpies.leave).toHaveBeenCalled();
+    } finally {
+      service.stop();
+      vi.useRealTimers();
     }
   });
 });

@@ -27,6 +27,15 @@ function textFromPayload(payload: ReplyPayload | null | undefined): string {
   return out.join("\n");
 }
 
+function commandServices(music: MusicService, extra: Record<string, unknown> = {}): Services {
+  return {
+    music,
+    config: {},
+    tambola: { voiceChannel: () => null, isUsingVoice: () => false },
+    ...extra,
+  } as unknown as Services;
+}
+
 describe("play command", () => {
   it("says Playing now when the player was empty", async () => {
     const emptyState: MusicQueueState | null = null;
@@ -57,7 +66,7 @@ describe("play command", () => {
       rawArgs: "lofi",
       commandName: "play",
       source: "slash",
-      services: { music: service, config: {} } as unknown as Services,
+      services: commandServices(service),
       client: {} as CommandContext["client"],
       channel: {} as CommandContext["channel"],
       interaction: undefined,
@@ -118,7 +127,7 @@ describe("play command", () => {
       rawArgs: "lofi",
       commandName: "play",
       source: "slash",
-      services: { music: service, config: {} } as unknown as Services,
+      services: commandServices(service),
       client: {} as CommandContext["client"],
       channel: {} as CommandContext["channel"],
       interaction: undefined,
@@ -159,7 +168,7 @@ describe("play command", () => {
       rawArgs: "lofi",
       commandName: "play",
       source: "slash",
-      services: { music: service, config: {} } as unknown as Services,
+      services: commandServices(service),
       client: {} as CommandContext["client"],
       channel: {} as CommandContext["channel"],
       interaction: undefined,
@@ -225,7 +234,7 @@ describe("play command", () => {
       rawArgs: "",
       commandName: "pause",
       source: "slash",
-      services: { music: service, config: { ROUTER_URL: "http://router:3100", MCP_TOKEN: "token-1234567890123456" } } as unknown as Services,
+      services: commandServices(service, { config: { ROUTER_URL: "http://router:3100", MCP_TOKEN: "token-1234567890123456" } }),
       client: {} as CommandContext["client"],
       channel: {} as CommandContext["channel"],
       interaction: undefined,
@@ -289,7 +298,10 @@ describe("play command", () => {
       rawArgs: "2",
       commandName: "skip",
       source: "slash",
-      services: { music: service, config: { ROUTER_URL: "http://router:3100", MCP_TOKEN: "token-1234567890123456" }, settings: { getMusic: vi.fn().mockResolvedValue({ djRoleIds: [] }) } } as unknown as Services,
+      services: commandServices(service, {
+        config: { ROUTER_URL: "http://router:3100", MCP_TOKEN: "token-1234567890123456" },
+        settings: { getMusic: vi.fn().mockResolvedValue({ djRoleIds: [] }) },
+      }),
       client: {} as CommandContext["client"],
       channel: {} as CommandContext["channel"],
       interaction: undefined,
@@ -356,7 +368,7 @@ describe("play command", () => {
       rawArgs: "lofi",
       commandName: "play",
       source: "slash",
-      services: { music: service, config: { ROUTER_URL: "http://router:3100", MCP_TOKEN: "token-1234567890123456" } } as unknown as Services,
+      services: commandServices(service, { config: { ROUTER_URL: "http://router:3100", MCP_TOKEN: "token-1234567890123456" } }),
       client: {} as CommandContext["client"],
       channel: {} as CommandContext["channel"],
       interaction: undefined,
@@ -423,7 +435,7 @@ describe("play command", () => {
       rawArgs: "lofi",
       commandName: "play",
       source: "slash",
-      services: { music: service, config: { ROUTER_URL: "http://router:3100", MCP_TOKEN: "token-1234567890123456" } } as unknown as Services,
+      services: commandServices(service, { config: { ROUTER_URL: "http://router:3100", MCP_TOKEN: "token-1234567890123456" } }),
       client: {} as CommandContext["client"],
       channel: {} as CommandContext["channel"],
       interaction: undefined,
@@ -443,5 +455,145 @@ describe("play command", () => {
 
     expect(edited).toHaveLength(1);
     expect(textFromPayload(edited[0])).toContain("Playing on voice-1");
+  });
+
+  it("keeps the channel binding when a mapped node rejects a play", async () => {
+    const service = {
+      state: vi.fn().mockReturnValue(null),
+      play: vi.fn(),
+      isVoiceLocked: vi.fn().mockReturnValue(false),
+      isConnected: vi.fn().mockReturnValue(false),
+      channelId: vi.fn().mockReturnValue(null),
+      setFleetNode: vi.fn(),
+      getFleetNode: vi.fn().mockReturnValue("voice-1"),
+      setNowPlayingMessage: vi.fn(),
+      refreshNowPlaying: vi.fn(),
+      logger: { info: () => undefined, warn: () => undefined, debug: () => undefined },
+    } as unknown as MusicService;
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ error: { code: "queue_full", message: "The queue is full." } }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const edited: ReplyPayload[] = [];
+    const ctx = {
+      guild: { id: "guild-1" } as Guild,
+      member: { voice: { channelId: "voice-9" } } as unknown as GuildMember,
+      author: { id: "user-1" } as User,
+      args: ["lofi"],
+      rawArgs: "lofi",
+      commandName: "play",
+      source: "slash",
+      services: commandServices(service, { config: { ROUTER_URL: "http://router:3100", MCP_TOKEN: "token-1234567890123456" } }),
+      client: {} as CommandContext["client"],
+      channel: {} as CommandContext["channel"],
+      interaction: undefined,
+      message: undefined,
+      reply: vi.fn().mockResolvedValue(null),
+      defer: vi.fn().mockResolvedValue(undefined),
+      edit: vi.fn(async (payload: ReplyPayload) => {
+        edited.push(payload);
+        return null;
+      }),
+      followUp: vi.fn().mockResolvedValue(null),
+    } as unknown as CommandContext;
+
+    const playCommand = musicCommands.find((command) => command.name === "play");
+    await playCommand!.execute(ctx);
+    vi.unstubAllGlobals();
+
+    expect(service.setFleetNode).not.toHaveBeenCalledWith("guild-1", "voice-9", null);
+    expect(textFromPayload(edited[edited.length - 1])).toContain("queue is full");
+  });
+
+  it("refuses to start music in the channel Tambola owns", async () => {
+    const service = {
+      state: vi.fn().mockReturnValue(null),
+      play: vi.fn(),
+      isVoiceLocked: vi.fn().mockReturnValue(true),
+      isConnected: vi.fn().mockReturnValue(false),
+      channelId: vi.fn().mockReturnValue(null),
+      setFleetNode: vi.fn(),
+      getFleetNode: vi.fn().mockReturnValue(null),
+      setNowPlayingMessage: vi.fn(),
+      refreshNowPlaying: vi.fn(),
+      logger: { info: () => undefined, warn: () => undefined },
+    } as unknown as MusicService;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const edited: ReplyPayload[] = [];
+    const ctx = {
+      guild: { id: "guild-1" } as Guild,
+      member: { voice: { channelId: "voice-9" } } as unknown as GuildMember,
+      author: { id: "user-1" } as User,
+      args: ["lofi"],
+      rawArgs: "lofi",
+      commandName: "play",
+      source: "slash",
+      services: commandServices(service, {
+        config: { ROUTER_URL: "http://router:3100", MCP_TOKEN: "token-1234567890123456" },
+        tambola: { voiceChannel: () => "voice-9" },
+      }),
+      client: {} as CommandContext["client"],
+      channel: {} as CommandContext["channel"],
+      interaction: undefined,
+      message: undefined,
+      reply: vi.fn().mockResolvedValue(null),
+      defer: vi.fn().mockResolvedValue(undefined),
+      edit: vi.fn(async (payload: ReplyPayload) => {
+        edited.push(payload);
+        return null;
+      }),
+      followUp: vi.fn().mockResolvedValue(null),
+    } as unknown as CommandContext;
+
+    const playCommand = musicCommands.find((command) => command.name === "play");
+    await playCommand!.execute(ctx);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(textFromPayload(edited[edited.length - 1])).toContain("Tambola is using this voice channel");
+  });
+});
+
+describe("join command", () => {
+  it("does not summon the commander into a channel a worker owns", async () => {
+    const service = {
+      join: vi.fn(),
+      setFleetNode: vi.fn(),
+      getFleetNode: vi.fn().mockReturnValue("voice-1"),
+    } as unknown as MusicService;
+    const replied: ReplyPayload[] = [];
+    const ctx = {
+      guild: { id: "guild-1" } as Guild,
+      member: { voice: { channelId: "voice-9" } } as unknown as GuildMember,
+      author: { id: "user-1" } as User,
+      args: [],
+      rawArgs: "",
+      commandName: "join",
+      source: "slash",
+      services: commandServices(service, { config: { ROUTER_URL: "http://router:3100", MCP_TOKEN: "token-1234567890123456" } }),
+      client: {} as CommandContext["client"],
+      channel: {} as CommandContext["channel"],
+      interaction: undefined,
+      message: undefined,
+      reply: vi.fn(async (payload: ReplyPayload) => {
+        replied.push(payload);
+        return null;
+      }),
+      defer: vi.fn().mockResolvedValue(undefined),
+      edit: vi.fn().mockResolvedValue(null),
+      followUp: vi.fn().mockResolvedValue(null),
+    } as unknown as CommandContext;
+
+    const joinCommand = musicCommands.find((command) => command.name === "join");
+    await joinCommand!.execute(ctx);
+
+    expect(service.join).not.toHaveBeenCalled();
+    expect(service.setFleetNode).not.toHaveBeenCalled();
+    expect(textFromPayload(replied[0])).toContain("voice-1");
   });
 });

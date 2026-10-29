@@ -8,16 +8,21 @@ describe("Router TTS routes", () => {
   let stub: { calls: string[] };
   let musicBusy: string[] = [];
   let ttsOn: string[] = [];
+  let musicChannel: Record<string, string> = {};
 
   beforeEach(() => {
     musicBusy = [];
     ttsOn = [];
+    musicChannel = {};
     stub = stubFleetFetch({
       get musicBusy() {
         return musicBusy;
       },
       get ttsOn() {
         return ttsOn;
+      },
+      get musicChannel() {
+        return musicChannel;
       },
     });
   });
@@ -57,16 +62,44 @@ describe("Router TTS routes", () => {
   it("preempt skips TTS-active nodes", async () => {
     ttsOn = ["voice-1:3101"];
     await withRouterServer(PORT, NODES, async (base) => {
-      const response = await fetch(`${base}/v1/session/preempt`, {
+      const preempt = await fetch(`${base}/v1/session/preempt`, {
         method: "POST",
         headers: authHeaders(),
         body: "{}",
       });
-      expect(response.status).toBe(200);
-      const body = (await response.json()) as Array<{ nodeId: string; ok: boolean; skipped?: string }>;
+      expect(preempt.status).toBe(200);
+      const body = (await preempt.json()) as Array<{ nodeId: string; ok: boolean; skipped?: string }>;
       expect(body).toContainEqual({ nodeId: "voice-1", ok: true, skipped: "tts" });
       expect(body).toContainEqual({ nodeId: "commander", ok: true });
       expect(stub.calls).not.toContain("POST http://voice-1:3101/internal/music/disconnect");
+    });
+  });
+
+  it("reuses a node that is already in the requested channel", async () => {
+    musicChannel = { "commander:3101": "ch1" };
+    await withRouterServer(PORT, NODES, async (base) => {
+      const response = await fetch(`${base}/v1/tts/enable`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ channelId: "ch1" }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ nodeId: "commander" });
+      expect(stub.calls).toContain("POST http://commander:3101/internal/tts/enable");
+    });
+  });
+
+  it("skips a connected node that speaks in a different channel", async () => {
+    musicBusy = ["commander:3101"];
+    musicChannel = { "voice-1:3101": "chA" };
+    await withRouterServer(PORT, NODES, async (base) => {
+      const response = await fetch(`${base}/v1/tts/enable`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ channelId: "ch1" }),
+      });
+      expect(response.status).toBe(429);
+      expect(stub.calls).not.toContain("POST http://voice-1:3101/internal/tts/enable");
     });
   });
 });
