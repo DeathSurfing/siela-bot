@@ -23,7 +23,6 @@ function parseToggle(value: string | undefined): boolean {
 
 export const featuresCommand: Command = {
   name: "features",
-  aliases: ["feature"],
   category: "admin",
   description: "List every server feature, or turn one on or off.",
   usage: "[on|off] [feature]",
