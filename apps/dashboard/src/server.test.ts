@@ -6,10 +6,21 @@ import type { ControlClient } from "./control-client.js";
 import { createDashboardServer, resolvePublicPath } from "./server.js";
 import { issueSession, csrfToken } from "./session.js";
 
+const password = "not-a-real-password-value";
+const sessionSecret = "not-a-real-session-secret-with-more-than-32-chars";
 const config = loadDashboardConfig({
-  DASHBOARD_PASSWORD: "not-a-real-password-value",
-  DASHBOARD_SESSION_SECRET: "not-a-real-session-secret-with-more-than-32-chars",
+  DASHBOARD_PASSWORD: password,
+  DASHBOARD_SESSION_SECRET: sessionSecret,
   MCP_TOKEN: "not-a-real-control-token",
+  NODE_ENV: "test",
+});
+const oauthOnlyConfig = loadDashboardConfig({
+  DASHBOARD_SESSION_SECRET: sessionSecret,
+  MCP_TOKEN: "not-a-real-control-token",
+  DISCORD_CLIENT_ID: "123456789012345678",
+  DISCORD_CLIENT_SECRET: "not-a-real-discord-client-secret",
+  DASHBOARD_OAUTH_REDIRECT_URI: "http://localhost:3000/auth/discord/callback",
+  DASHBOARD_OWNER_IDS: "111111111111111111",
   NODE_ENV: "test",
 });
 
@@ -95,14 +106,14 @@ describe("dashboard HTTP boundary", () => {
     const success = await app.inject({
       method: "POST",
       url: "/api/login",
-      payload: { password: config.DASHBOARD_PASSWORD },
+      payload: { password },
     });
     const cookie = success.headers["set-cookie"];
 
     expect(success.statusCode).toBe(200);
     expect(cookie).toContain("HttpOnly");
     expect(cookie).toContain("SameSite=Lax");
-    expect(cookie).not.toContain(config.DASHBOARD_PASSWORD);
+    expect(cookie).not.toContain(password);
     expect(success.json()).toHaveProperty("csrfToken");
     await app.inject({ method: "POST", url: "/api/logout", headers: { cookie, "x-csrf-token": success.json().csrfToken }, payload: {} });
 
@@ -119,8 +130,28 @@ describe("dashboard HTTP boundary", () => {
   it("reports whether Discord OAuth is available", async () => {
     const app = createDashboardServer({ config, publicDir, control: controlStub() });
     const session = await app.inject({ method: "GET", url: "/api/session" });
-    expect(session.json()).toEqual({ authenticated: false, oauth: false });
+    expect(session.json()).toEqual({ authenticated: false, oauth: false, password: true });
     expect((await app.inject({ method: "GET", url: "/auth/discord" })).statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("reports the password flag in authenticated and unauthenticated sessions", async () => {
+    const app = createDashboardServer({ config, publicDir, control: controlStub() });
+    const authenticated = await app.inject({ method: "GET", url: "/api/session", headers: sessionHeaders() });
+
+    expect(authenticated.json()).toMatchObject({ authenticated: true, oauth: false, password: true });
+    await app.close();
+  });
+
+  it("disables password sign-in when no password is configured", async () => {
+    const app = createDashboardServer({ config: oauthOnlyConfig, publicDir, control: controlStub() });
+    const session = await app.inject({ method: "GET", url: "/api/session" });
+    const login = await app.inject({ method: "POST", url: "/api/login", payload: { password: "anything-at-all" } });
+
+    expect(session.json()).toEqual({ authenticated: false, oauth: true, password: false });
+    expect(login.statusCode).toBe(404);
+    expect(login.json()).toEqual({ error: { code: "password_disabled", message: expect.any(String) } });
+    expect(login.headers["set-cookie"]).toBeUndefined();
     await app.close();
   });
 
@@ -182,7 +213,7 @@ describe("dashboard HTTP boundary", () => {
     const sessionCookie = cookies.match(/siela_dashboard=([^;]+)/)?.[1];
     expect(sessionCookie).toBeTruthy();
     const session = await app.inject({ method: "GET", url: "/api/session", headers: { cookie: `siela_dashboard=${sessionCookie}` } });
-    expect(session.json()).toMatchObject({ authenticated: true, oauth: true, user: { id: owner.id, name: owner.name } });
+    expect(session.json()).toMatchObject({ authenticated: true, oauth: true, password: true, user: { id: owner.id, name: owner.name } });
     await app.close();
   });
 
@@ -199,7 +230,7 @@ describe("dashboard HTTP boundary", () => {
       method: "POST",
       url: "/api/login",
       remoteAddress: "10.0.0.9",
-      payload: { password: secureConfig.DASHBOARD_PASSWORD },
+      payload: { password },
     });
     expect(response.statusCode).toBe(200);
     expect(response.headers["set-cookie"]).toContain("Secure");

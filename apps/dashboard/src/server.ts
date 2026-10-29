@@ -116,6 +116,8 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
   const control = options.control ?? createControlClient(config.CONTROL_API_URL, config.MCP_TOKEN);
   const oauthSettings = oauthConfig(config);
   const oauth = options.oauth !== undefined ? options.oauth : oauthSettings ? createDiscordOAuth(oauthSettings) : null;
+  const password = config.DASHBOARD_PASSWORD;
+  const passwordEnabled = Boolean(password);
   const publicRoot = path.resolve(options.publicDir);
   const loginWindows = new Map<string, LoginWindow>();
   const app = Fastify({
@@ -163,12 +165,13 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
   app.get("/api/session", async (request) => {
     const cookie = readCookie(request.headers.cookie);
     const session = verifySession(cookie, config.DASHBOARD_SESSION_SECRET, now());
-    if (!session) return { authenticated: false, oauth: Boolean(oauth) };
+    if (!session) return { authenticated: false, oauth: Boolean(oauth), password: passwordEnabled };
     return {
       authenticated: true,
       csrfToken: csrfToken(cookie!, config.DASHBOARD_SESSION_SECRET),
       user: session.user ?? null,
       oauth: Boolean(oauth),
+      password: passwordEnabled,
     };
   });
 
@@ -225,6 +228,9 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
   });
 
   app.post("/api/login", async (request, reply) => {
+    if (!password) {
+      return apiError(reply, 404, "password_disabled", "Password sign-in is disabled on this dashboard. Use Discord to sign in.");
+    }
     const parsed = loginSchema.safeParse(request.body);
     if (!parsed.success) return apiError(reply, 400, "invalid_login", "Enter your dashboard password.");
 
@@ -243,7 +249,7 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
     current.attempts += 1;
     loginWindows.set(ip, current);
 
-    if (!constantTimePasswordMatch(config.DASHBOARD_PASSWORD, parsed.data.password)) {
+    if (!constantTimePasswordMatch(password, parsed.data.password)) {
       return apiError(reply, 401, "invalid_password", "That password is not correct.");
     }
 
