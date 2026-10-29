@@ -97,7 +97,7 @@ describe("dashboard HTTP boundary", () => {
 
     expect(success.statusCode).toBe(200);
     expect(cookie).toContain("HttpOnly");
-    expect(cookie).toContain("SameSite=Strict");
+    expect(cookie).toContain("SameSite=Lax");
     expect(cookie).not.toContain(config.DASHBOARD_PASSWORD);
     expect(success.json()).toHaveProperty("csrfToken");
     await app.inject({ method: "POST", url: "/api/logout", headers: { cookie, "x-csrf-token": success.json().csrfToken }, payload: {} });
@@ -109,6 +109,76 @@ describe("dashboard HTTP boundary", () => {
     expect(limited.statusCode).toBe(429);
     now += 5 * 60_000;
     expect((await app.inject({ method: "POST", url: "/api/login", payload: { password: "incorrect-password" } })).statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("reports whether Discord OAuth is available", async () => {
+    const app = createDashboardServer({ config, publicDir, control: controlStub() });
+    const session = await app.inject({ method: "GET", url: "/api/session" });
+    expect(session.json()).toEqual({ authenticated: false, oauth: false });
+    expect((await app.inject({ method: "GET", url: "/auth/discord" })).statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("runs the Discord state, callback, owner, and session flow", async () => {
+    const oauthSettings = loadDashboardConfig({
+      DASHBOARD_PASSWORD: "not-a-real-password-value",
+      DASHBOARD_SESSION_SECRET: "not-a-real-session-secret-with-more-than-32-chars",
+      MCP_TOKEN: "not-a-real-control-token",
+      DISCORD_CLIENT_ID: "123456789012345678",
+      DISCORD_CLIENT_SECRET: "a-long-discord-client-secret",
+      DASHBOARD_OAUTH_REDIRECT_URI: "http://localhost:3000/auth/discord/callback",
+      DASHBOARD_OWNER_IDS: "111111111111111111",
+      NODE_ENV: "test",
+    });
+    const owner = { id: "111111111111111111", name: "Owner", avatarUrl: "https://cdn.discordapp.com/avatars/1/a.png?size=64" };
+    const exchange = vi.fn(async (code: string) => {
+      if (code === "owner") return owner;
+      if (code === "stranger") return { ...owner, id: "222222222222222222" };
+      throw new Error("denied");
+    });
+    const oauth = {
+      authorizeUrl: (state: string) => `https://discord.com/oauth2/authorize?state=${state}`,
+      exchange,
+    };
+    const app = createDashboardServer({ config: oauthSettings, publicDir, control: controlStub(), oauth });
+
+    const begin = await app.inject({ method: "GET", url: "/auth/discord" });
+    expect(begin.statusCode).toBe(302);
+    const beginCookies = Array.isArray(begin.headers["set-cookie"])
+      ? begin.headers["set-cookie"].join("; ")
+      : String(begin.headers["set-cookie"] ?? "");
+    const state = beginCookies.match(/siela_oauth_state=([^;]+)/)?.[1];
+    expect(state).toBeTruthy();
+    expect(begin.headers.location).toContain(`state=${state}`);
+
+    const badState = await app.inject({ method: "GET", url: "/auth/discord/callback?code=owner&state=wrong" });
+    expect(badState.statusCode).toBe(302);
+    expect(badState.headers.location).toBe("/?oauth=state");
+    expect(exchange).not.toHaveBeenCalled();
+
+    const denied = await app.inject({
+      method: "GET",
+      url: `/auth/discord/callback?code=stranger&state=${state}`,
+      headers: { cookie: `siela_oauth_state=${state}` },
+    });
+    expect(denied.headers.location).toBe("/?oauth=denied");
+    expect(denied.headers["set-cookie"]).not.toContain("siela_dashboard=");
+
+    const success = await app.inject({
+      method: "GET",
+      url: `/auth/discord/callback?code=owner&state=${state}`,
+      headers: { cookie: `siela_oauth_state=${state}` },
+    });
+    expect(success.statusCode).toBe(302);
+    expect(success.headers.location).toBe("/");
+    const cookies = Array.isArray(success.headers["set-cookie"])
+      ? success.headers["set-cookie"].join("; ")
+      : String(success.headers["set-cookie"]);
+    const sessionCookie = cookies.match(/siela_dashboard=([^;]+)/)?.[1];
+    expect(sessionCookie).toBeTruthy();
+    const session = await app.inject({ method: "GET", url: "/api/session", headers: { cookie: `siela_dashboard=${sessionCookie}` } });
+    expect(session.json()).toMatchObject({ authenticated: true, oauth: true, user: { id: owner.id, name: owner.name } });
     await app.close();
   });
 

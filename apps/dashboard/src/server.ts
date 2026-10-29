@@ -3,7 +3,7 @@ import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { z } from "zod";
-import type { DashboardConfig } from "./config.js";
+import { oauthConfig, type DashboardConfig } from "./config.js";
 import {
   CONFIG_SECTIONS,
   ControlApiError,
@@ -14,15 +14,20 @@ import {
   createControlClient,
 } from "./control-client.js";
 import {
+  OAUTH_STATE_COOKIE,
+  OAUTH_STATE_TTL_SECONDS,
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
   constantTimePasswordMatch,
+  constantTimeTokenMatch,
   csrfToken,
   issueSession,
   readCookie,
   verifyCsrf,
   verifySession,
+  type SessionUser,
 } from "./session.js";
+import { createDiscordOAuth, createOAuthState, isOAuthOwner, type DiscordOAuth } from "./oauth.js";
 
 const loginSchema = z.object({ password: z.string().min(1).max(1024) });
 const featureSchema = z.object({ enabled: z.boolean() });
@@ -49,6 +54,7 @@ export interface DashboardServerOptions {
   config: DashboardConfig;
   publicDir: string;
   control?: ControlClient;
+  oauth?: DiscordOAuth | null;
   now?: () => number;
 }
 
@@ -107,6 +113,8 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
   const { config } = options;
   const now = options.now ?? Date.now;
   const control = options.control ?? createControlClient(config.CONTROL_API_URL, config.MCP_TOKEN);
+  const oauthSettings = oauthConfig(config);
+  const oauth = options.oauth !== undefined ? options.oauth : oauthSettings ? createDiscordOAuth(oauthSettings) : null;
   const publicRoot = path.resolve(options.publicDir);
   const loginWindows = new Map<string, LoginWindow>();
   const app = Fastify({
@@ -148,10 +156,71 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
 
   app.get("/healthz", async () => ({ ok: true }));
 
+  const secureSuffix = (request: FastifyRequest): string =>
+    config.DASHBOARD_SECURE_COOKIES || request.protocol === "https" ? "; Secure" : "";
+
   app.get("/api/session", async (request) => {
     const cookie = readCookie(request.headers.cookie);
-    if (!verifySession(cookie, config.DASHBOARD_SESSION_SECRET, now())) return { authenticated: false };
-    return { authenticated: true, csrfToken: csrfToken(cookie!, config.DASHBOARD_SESSION_SECRET) };
+    const session = verifySession(cookie, config.DASHBOARD_SESSION_SECRET, now());
+    if (!session) return { authenticated: false, oauth: Boolean(oauth) };
+    return {
+      authenticated: true,
+      csrfToken: csrfToken(cookie!, config.DASHBOARD_SESSION_SECRET),
+      user: session.user ?? null,
+      oauth: Boolean(oauth),
+    };
+  });
+
+  app.get("/auth/discord", async (request, reply) => {
+    if (!oauth || !oauthSettings) {
+      return reply.code(404).send({ error: { code: "oauth_disabled", message: "Discord sign-in is not configured." } });
+    }
+    const state = createOAuthState();
+    reply.header(
+      "set-cookie",
+      `${OAUTH_STATE_COOKIE}=${state}; Path=/auth/discord; HttpOnly; SameSite=Lax; Max-Age=${OAUTH_STATE_TTL_SECONDS}${secureSuffix(request)}`,
+    );
+    return reply.redirect(oauth.authorizeUrl(state));
+  });
+
+  app.get("/auth/discord/callback", async (request, reply) => {
+    if (!oauth || !oauthSettings) {
+      return reply.code(404).send({ error: { code: "oauth_disabled", message: "Discord sign-in is not configured." } });
+    }
+    const query = request.query as { code?: unknown; state?: unknown; error?: unknown };
+    const clearState = `${OAUTH_STATE_COOKIE}=; Path=/auth/discord; HttpOnly; SameSite=Lax; Max-Age=0${secureSuffix(request)}`;
+    const expectedState = readCookie(request.headers.cookie, OAUTH_STATE_COOKIE);
+    if (typeof query.error === "string") {
+      reply.header("set-cookie", clearState);
+      return reply.redirect("/?oauth=cancelled");
+    }
+    if (
+      typeof query.state !== "string" ||
+      !constantTimeTokenMatch(expectedState ?? "", query.state)
+    ) {
+      reply.header("set-cookie", clearState);
+      return reply.redirect("/?oauth=state");
+    }
+    if (typeof query.code !== "string" || !query.code) {
+      reply.header("set-cookie", clearState);
+      return reply.redirect("/?oauth=failed");
+    }
+    try {
+      const user = await oauth.exchange(query.code);
+      if (!isOAuthOwner(oauthSettings, user)) {
+        reply.header("set-cookie", clearState);
+        return reply.redirect("/?oauth=denied");
+      }
+      const cookie = issueSession(config.DASHBOARD_SESSION_SECRET, now(), user);
+      reply.header("set-cookie", [
+        clearState,
+        `${SESSION_COOKIE}=${cookie}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}${secureSuffix(request)}`,
+      ]);
+      return reply.redirect("/");
+    } catch {
+      reply.header("set-cookie", clearState);
+      return reply.redirect("/?oauth=failed");
+    }
   });
 
   app.post("/api/login", async (request, reply) => {
@@ -178,19 +247,19 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
     }
 
     loginWindows.delete(ip);
-    const cookie = issueSession(config.DASHBOARD_SESSION_SECRET, timestamp);
-    const secure = config.DASHBOARD_SECURE_COOKIES || request.protocol === "https" ? "; Secure" : "";
+    const user: SessionUser = { id: "operator", name: "Operator", avatarUrl: null };
+    const cookie = issueSession(config.DASHBOARD_SESSION_SECRET, timestamp, user);
     reply.header(
       "set-cookie",
-      `${SESSION_COOKIE}=${cookie}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL_SECONDS}${secure}`,
+      `${SESSION_COOKIE}=${cookie}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}${secureSuffix(request)}`,
     );
-    return { csrfToken: csrfToken(cookie, config.DASHBOARD_SESSION_SECRET) };
+    return { csrfToken: csrfToken(cookie, config.DASHBOARD_SESSION_SECRET), user };
   });
 
   app.post("/api/logout", async (request, reply) => {
     validCsrf(request, reply, config.DASHBOARD_SESSION_SECRET);
     if (reply.sent) return;
-    reply.header("set-cookie", `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
+    reply.header("set-cookie", `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureSuffix(request)}`);
     return { ok: true };
   });
 

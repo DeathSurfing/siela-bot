@@ -35,15 +35,44 @@ function toggleTheme() {
   announce(`${document.documentElement.dataset.theme === "light" ? "Light" : "Dark"} theme.`);
 }
 
-function showLogin(error = "") {
+function showLogin(error = "", oauth = state.oauth) {
   state.authenticated = false;
   state.csrfToken = null;
+  state.user = null;
+  state.oauth = Boolean(oauth);
   setCsrfToken(null);
   boot.hidden = true;
   shell.hidden = true;
   loginScreen.hidden = false;
-  loginScreen.innerHTML = renderLogin(error);
+  loginScreen.innerHTML = renderLogin(error, state.oauth);
   loginScreen.querySelector("#login-password")?.focus();
+}
+
+function oauthMessage() {
+  const value = new URLSearchParams(location.search).get("oauth");
+  if (!value) return "";
+  history.replaceState(null, "", location.pathname + location.hash);
+  if (value === "denied") return "That Discord account is not allowed to use this dashboard.";
+  if (value === "state") return "That Discord sign-in attempt expired. Try again.";
+  if (value === "cancelled") return "Discord sign-in was cancelled.";
+  return "Discord sign-in failed. Try again or use the password.";
+}
+
+function updateUserChip() {
+  const chip = document.querySelector("#session-user");
+  if (!chip) return;
+  const user = state.user;
+  chip.hidden = !user;
+  if (!user) return;
+  const name = user.name || "Operator";
+  chip.title = name;
+  const nameNode = document.querySelector("#session-name");
+  if (nameNode) nameNode.textContent = name;
+  const avatar = document.querySelector("#session-avatar");
+  if (avatar) {
+    avatar.dataset.initial = name.slice(0, 1).toUpperCase();
+    avatar.innerHTML = user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" loading="lazy">` : "";
+  }
 }
 
 function guildLogoMarkup(guild, extra = "") {
@@ -236,11 +265,13 @@ async function refreshGuilds() {
   return guilds;
 }
 
-async function enterDashboard(csrf) {
+async function enterDashboard(csrf, user = null) {
   state.authenticated = true;
   state.csrfToken = csrf;
+  state.user = user ?? state.user;
   setCsrfToken(csrf);
   activateShell();
+  updateUserChip();
   try {
     await refreshGuilds();
   } catch (error) {
@@ -560,7 +591,7 @@ document.addEventListener("submit", async (event) => {
     submit.textContent = "Checking…";
     try {
       const result = await api.login(new FormData(form).get("password"));
-      await enterDashboard(result.csrfToken);
+      await enterDashboard(result.csrfToken, result.user ?? null);
     } catch (error) {
       showLogin(error instanceof Error ? error.message : "Sign-in failed. Try again.");
     }
@@ -601,7 +632,7 @@ document.addEventListener("click", async (event) => {
     toggleTheme();
   } else if (action?.dataset.action === "logout") {
     try { await api.logout(); } catch { /* The server clears expired sessions on the next sign-in. */ }
-    showLogin();
+    showLogin("", state.oauth);
   } else if (action?.dataset.action === "retry") {
     if (currentRoute.view === "servers" || state.guilds.length === 0) {
       try { await refreshGuilds(); } catch { /* The view displays its own retry state. */ }
@@ -704,11 +735,13 @@ applyTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark"
 async function start() {
   try {
     const session = await api.session();
+    state.oauth = Boolean(session.oauth);
     if (!session.authenticated) {
-      showLogin();
+      showLogin(oauthMessage(), state.oauth);
       return;
     }
-    await enterDashboard(session.csrfToken);
+    state.user = session.user ?? null;
+    await enterDashboard(session.csrfToken, state.user);
   } catch (error) {
     showLogin(error instanceof Error ? error.message : "The dashboard could not connect.");
   }

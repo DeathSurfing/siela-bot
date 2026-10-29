@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadDashboardConfig } from "./config.js";
+import { loadDashboardConfig, oauthConfig } from "./config.js";
 
 describe("dashboard environment", () => {
   it("requires a 12-character password, a 32-character session secret, and a control token", () => {
@@ -25,6 +25,36 @@ describe("dashboard environment", () => {
       DASHBOARD_SECURE_COOKIES: false,
       CONTROL_API_URL: "http://bot-control:3001",
     });
+  });
+
+  it("requires the Discord OAuth settings together", () => {
+    const base = {
+      DASHBOARD_PASSWORD: "a-long-dashboard-password",
+      DASHBOARD_SESSION_SECRET: "a-session-secret-with-at-least-thirty-two-characters",
+      MCP_TOKEN: "a-long-control-token-value",
+    };
+    expect(() => loadDashboardConfig({ ...base, DISCORD_CLIENT_ID: "111111111111111111" })).not.toThrow();
+    expect(() => loadDashboardConfig({ ...base, DISCORD_CLIENT_ID: "111111111111111111", DISCORD_CLIENT_SECRET: "a-long-discord-client-secret" })).toThrow(/together/);
+    expect(() => loadDashboardConfig({
+      ...base,
+      DISCORD_CLIENT_ID: "111111111111111111",
+      DISCORD_CLIENT_SECRET: "a-long-discord-client-secret",
+      DASHBOARD_OAUTH_REDIRECT_URI: "http://localhost:3000/auth/discord/callback",
+      DASHBOARD_OWNER_IDS: "111111111111111111, 222222222222222222",
+    })).not.toThrow();
+  });
+
+  it("parses the OAuth allowlist", () => {
+    const config = loadDashboardConfig({
+      DASHBOARD_PASSWORD: "a-long-dashboard-password",
+      DASHBOARD_SESSION_SECRET: "a-session-secret-with-at-least-thirty-two-characters",
+      MCP_TOKEN: "a-long-control-token-value",
+      DISCORD_CLIENT_ID: "111111111111111111",
+      DISCORD_CLIENT_SECRET: "a-long-discord-client-secret",
+      DASHBOARD_OAUTH_REDIRECT_URI: "http://localhost:3000/auth/discord/callback",
+      DASHBOARD_OWNER_IDS: "111111111111111111,222222222222222222",
+    });
+    expect(oauthConfig(config)?.ownerIds).toEqual(["111111111111111111", "222222222222222222"]);
   });
 
   it("parses the proxy and cookie flags", () => {

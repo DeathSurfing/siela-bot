@@ -12,6 +12,13 @@ describe("dashboard sessions", () => {
     expect(verifySession(cookie, secret, now + 12 * 60 * 60 * 1000)).toBeNull();
   });
 
+  it("round-trips the signed Discord identity", () => {
+    const now = 1_700_000_000_000;
+    const user = { id: "111111111111111111", name: "Owner", avatarUrl: "https://cdn.discordapp.com/a.png" };
+    const cookie = issueSession(secret, now, user);
+    expect(verifySession(cookie, secret, now)).toEqual({ exp: now + 12 * 60 * 60 * 1000, user });
+  });
+
   it("rejects a tampered signature and payload", () => {
     const cookie = issueSession(secret);
     const [payload, signature] = cookie.split(".");

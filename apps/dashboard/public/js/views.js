@@ -143,8 +143,15 @@ function inlineError(message, retryAction = "retry") {
   return `<div class="inline-error" role="alert"><div class="error-copy">${icon("warning")}<div><strong>Could not load this view</strong><p>${escapeHtml(message)}</p></div></div><button class="button button-secondary" type="button" data-action="${retryAction}">Retry</button></div>`;
 }
 
-export function renderLogin(error = "") {
-  return `<main class="login-wrap"><section class="login-panel" aria-labelledby="login-title"><div class="login-brand"><img src="/mark.svg" width="36" height="36" alt=""><span><strong>Siela</strong></span></div><div class="login-copy"><h1 id="login-title">Sign in to your bot.</h1><p>Use the dashboard password configured on this host.</p></div><form id="login-form"><label for="login-password">Dashboard password</label><input id="login-password" name="password" type="password" autocomplete="current-password" required minlength="1" ${error ? 'aria-describedby="login-error" aria-invalid="true"' : ""}><div id="login-error" class="form-error" role="alert" ${error ? "" : "hidden"}>${escapeHtml(error)}</div><button class="button button-primary login-submit" type="submit">Continue</button></form><p class="login-foot">Private by design. Your control token stays on this server.</p></section></main>`;
+export function renderLogin(error = "", oauth = false) {
+  const errorBlock = error
+    ? `<div id="login-error" class="form-error login-error" role="alert">${escapeHtml(error)}</div>`
+    : "";
+  const discord = oauth
+    ? `<a class="button button-primary login-discord" href="/auth/discord"><img src="/icons/discord.svg" alt="">Continue with Discord</a><p class="login-divider"><span>or use the password</span></p>`
+    : "";
+  const passwordButton = oauth ? "button button-secondary login-submit" : "button button-primary login-submit";
+  return `<main class="login-wrap"><section class="login-panel" aria-labelledby="login-title"><div class="login-brand"><img src="/mark.svg" width="36" height="36" alt=""><span><strong>Siela</strong></span></div><div class="login-copy"><h1 id="login-title">Sign in to your bot.</h1><p>${oauth ? "Use Discord, or the dashboard password configured on this host." : "Use the dashboard password configured on this host."}</p></div>${errorBlock}${discord}<form id="login-form"><label for="login-password">Dashboard password</label><input id="login-password" name="password" type="password" autocomplete="current-password" required minlength="1" ${error ? 'aria-describedby="login-error" aria-invalid="true"' : ""}><button class="${passwordButton}" type="submit">Continue</button></form><p class="login-foot">Private by design. Your control token stays on this server.</p></section></main>`;
 }
 
 export function renderView(view) {

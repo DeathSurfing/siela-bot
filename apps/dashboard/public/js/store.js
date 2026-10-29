@@ -2,6 +2,8 @@ const storedGuildId = localStorage.getItem("siela.selectedGuildId");
 
 export const state = {
   authenticated: false,
+  user: null,
+  oauth: false,
   csrfToken: null,
   guilds: [],
   guildId: storedGuildId,

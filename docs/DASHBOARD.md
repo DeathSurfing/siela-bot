@@ -44,6 +44,27 @@ The music tab needs a voice channel ID. A browser cannot report which Discord vo
 
 Settings save one section at a time. Boolean switches save their visible state, and role ID fields accept a comma-separated list.
 
+## Discord sign-in
+
+Discord OAuth is optional and runs beside the password. Create a Discord application or reuse the bot's, open **OAuth2 > Redirects**, and add the exact public callback:
+
+```text
+https://dashboard.example.com/auth/discord/callback
+```
+
+Then set four values in `.env`:
+
+```sh
+DISCORD_CLIENT_ID=...          # already present for the bot
+DISCORD_CLIENT_SECRET=...
+DASHBOARD_OAUTH_REDIRECT_URI=https://dashboard.example.com/auth/discord/callback
+DASHBOARD_OWNER_IDS=123456789012345678
+```
+
+All four are required together. Only the listed Discord user IDs can sign in. The flow uses a short-lived state cookie, exchanges the code server-side, fetches the user with `identify`, and stores only the id, display name, and avatar in the signed session cookie. Access and refresh tokens are never stored. The password form remains available as a fallback.
+
+If the values are absent, the Discord button is hidden and `/auth/discord` returns 404.
+
 ## Browser API
 
 The browser uses these same-origin routes:
@@ -69,7 +90,7 @@ All `/api` routes except login require a valid session. Mutations also require t
 
 ## Session and request security
 
-The `siela_dashboard` cookie contains only an expiry payload and its HMAC-SHA256 signature. It is `HttpOnly` and `SameSite=Strict`, and expires after 12 hours. The server compares signatures, CSRF tokens, and passwords in constant time. Login allows five attempts per IP in each five-minute window.
+The `siela_dashboard` cookie contains the expiry, optional Discord identity, and an HMAC-SHA256 signature. It is `HttpOnly` and `SameSite=Lax`, and expires after 12 hours. The server compares signatures, CSRF tokens, and passwords in constant time. Login allows five attempts per IP in each five-minute window.
 
 The server sets a restrictive content security policy, denies framing, disables MIME sniffing, and sends a no-referrer policy. Static requests resolve inside `apps/dashboard/public`; traversal and symlink escapes are rejected. The container runs read-only, drops capabilities, and writes only to its `/tmp` tmpfs.
 
