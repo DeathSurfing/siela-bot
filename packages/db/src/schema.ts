@@ -91,6 +91,20 @@ export const musicSettings = pgTable("music_settings", {
   updatedBy: text("updated_by"),
 });
 
+export const guildFeatures = pgTable(
+  "guild_features",
+  {
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    featureId: text("feature_id").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by"),
+  },
+  (table) => [primaryKey({ columns: [table.guildId, table.featureId] })],
+);
+
 export const interactionCounters = pgTable(
   "interaction_counters",
   {
@@ -298,6 +312,7 @@ export type WelcomeSettingsRow = typeof welcomeSettings.$inferSelect;
 export type AutoRoleSettingsRow = typeof autoroleSettings.$inferSelect;
 export type TempVcSettingsRow = typeof tempvcSettings.$inferSelect;
 export type MusicSettingsRow = typeof musicSettings.$inferSelect;
+export type GuildFeatureRow = typeof guildFeatures.$inferSelect;
 export type CounterRow = typeof interactionCounters.$inferSelect;
 export type UserBiasRow = typeof userBiases.$inferSelect;
 export type OptoutRow = typeof interactionOptouts.$inferSelect;
