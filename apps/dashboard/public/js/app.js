@@ -8,7 +8,6 @@ const boot = document.querySelector("#boot-state");
 const loginScreen = document.querySelector("#login-screen");
 const shell = document.querySelector("#app-shell");
 const rail = document.querySelector("#app-rail");
-const railGuild = document.querySelector("#rail-guild");
 const railToggle = document.querySelector("#rail-toggle");
 const navDrawer = document.querySelector("#nav-drawer");
 const navDrawerBody = document.querySelector("#nav-drawer-body");
@@ -115,11 +114,9 @@ function updateGuildPicker() {
   if (!guildPickerButton || !guildPickerMenu) return;
   const selected = state.guilds.find((guild) => guild.id === state.guildId) ?? state.guilds[0] ?? null;
   guildPickerButton.disabled = state.guilds.length === 0;
+  guildPickerButton.setAttribute("aria-label", selected ? `Select a server, ${selected.name}` : "Select a server");
   if (guildPickerName) guildPickerName.textContent = selected?.name ?? (state.guilds.length ? "Select a server" : "No servers");
   setAvatar(guildPickerAvatar, selected);
-  setAvatar(railGuild, selected);
-  if (railGuild) railGuild.hidden = !selected;
-  shell.classList.toggle("has-rail-guild", Boolean(selected));
   const activeId = state.guildId ?? selected?.id ?? null;
   guildPickerMenu.innerHTML = state.guilds.map((guild) => `<button type="button" class="guild-option" role="option" aria-selected="${guild.id === activeId}" data-guild-id="${escapeHtml(guild.id)}">${guildLogoMarkup(guild, "guild-logo-option")}<span class="guild-option-copy"><strong>${escapeHtml(guild.name ?? "Unnamed server")}</strong><small>${Number(guild.memberCount ?? 0).toLocaleString()} members</small></span></button>`).join("");
 }

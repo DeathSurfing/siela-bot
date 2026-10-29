@@ -77,9 +77,9 @@ Decorative hairlines use `#233238` and do not carry state. The `#19819b` primary
 - Sidebar background: `--rail`. Content area background: `--bg`.
 - Active navigation: tinted row and a 2px teal edge.
 - Inactive hover: subtle surface shift, weaker than the active state.
-- Header: current view label, persistent guild selector, and bot status pill.
+- Header: the page heading carries the view label, the topbar carries the bot status pill, and the rail header carries the server picker.
 - Shell density: 42px navigation rows in a 232px labeled rail, a 58px icon rail when collapsed, and the same labeled rows in a drawer below 700px.
-- Collapsed context: the rail header swaps the Siela mark for the selected server's Discord image, and the chevron restores the labels.
+- Rail context: the header is the server picker with the selected server's Discord image and name; the chevron collapses the labels.
 
 ## Mood descriptors
 

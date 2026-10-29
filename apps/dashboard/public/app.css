@@ -135,21 +135,20 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .skeleton-table { min-height: 210px; }
 
 .app-shell { min-height: 100dvh; display: grid; grid-template-columns: 232px minmax(0, 1fr); }
-.rail { position: sticky; top: 0; height: 100dvh; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; padding: 22px 14px 14px; background: var(--rail); border-right: 1px solid var(--line); scrollbar-width: thin; }
+.rail { position: sticky; top: 0; z-index: 9; height: 100dvh; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; padding: 22px 14px 14px; background: var(--rail); border-right: 1px solid var(--line); scrollbar-width: thin; }
 .rail-head { display: flex; align-items: center; gap: 2px; }
-.rail-head .brand { flex: 1; min-width: 0; }
-.brand { min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 10px; }
-.brand > img { width: 30px; height: 30px; }
-.brand-copy { display: flex; flex-direction: column; min-width: 0; }
-.brand-copy strong { font-size: 1rem; font-weight: 620; letter-spacing: -0.03em; line-height: 1.2; }
-.rail-head .rail-guild { display: none; }
+.rail-head .guild-picker { flex: 1; min-width: 0; }
+.rail-head .rail-picker-button { width: 100%; max-width: none; min-height: 36px; padding: 0 7px; border-color: transparent; }
+.rail-head .rail-picker-button:disabled { border-color: transparent; }
+.rail-head .guild-picker-name { max-width: 110px; }
+.rail-head .guild-picker-menu { position: fixed; top: 64px; left: 14px; right: auto; width: 204px; max-height: min(50vh, 340px); transform-origin: top left; }
 .rail-head .rail-toggle { width: 32px; min-height: 32px; flex: 0 0 32px; justify-content: center; padding: 0; border-color: var(--line); opacity: 0.9; }
 .rail-head .rail-toggle img { width: 18px; height: 18px; flex: 0 0 18px; }
 .primary-nav { display: grid; gap: 2px; margin-top: 38px; }
 .primary-nav a, .icon-button { min-height: 40px; display: flex; align-items: center; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--muted); background: transparent; transition: transform 90ms var(--ease-out), color var(--duration-press), background-color var(--duration-press), border-color var(--duration-press); }
 .primary-nav a { position: relative; gap: 10px; padding: 0 11px; font-size: 0.87rem; font-weight: 500; }
 .primary-nav a > img { width: 16px; height: 16px; flex: 0 0 16px; }
-.primary-nav a img, .icon, .brand > img, .primary-nav a > img, .icon-button > img, .login-brand > img, .guild-picker-chevron { filter: var(--icon-filter); }
+.primary-nav a img, .icon, .primary-nav a > img, .icon-button > img, .login-brand > img, .guild-picker-chevron { filter: var(--icon-filter); }
 .icon { width: 18px; height: 18px; flex: 0 0 18px; opacity: 0.8; }
 .primary-nav a[aria-current="page"] { color: var(--text); background: var(--surface); }
 .primary-nav a[aria-current="page"]::before { position: absolute; inset: 9px auto 9px -1px; width: 2px; border-radius: var(--radius-xs); background: var(--accent-bright); content: ""; }
@@ -171,6 +170,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .nav-drawer-body { height: 100%; }
 .nav-drawer .rail { position: static; height: 100%; min-height: 0; border: 0; background: transparent; }
+.nav-drawer .rail-head { padding-right: 48px; }
 .nav-drawer-close { position: absolute; z-index: 1; top: 10px; right: 8px; width: 36px; height: 36px; min-height: 36px; justify-content: center; padding: 0; }
 .nav-drawer-close img { width: 20px; height: 20px; flex-basis: 20px; }
 body:has(.nav-drawer[open]) { overflow: hidden; }
@@ -441,6 +441,7 @@ td code { overflow-wrap: anywhere; }
 
 @media (hover: hover) and (pointer: fine) {
   .primary-nav a:hover, .icon-button:hover { color: var(--text); background: var(--surface); }
+  .rail-head .rail-picker-button:hover { border-color: var(--line); background: var(--surface); }
   .guild-option:hover { background: var(--surface-hover); }
   .text-link:hover, .guild-name:hover { text-decoration: underline; text-underline-offset: 3px; }
   .copy-id:hover { color: var(--text); }
@@ -471,9 +472,7 @@ td code { overflow-wrap: anywhere; }
   .rail-toggle { display: none; }
   .topbar { min-height: 52px; gap: 8px; padding: 0 12px; }
   .topbar-controls { gap: 10px; }
-  .guild-picker-button { max-width: min(42vw, 160px); min-height: 32px; padding: 0 7px; }
-  .guild-picker-name { max-width: 108px; font-size: 0.74rem; }
-  .guild-picker-menu { position: fixed; top: 60px; left: 8px; right: 8px; width: auto; max-height: min(50vh, 340px); }
+  .rail-head .guild-picker-menu { top: 64px; left: 14px; width: min(252px, calc(100vw - 28px)); }
   .status-pill { font-size: 0.72rem; }
   .content { padding: 26px 14px 38px; }
   .page-heading { flex-direction: column; gap: 10px; margin-bottom: 20px; }
@@ -541,10 +540,12 @@ td code { overflow-wrap: anywhere; }
   .app-shell.is-rail-collapsed { grid-template-columns: 58px minmax(0, 1fr); }
   .app-shell.is-rail-collapsed .rail { padding: 22px 6px 14px; align-items: center; }
   .app-shell.is-rail-collapsed .rail-head { flex-direction: column; gap: 6px; }
-  .app-shell.is-rail-collapsed .rail-head .brand { flex: 0 0 auto; width: 44px; justify-content: center; padding: 0; }
-  .app-shell.is-rail-collapsed.has-rail-guild .brand-mark { display: none; }
-  .app-shell.is-rail-collapsed.has-rail-guild .rail-guild { display: grid; width: 30px; height: 30px; flex: 0 0 30px; }
-  .app-shell.is-rail-collapsed .brand-copy,
+  .app-shell.is-rail-collapsed .rail-head .guild-picker { flex: 0 0 auto; width: 44px; }
+  .app-shell.is-rail-collapsed .rail-head .rail-picker-button { width: 44px; min-height: 44px; justify-content: center; padding: 0; }
+  .app-shell.is-rail-collapsed .rail-head .rail-picker-button .guild-picker-name,
+  .app-shell.is-rail-collapsed .rail-head .rail-picker-button .guild-picker-chevron { display: none; }
+  .app-shell.is-rail-collapsed .rail-head .rail-picker-button .guild-logo { width: 30px; height: 30px; flex-basis: 30px; }
+  .app-shell.is-rail-collapsed .rail-head .guild-picker-menu { top: 22px; left: 70px; width: min(280px, calc(100vw - 84px)); }
   .app-shell.is-rail-collapsed .primary-nav a > span,
   .app-shell.is-rail-collapsed .help-label,
   .app-shell.is-rail-collapsed .rail-user-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
