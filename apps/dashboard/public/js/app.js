@@ -82,7 +82,6 @@ async function loadData(route = currentRoute) {
   state.search = "";
   currentRoute = route;
   updateGuildPicker();
-  main.classList.remove("view-enter");
   renderMain();
   let statusRequest;
   try {
@@ -136,8 +135,6 @@ async function loadData(route = currentRoute) {
       setStatusPill(state.status);
       renderMain();
       startProgress();
-      requestAnimationFrame(() => main.classList.add("view-enter"));
-      main.addEventListener("animationend", () => main.classList.remove("view-enter"), { once: true });
     }
   }
 }
@@ -199,10 +196,6 @@ function featureButton(featureId) {
 function setFeatureCount(node, value) {
   if (!node || node.textContent === String(value)) return;
   node.textContent = String(value);
-  node.classList.remove("is-bumped");
-  void node.offsetWidth;
-  node.classList.add("is-bumped");
-  node.addEventListener("animationend", () => node.classList.remove("is-bumped"), { once: true });
 }
 
 function syncDependencyHints() {
@@ -276,8 +269,6 @@ async function applyFeature(featureId, enabled, options = {}) {
     const response = await api.feature(state.guildId, featureId, enabled);
     feature.enabled = response?.enabled ?? enabled;
     if (feature.enabled !== enabled) syncFeatureIndicators(feature, feature.enabled);
-    row?.classList.add("is-confirmed");
-    setTimeout(() => row?.classList.remove("is-confirmed"), 280);
     announce(`${feature.label ?? featureId} ${feature.enabled ? "enabled" : "disabled"}.`);
     if (options.undo) {
       showToast(`${feature.label ?? featureId} ${feature.enabled ? "enabled" : "disabled"}.`, {
@@ -460,10 +451,11 @@ async function saveSettings(form) {
     return;
   }
   try {
-    await api.patchConfig(state.guildId, section, body);
-    const updated = await api.config(state.guildId);
-    state.data = updated;
-    renderMain();
+    const updated = await api.patchConfig(state.guildId, section, body);
+    if (state.data && typeof state.data === "object") state.data[section] = updated;
+    form.classList.remove("is-dirty");
+    submit.disabled = true;
+    submit.textContent = "Save";
     setInlineFeedback(section, "Saved to this server.");
     announce(`${section} settings saved.`);
   } catch (error) {
@@ -472,6 +464,15 @@ async function saveSettings(form) {
     submit.textContent = "Save";
   }
 }
+
+document.addEventListener("keydown", (event) => {
+  if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "s") return;
+  if (state.view !== "settings") return;
+  const dirty = [...document.querySelectorAll("form.settings-section.is-dirty")];
+  if (!dirty.length) return;
+  event.preventDefault();
+  for (const form of dirty) void saveSettings(form);
+});
 
 document.addEventListener("submit", async (event) => {
   const form = event.target;

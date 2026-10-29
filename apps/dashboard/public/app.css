@@ -89,7 +89,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .brand-copy { display: flex; flex-direction: column; min-width: 0; }
 .brand-copy strong { font-size: 1rem; font-weight: 620; letter-spacing: -0.03em; line-height: 1.2; }
 .primary-nav { display: grid; gap: 2px; margin-top: 38px; }
-.primary-nav a, .icon-button { min-height: 40px; display: flex; align-items: center; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--muted); background: transparent; transition: color var(--duration-press), background-color var(--duration-press), border-color var(--duration-press); }
+.primary-nav a, .icon-button { min-height: 40px; display: flex; align-items: center; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--muted); background: transparent; transition: transform 90ms var(--ease-out), color var(--duration-press), background-color var(--duration-press), border-color var(--duration-press); }
 .primary-nav a { position: relative; gap: 11px; padding: 0 11px; font-size: 0.87rem; font-weight: 500; }
 .primary-nav a img, .icon { width: 18px; height: 18px; flex: 0 0 18px; opacity: 0.8; }
 .primary-nav a[aria-current="page"] { color: var(--text); background: var(--surface); }
@@ -118,8 +118,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .status-danger .status-dot, .status-dot.status-danger { color: var(--danger); }
 .status-unknown .status-dot { color: var(--quiet); }
 .content { width: min(100%, 1460px); flex: 1; margin: 0 auto; padding: 34px clamp(20px, 4vw, 62px) 52px; }
-.content.view-enter > * { animation: view-enter var(--duration-panel) var(--ease-out) both; }
-@keyframes view-enter { from { opacity: 0; } to { opacity: 1; } }
 .workspace-foot { display: flex; justify-content: flex-end; padding: 0 clamp(20px, 4vw, 62px) 18px; color: var(--quiet); font-size: 0.7rem; letter-spacing: 0.08em; }
 
 .page-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
@@ -129,8 +127,6 @@ h1 { margin-bottom: 5px; font-size: clamp(1.7rem, 2.3vw, 2.05rem); font-weight: 
 .heading-tools { display: flex; align-items: center; gap: 12px; padding-top: 6px; }
 .enabled-count { display: flex; align-items: baseline; gap: 5px; color: var(--muted); font-size: 0.75rem; white-space: nowrap; }
 .enabled-count strong { display: inline-block; color: var(--accent-bright); font: 600 0.95rem/1 ui-monospace, monospace; }
-.enabled-count strong.is-bumped { animation: count-bump var(--duration-panel) var(--ease-out); }
-@keyframes count-bump { from { opacity: 0.35; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
 
 .status-line { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 30px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
 .status-inline { display: inline-flex; align-items: center; gap: 8px; font-size: 0.75rem; white-space: nowrap; }
@@ -186,7 +182,10 @@ td strong { color: var(--text); font-weight: 550; }
 .copy-id.is-copied .copy-hint { opacity: 1; }
 .table-subline { display: block; margin-top: 3px; color: var(--quiet); font-size: 0.72rem; }
 
-.toolbar-row { display: flex; align-items: center; justify-content: flex-end; margin: -4px 0 18px; }
+.toolbar-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; margin: -4px 0 18px; }
+.result-count { color: var(--quiet); font: 0.7rem/1.2 ui-monospace, monospace; white-space: nowrap; }
+.owner-id { color: var(--quiet); font: 0.72rem/1.4 ui-monospace, monospace; }
+.source-tag { color: var(--quiet); font: 0.66rem/1.4 ui-monospace, monospace; letter-spacing: 0.04em; text-transform: uppercase; }
 .search-box { width: min(300px, 100%); height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--radius-control); background: transparent; }
 .search-box:focus-within { border-color: var(--focus); }
 .search-box .icon { width: 14px; height: 14px; opacity: 0.72; }
@@ -201,9 +200,6 @@ kbd { min-width: 17px; padding: 1px 4px; border: 1px solid var(--line); border-r
 .feature-list { border-top: 1px solid var(--line); }
 .feature-row { position: relative; min-height: 58px; display: flex; align-items: center; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .feature-row.is-pending { opacity: 0.58; }
-.feature-row::after { position: absolute; inset: 0; background: var(--accent); content: ""; opacity: 0; pointer-events: none; }
-.feature-row.is-confirmed::after { animation: feature-confirm 180ms var(--ease-out); }
-@keyframes feature-confirm { from { opacity: 0.09; } to { opacity: 0; } }
 .feature-copy { min-width: 0; flex: 1; }
 .feature-copy h3 { margin: 0; font-size: 0.84rem; font-weight: 570; line-height: 1.35; }
 .feature-copy > p { margin: 2px 0 0; color: var(--muted); font-size: 0.75rem; line-height: 1.4; }
@@ -221,7 +217,7 @@ kbd { min-width: 17px; padding: 1px 4px; border: 1px solid var(--line); border-r
 .button-primary { border-color: var(--accent); color: white; background: var(--accent); }
 .button-secondary { border-color: var(--line); color: var(--text); background: transparent; }
 .button-quiet { border-color: transparent; color: var(--muted); background: transparent; }
-.button:active:not(:disabled), .play-button:active:not(:disabled), .icon-button:active:not(:disabled) { transform: translateY(1px); }
+.button:active:not(:disabled), .play-button:active:not(:disabled), .icon-button:active:not(:disabled), .loop-button:active:not(:disabled) { transform: translateY(1px) scale(0.985); }
 .danger-text { color: var(--danger); }
 
 .music-layout { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(280px, 1.1fr); align-items: start; }
@@ -242,7 +238,7 @@ kbd { min-width: 17px; padding: 1px 4px; border: 1px solid var(--line); border-r
 .transport-secondary { width: 36px; min-height: 36px; justify-content: center; padding: 0; }
 .play-button { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--accent); border-radius: var(--radius-circle); background: var(--accent); cursor: pointer; transition: transform 90ms var(--ease-out), background-color var(--duration-press), border-color var(--duration-press); }
 .play-button .icon { width: 18px; height: 18px; filter: brightness(0) invert(1); }
-.loop-button { min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 7px; border: 1px solid transparent; border-radius: var(--radius-control); color: var(--muted); background: transparent; cursor: pointer; font-size: 0.73rem; text-transform: capitalize; }
+.loop-button { min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 7px; border: 1px solid transparent; border-radius: var(--radius-control); color: var(--muted); background: transparent; cursor: pointer; font-size: 0.73rem; text-transform: capitalize; transition: transform 90ms var(--ease-out), color var(--duration-press), background-color var(--duration-press); }
 .loop-button .icon { width: 14px; height: 14px; }
 .volume-row { display: flex; align-items: center; gap: 9px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
 .volume-row > .icon { width: 15px; height: 15px; opacity: 0.76; }
@@ -303,7 +299,8 @@ td code { overflow-wrap: anywhere; }
 .compact-error { margin-top: 10px; }
 
 .toast-stack { position: fixed; z-index: 30; right: 18px; bottom: 18px; display: grid; gap: 8px; width: min(350px, calc(100vw - 36px)); }
-.toast { position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-raised); animation: toast-in var(--duration-panel) var(--ease-out); transition: opacity 140ms var(--ease-out), transform 140ms var(--ease-out); }
+.toast { position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-raised); opacity: 1; transform: none; transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out); }
+@starting-style { .toast { opacity: 0; transform: translateY(6px); } }
 .toast.is-leaving { opacity: 0; transform: translateY(4px); }
 .toast p { margin: 0; font-size: 0.77rem; }
 .toast-actions { display: flex; align-items: center; gap: 2px; }
@@ -312,7 +309,6 @@ td code { overflow-wrap: anywhere; }
 .toast-progress { position: absolute; inset: auto 0 0; height: 1px; background: var(--accent-bright); transform-origin: left; animation: toast-life 7s linear forwards; }
 .toast[data-tone="error"] { border-color: var(--status-danger-border); background: var(--surface-error); }
 .toast[data-tone="error"] .toast-progress { background: var(--danger); }
-@keyframes toast-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @keyframes toast-life { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 
 .login-wrap { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
@@ -402,7 +398,7 @@ td code { overflow-wrap: anywhere; }
   .settings-fields { grid-template-columns: minmax(0, 1fr); gap: 12px; padding-top: 16px; }
   .setting-field input, .setting-field textarea { font-size: 16px; }
   .player-panel, .player, .queue-panel { padding-left: 0; padding-right: 0; }
-  .toast-stack { right: 12px; bottom: 12px; width: calc(100vw - 24px); }
+  .toast-stack { left: 70px; right: 12px; bottom: 12px; width: auto; }
   .workspace-foot { padding: 0 14px 14px; }
   .table-scroll { overflow: visible; }
   table, thead, tbody, tr, td { display: block; }
@@ -441,8 +437,6 @@ td code { overflow-wrap: anywhere; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
-  .content.view-enter > * { animation: reduced-view-fade 120ms linear both !important; }
-  @keyframes reduced-view-fade { from { opacity: 0; } to { opacity: 1; } }
 }
 
 @media (forced-colors: active) {

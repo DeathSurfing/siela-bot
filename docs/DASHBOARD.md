@@ -24,6 +24,14 @@ Compose fixes the container listener at port `3000` and publishes the host port 
 
 Put a TLS reverse proxy in front of any public-facing deployment, then set `DASHBOARD_TRUST_PROXY=true` so the client IP comes from the proxy and the sign-in limit applies per operator. Also set `DASHBOARD_SECURE_COOKIES=true` so the session cookie carries `Secure`. Without TLS, the password and cookie cross the network in clear text. Do not expose the bot control API.
 
+## Interface principles
+
+The interface stays flat. Rules and spacing group content; nested cards do not. The topbar carries the server picker and bot status only, and the page heading carries the view name. The Overview keeps one status line, three inline metrics, and two rule-separated columns. Features are compact rows, and their commands live in the Commands view instead of repeating on every row. Servers keeps the owner ID, and Audit keeps the action source.
+
+Settings saves one section at a time. A save no longer re-renders the view, so unsaved edits in other sections survive. `Ctrl` or `Cmd` plus `S` saves every dirty section. A dot next to Save marks an unsaved section.
+
+Motion only marks state. Use transform and opacity, exact transition properties, ease-out, and 90 to 150 ms. Route changes and keyboard navigation do not animate. Toasts enter and leave with transitions and faster exits. Hover motion sits behind `@media (hover: hover) and (pointer: fine)`. Reduced motion collapses every duration while keeping the end state.
+
 ## Operating notes
 
 Feature switches apply immediately. The dashboard shows an Undo action after each change, and a failed write reverts the switch and shows the API message inline.
