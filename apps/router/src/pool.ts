@@ -4,6 +4,10 @@ export interface NodePlaybackState {
   playing: boolean;
   hasCurrent: boolean;
   reachable: boolean;
+  /** Voice channel the node is connected to, if any. */
+  channelId?: string | null;
+  /** Sticky TTS session on the node, if any. */
+  tts?: { enabled: boolean; channelId?: string | null } | null;
 }
 
 export type FetchNodeState = (node: FleetNode, guildId?: string | null) => Promise<NodePlaybackState>;
@@ -50,11 +54,17 @@ export class FleetPool {
     return this.reserved.size;
   }
 
-  private isBusy(state: NodePlaybackState): boolean {
-    return state.playing || state.hasCurrent;
+  private isBusy(node: FleetNode, state: NodePlaybackState, voiceChannelId?: string): boolean {
+    if (state.playing || state.hasCurrent) return true;
+    // A TTS session owns the voice connection. Music may share it only when
+    // the node mixes and already speaks in the requested channel; anywhere
+    // else a play would move the bot and cut the speech off.
+    if (!state.tts?.enabled) return false;
+    if (!node.ttsMix || !voiceChannelId) return true;
+    return state.tts.channelId !== voiceChannelId;
   }
 
-  async acquire(guildId?: string | null): Promise<FleetNode> {
+  async acquire(guildId?: string | null, voiceChannelId?: string): Promise<FleetNode> {
     const nodes = await this.listNodes(guildId);
     if (nodes.length === 0) throw new NoNodesReachableError();
     const settled = await Promise.allSettled(nodes.map(async (node) => ({ node, state: await this.fetchState(node, guildId) })));
@@ -64,7 +74,7 @@ export class FleetPool {
       anyReachable = true;
       const { node, state } = entry.value;
       if (this.reserved.has(node.id)) continue;
-      if (this.isBusy(state)) continue;
+      if (this.isBusy(node, state, voiceChannelId)) continue;
       this.reserved.add(node.id);
       return node;
     }

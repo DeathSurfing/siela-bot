@@ -27,10 +27,17 @@ interface FakeWrite {
  * insert().values().onConflictDo{Update,Nothing}(), so this fake mirrors exactly
  * that chain and records what was written.
  */
-function makeDb({ withTransaction = true } = {}) {
+function makeDb({ withTransaction = true, deferFirstSelect = false } = {}) {
   const rows: FakeRow[] = [];
   const writes: FakeWrite[] = [];
   const counters = { selects: 0, upserts: 0, transactions: 0 };
+  let releaseFirst: ((value: Array<{ featureId: string; enabled: boolean }>) => void) | null = null;
+  const firstSelect = deferFirstSelect
+    ? new Promise<Array<{ featureId: string; enabled: boolean }>>((resolve) => {
+        releaseFirst = resolve;
+      })
+    : null;
+  let firstSelectPending = deferFirstSelect;
 
   const db: Record<string, unknown> = {
     select() {
@@ -39,6 +46,10 @@ function makeDb({ withTransaction = true } = {}) {
           return {
             where(condition: unknown) {
               counters.selects += 1;
+              if (firstSelectPending && firstSelect) {
+                firstSelectPending = false;
+                return firstSelect;
+              }
               const guildId = guildIdFromCondition(condition);
               return Promise.resolve(
                 rows
@@ -101,7 +112,15 @@ function makeDb({ withTransaction = true } = {}) {
     };
   }
 
-  return { db: db as unknown as Database, rows, writes, counters };
+  return {
+    db: db as unknown as Database,
+    rows,
+    writes,
+    counters,
+    releaseFirstSelect(value: Array<{ featureId: string; enabled: boolean }>) {
+      releaseFirst?.(value);
+    },
+  };
 }
 
 function guildIdFromCondition(condition: unknown): string {
@@ -229,6 +248,19 @@ describe("FeatureFlagService", () => {
 
     expect(await service.isEnabled(GUILD_A, "relics")).toBe(false);
     expect(counters.selects).toBe(2);
+  });
+
+  it("does not cache a cold read that started before a write", async () => {
+    const { db, rows, releaseFirstSelect } = makeDb({ deferFirstSelect: true });
+    const service = new FeatureFlagService(db);
+
+    const cold = service.isEnabled(GUILD_A, "relics");
+    await service.set(GUILD_A, "relics", false, "actor-1");
+    releaseFirstSelect([{ featureId: "relics", enabled: true }]);
+
+    expect(await cold).toBe(true);
+    expect(await service.isEnabled(GUILD_A, "relics")).toBe(false);
+    expect(rows.find((row) => row.featureId === "relics")?.enabled).toBe(false);
   });
 
   it("can run without caching when the TTL is zero", async () => {

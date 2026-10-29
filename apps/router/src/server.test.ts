@@ -86,4 +86,17 @@ describe("RouterServer session + semaphore", () => {
       expect(body.error.code).toBe("all_nodes_busy");
     });
   });
+
+  it("does not auto-route play onto a node speaking TTS", async () => {
+    vi.unstubAllGlobals();
+    stubFleetFetch({ musicBusy: ["n1:3101"], ttsOn: ["n2:3101"] });
+    await withRouterServer(PORT, NODES, async (base) => {
+      const response = await fetch(`${base}/v1/music/play`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ query: "song", voiceChannelId: "vcB" }),
+      });
+      expect(response.status).toBe(429);
+    });
+  });
 });

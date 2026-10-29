@@ -46,6 +46,8 @@ pub enum PlayerError {
     NothingPlaying,
     #[error("the queue is full")]
     QueueFull,
+    #[error("the TTS session is not active")]
+    TtsDisabled,
     #[error("{0}")]
     Internal(String),
 }
@@ -61,6 +63,7 @@ impl PlayerError {
             Self::NoVoice => "no_voice",
             Self::NothingPlaying => "nothing_playing",
             Self::QueueFull => "queue_full",
+            Self::TtsDisabled => "tts_disabled",
             Self::Internal(_) => "internal_error",
         }
     }
@@ -463,6 +466,19 @@ impl Player {
         let guild = self.guild().await?;
         let resolved = channel_id.or_else(|| self.channel_id.clone());
 
+        // A TTS session owns the connection. Moving the bot would cut the
+        // speech off; refuse rather than follow a stale channel binding. A
+        // missing call is fine: that is the rejoin path after a disconnect.
+        if self.tts_active && self.call.is_some() {
+            if let Some(target) = resolved.as_deref() {
+                if self.channel_id.as_deref() != Some(target) {
+                    return Err(PlayerError::Invalid(
+                        "TTS is using the voice channel. Turn it off first.".into(),
+                    ));
+                }
+            }
+        }
+
         if let (Some(existing), Some(target)) = (&self.call, resolved.as_deref()) {
             if self.channel_id.as_deref() == Some(target) {
                 return Ok(target.to_string());
@@ -515,6 +531,7 @@ impl Player {
         channel_id: Option<String>,
         next: bool,
     ) -> Result<PlayOutcome, PlayerError> {
+        let was_connected = self.call.is_some();
         let channel = self.ensure_call(channel_id).await?;
         let _ = channel;
 
@@ -525,7 +542,18 @@ impl Player {
             return Err(PlayerError::QueueFull);
         }
 
-        let resolved = self.resolver.resolve(&query, available).await?;
+        let resolved = match self.resolver.resolve(&query, available).await {
+            Ok(tracks) => tracks,
+            Err(error) => {
+                // A failed search must not leave the bot parked in a channel
+                // it joined just for this request, with no stream and no
+                // binding on the commander.
+                if !was_connected && self.current.is_none() && self.queue.is_empty() {
+                    let _ = self.disconnect().await;
+                }
+                return Err(error.into());
+            }
+        };
         let added = resolved.len();
         let first = resolved.first().cloned().ok_or(PlayerError::NoTracks)?;
 
@@ -690,6 +718,7 @@ impl Player {
         self.current = None;
         self.current_handle = None;
         self.tts_handle = None;
+        self.tts_active = false;
         self.music_seq = self.music_seq.wrapping_add(1);
         self.started_at = None;
         Ok(())
@@ -803,7 +832,9 @@ impl Player {
                 let _ = previous.stop();
             }
             let handle = locked.play_input(input);
-            handle.set_volume(self.volume as f32 / 100.0).ok();
+            // Speech has its own gain. Inheriting the music volume would make
+            // /volume 0 silence every utterance.
+            handle.set_volume(1.0).ok();
             handle
         };
         self.tts_handle = Some(handle);
@@ -821,6 +852,11 @@ impl Player {
 
     async fn unlock_tts(&mut self) -> Result<(), PlayerError> {
         self.tts_active = false;
+        // The TTS session was the only reason to stay in voice. Mirror the
+        // TypeScript worker: release the connection after the idle grace.
+        if self.current.is_none() && self.call.is_some() {
+            self.schedule_idle_leave();
+        }
         Ok(())
     }
 
@@ -865,4 +901,14 @@ fn shuffle(queue: &mut VecDeque<Track>) {
         items.swap(i, j);
     }
     queue.extend(items);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PlayerError;
+
+    #[test]
+    fn tts_disabled_uses_the_router_contract_code() {
+        assert_eq!(PlayerError::TtsDisabled.code(), "tts_disabled");
+    }
 }

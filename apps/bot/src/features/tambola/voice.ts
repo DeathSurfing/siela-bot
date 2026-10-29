@@ -62,7 +62,7 @@ export class TambolaVoice {
       ? "/app/assets/tts/kitten_tts_mini_daemon.py"
       : "/app/assets/tts/kitten_tts_daemon.py";
     this.kittenScript = process.env.KITTEN_TTS_SCRIPT ?? defaultScript;
-    this.kittenVoice = process.env.TTS_VOICE ?? (this.backend === "kitten-mini" ? "Jasper" : "Bruno");
+    this.kittenVoice = process.env.TTS_VOICE || (this.backend === "kitten-mini" ? "Jasper" : "Bruno");
     mkdirSync(this.cacheDir, { recursive: true });
   }
 
@@ -263,18 +263,29 @@ export class TambolaVoice {
 
   private async speakRemoteStream(text: string, serviceUrl: string): Promise<void> {
     if (!this.player) throw new Error("audio player not ready");
-    const response = await fetch(`${serviceUrl.replace(/\/$/, "")}/synthesize-stream`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voice: this.kittenVoice || this.voice }),
-    });
-    if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
-    const stream = Readable.fromWeb(response.body as any);
-    if (this.player.state.status !== AudioPlayerStatus.Idle) {
-      this.player.stop(true);
+    // Bound the wait for response headers, not the body: aborting mid-stream
+    // would truncate a clip that is already playing.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+    timer.unref?.();
+    try {
+      const response = await fetch(`${serviceUrl.replace(/\/$/, "")}/synthesize-stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, voice: this.kittenVoice || this.voice }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+      const stream = Readable.fromWeb(response.body as any);
+      if (this.player.state.status !== AudioPlayerStatus.Idle) {
+        this.player.stop(true);
+      }
+      this.player.play(createAudioResource(stream, { inputType: StreamType.Arbitrary }));
+      this.logger.debug({ text }, "tambola TTS stream playback started");
+    } finally {
+      clearTimeout(timer);
     }
-    this.player.play(createAudioResource(stream, { inputType: StreamType.Arbitrary }));
-    this.logger.debug({ text }, "tambola TTS stream playback started");
   }
 
   private async synthesizeRemote(text: string, file: string, serviceUrl: string): Promise<string | null> {
@@ -310,10 +321,14 @@ export class TambolaVoice {
 
   private async synthesizeNow(text: string): Promise<string | null> {
     if (this.disabled) return null;
+    const serviceUrl = process.env.TTS_SERVICE_URL;
+    // The cache identity must be the audio identity: engine, effective voice,
+    // rate, text. The Edge voice is not the voice the TTS service speaks in.
+    const engine = serviceUrl ? "remote" : this.backend;
     const key = createHash("sha1")
-      .update(`${this.voice}\u0000${this.rate}\u0000${text}`)
+      .update(`${engine}\u0000${this.kittenVoice}\u0000${this.rate}\u0000${text}`)
       .digest("hex");
-    const extension = this.backend === "kitten" || this.backend === "kitten-mini" ? "wav" : "mp3";
+    const extension = engine === "remote" || this.backend === "kitten" || this.backend === "kitten-mini" ? "wav" : "mp3";
     const file = join(this.cacheDir, `${key}.${extension}`);
     if (existsSync(file)) {
       const size = statSync(file).size;
@@ -321,7 +336,6 @@ export class TambolaVoice {
       rmSync(file, { force: true });
     }
 
-    const serviceUrl = process.env.TTS_SERVICE_URL;
     if (serviceUrl) {
       return this.synthesizeRemote(text, file, serviceUrl);
     }

@@ -116,9 +116,25 @@ export class RouterServer {
   }
 
   private async readPlaybackState(node: FleetNode, guildId?: string | null): Promise<NodePlaybackState> {
-    const state = (await this.nodeJson(node, "/internal/music/state", { guildId })) as { playing?: unknown; current?: unknown };
+    const [state, tts] = await Promise.all([
+      this.nodeJson(node, "/internal/music/state", { guildId }) as Promise<
+        { playing?: unknown; current?: unknown; channelId?: unknown } | null
+      >,
+      this.nodeJson(node, "/internal/tts/state", { guildId }) as Promise<
+        { enabled?: unknown; channelId?: unknown } | null
+      >,
+    ]);
     if (!state || typeof state !== "object") throw new Error(`Node ${node.id} returned invalid state.`);
-    return { playing: state.playing === true, hasCurrent: state.current != null, reachable: true };
+    return {
+      playing: state.playing === true,
+      hasCurrent: state.current != null,
+      reachable: true,
+      channelId: typeof state.channelId === "string" ? state.channelId : null,
+      tts: {
+        enabled: tts?.enabled === true,
+        channelId: typeof tts?.channelId === "string" ? tts.channelId : null,
+      },
+    };
   }
 
   private async assertObjectState(node: FleetNode, path: string, label: string, guildId?: string | null): Promise<Record<string, unknown>> {
@@ -264,7 +280,8 @@ export class RouterServer {
         );
       }
       // Auto-route: semaphore over free nodes. Rejects 429 when the fleet is full.
-      const node = await this.pool.acquire(guildId);
+      const voiceChannelId = typeof body.voiceChannelId === "string" ? body.voiceChannelId : undefined;
+      const node = await this.pool.acquire(guildId, voiceChannelId);
       try {
         return {
           nodeId: node.id,
@@ -307,13 +324,21 @@ export class RouterServer {
       // to share a channel when it does not need to.
       const states = await Promise.all(
         nodes.map(async (node) => {
-          const [busy, tts] = await Promise.all([this.musicBusy(node, guildId), this.ttsEnabled(node, guildId)]);
-          return { node, busy, tts };
+          const [busy, tts, channel] = await Promise.all([
+            this.musicBusy(node, guildId),
+            this.ttsEnabled(node, guildId),
+            this.musicChannel(node, guildId),
+          ]);
+          return { node, busy, tts, channel };
         }),
       );
 
-      for (const { node, busy, tts } of states) {
+      for (const { node, busy, tts, channel } of states) {
         if (busy || tts) continue;
+        // A node already in the requested channel can take the session. Any
+        // other connection would be moved (or refuse to join, as on the
+        // commander), so leave it alone.
+        if (channel && channel !== channelId) continue;
         await this.forward(node, "/internal/tts/enable", { channelId }, DEFAULT_TIMEOUT_MS, guildId);
         return { nodeId: node.id };
       }
@@ -321,10 +346,9 @@ export class RouterServer {
       // Second pass: every node is busy with music. Nodes that can mix TTS
       // over music take the session, but only if their music is already in
       // the requested channel; otherwise the bot would have to move.
-      for (const { node, tts } of states) {
+      for (const { node, tts, channel } of states) {
         if (tts || !node.ttsMix) continue;
-        const current = await this.musicChannel(node, guildId);
-        if (current && current !== channelId) continue;
+        if (channel !== channelId) continue;
         await this.forward(node, "/internal/tts/enable", { channelId }, DEFAULT_TIMEOUT_MS, guildId);
         return { nodeId: node.id, mixed: true };
       }
