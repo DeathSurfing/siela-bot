@@ -78,6 +78,7 @@ Workers only exist when `scripts/make-voice-overlay.sh <N>` has generated the ov
 | `router` | `localhost/siela-router:latest` | Voice fleet gateway `:3100`; fans music out by `nodeId`, proxies everything else to the commander |
 | `bot-voice-*` | `localhost/siela-bot:latest` | Generated workers (`scripts/make-voice-overlay.sh <N>`). Slim `dist/worker.js` entrypoint under `bun --smol`, 1 GB cap: voice + music/TTS + worker API only, no commands or schedulers |
 | `bot-voice-*` (Rust) | `localhost/siela-voice-worker:latest` | Same slots with `WORKER_RUNTIME=rust`. `apps/voice-worker`, 512 MB cap, decodes in process so no mpv or ffmpeg runs during playback |
+| `dashboard` | `localhost/siela-dashboard:latest` | Optional operator UI on container port 3000, published at `${DASHBOARD_PORT}`; reads the password from `.env`; not built or started by watchtower |
 | `watchtower` | `localhost/siela-watchtower:latest` | Optional auto-deploy sidecar; mounts the host Podman socket |
 
 Health endpoints:
@@ -86,6 +87,30 @@ Health endpoints:
 - Control API: `:3001` with Bearer `MCP_TOKEN`, on the internal `control` network.
 - Voice router: `:3100` with Bearer `MCP_TOKEN`, on the internal `control` network. See [docs/VOICE-FLEET.md](../../docs/VOICE-FLEET.md).
 - TTS: `:8000` with `/healthz`, `/warmup`, `/unload`, `/synthesize`, and `/synthesize-stream`. The model is loaded on demand, so idle memory is low.
+
+### Dashboard
+
+The dashboard is optional and is not in the watchtower deploy set. Its login password and session secret are read from `deploy/podman/.env` through `env_file`, so keep both values there. The password must be at least 12 characters and the session secret at least 32.
+
+Set a free host port in `.env` when 3000 is already taken:
+
+```sh
+DASHBOARD_PASSWORD=...
+DASHBOARD_SESSION_SECRET=...
+DASHBOARD_PORT=3002
+DASHBOARD_BIND=0.0.0.0
+```
+
+Build and start it after a stack update:
+
+```sh
+cd deploy/podman
+podman-compose -p siela -f compose.yaml -f compose.voice.generated.yaml -f compose.watchtower.yaml build dashboard
+podman-compose -p siela -f compose.yaml -f compose.voice.generated.yaml -f compose.watchtower.yaml up -d --no-deps dashboard
+curl -fsS http://127.0.0.1:3002/healthz
+```
+
+Open `http://<host>:${DASHBOARD_PORT}`. The container listener remains 3000; on this host the portfolio owns 3000, so the dashboard is published on 3002. See [docs/DASHBOARD.md](../../docs/DASHBOARD.md) for the interface, OAuth, and security details.
 
 ## Quickstart
 
