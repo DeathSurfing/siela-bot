@@ -38,7 +38,12 @@ function setStatusPill(status) {
   template.innerHTML = renderStatusPill(status);
   const newPill = template.content.firstElementChild;
   newPill.id = "bot-status";
+  const changed = oldPill && oldPill.textContent.trim() !== newPill.textContent.trim();
   oldPill.replaceWith(newPill);
+  if (changed) {
+    newPill.classList.add("is-changing");
+    newPill.addEventListener("animationend", () => newPill.classList.remove("is-changing"), { once: true });
+  }
   document.querySelector("#build-version").textContent = status?.version ? `V${status.version}` : "SIELA";
 }
 
@@ -54,7 +59,6 @@ function renderMain(preserveSearch = false) {
   const selectionStart = previousSearch?.selectionStart;
   const selectionEnd = previousSearch?.selectionEnd;
   main.innerHTML = renderView(state.view);
-  document.querySelector("#topbar-title").textContent = viewTitle(state.view);
   document.title = `${viewTitle(state.view)} · Siela Control`;
   document.querySelectorAll(".primary-nav a[data-view]").forEach((link) => {
     if (link.dataset.view === state.view) link.setAttribute("aria-current", "page");
@@ -192,31 +196,55 @@ function featureButton(featureId) {
   return document.querySelector(`[data-feature-id="${CSS.escape(featureId)}"]`);
 }
 
+function setFeatureCount(node, value) {
+  if (!node || node.textContent === String(value)) return;
+  node.textContent = String(value);
+  node.classList.remove("is-bumped");
+  void node.offsetWidth;
+  node.classList.add("is-bumped");
+  node.addEventListener("animationend", () => node.classList.remove("is-bumped"), { once: true });
+}
+
+function syncDependencyHints() {
+  const features = state.data?.features ?? [];
+  const byId = new Map(features.map((item) => [item.id, item]));
+  for (const item of features) {
+    const copy = featureButton(item.id)?.closest(".feature-row")?.querySelector(".feature-copy");
+    if (!copy) continue;
+    const unmet = (Array.isArray(item.dependsOn) ? item.dependsOn : []).filter((dependency) => {
+      const match = byId.get(dependency);
+      return !match || !match.enabled;
+    });
+    let node = copy.querySelector(".feature-deps");
+    if (!unmet.length) {
+      node?.remove();
+      continue;
+    }
+    if (!node) {
+      node = document.createElement("p");
+      node.className = "feature-deps";
+      const error = copy.querySelector(".feature-error");
+      if (error) error.before(node);
+      else copy.append(node);
+    }
+    node.textContent = `Needs ${unmet.map((dependency) => byId.get(dependency)?.label ?? dependency).join(", ")}`;
+  }
+}
+
 function syncFeatureIndicators(feature, enabled) {
   const button = featureButton(feature.id);
   if (button) {
     button.setAttribute("aria-checked", String(enabled));
     button.setAttribute("aria-label", `${enabled ? "Disable" : "Enable"} ${feature.label ?? feature.id}`);
-    button.closest(".feature-row")?.querySelector(".feature-status-bar")?.classList.toggle("is-on", enabled);
   }
   const features = state.data?.features ?? [];
-  const enabledNode = document.querySelector("[data-enabled-count]");
-  if (enabledNode) enabledNode.textContent = String(features.filter((item) => item.enabled).length);
+  const enabledCount = features.filter((item) => item.enabled).length;
+  setFeatureCount(document.querySelector("[data-enabled-count]"), enabledCount);
   const totalNode = document.querySelector("[data-total-count]");
   if (totalNode) totalNode.textContent = String(features.length);
   const countText = document.querySelector("[data-feature-count-text]");
-  if (countText) countText.textContent = `${features.filter((item) => item.enabled).length} of ${features.length} enabled`;
-  const groups = new Map();
-  for (const item of features) {
-    const category = item.category || "Other";
-    groups.set(category, [...(groups.get(category) ?? []), item]);
-  }
-  for (const [category, entries] of groups) {
-    const node = document.querySelector(`[data-category-count="${CSS.escape(category)}"]`);
-    if (!node) continue;
-    const on = entries.filter((item) => item.enabled).length;
-    node.textContent = `${String(on).padStart(2, "0")} / ${String(entries.length).padStart(2, "0")} ON`;
-  }
+  if (countText) countText.textContent = `${enabledCount} of ${features.length} enabled`;
+  syncDependencyHints();
 }
 
 function renderFeatureError(featureId, message) {
@@ -296,8 +324,18 @@ function showToast(message, options = {}) {
   toast.className = "toast";
   toast.setAttribute("role", "status");
   toast.innerHTML = `<p>${escapeHtml(message)}</p><div class="toast-actions">${options.actionLabel ? `<button class="button button-quiet" type="button" data-toast-action>${escapeHtml(options.actionLabel)}</button>` : ""}<button class="icon-button toast-close" type="button" data-toast-close aria-label="Dismiss">×</button></div><span class="toast-progress" aria-hidden="true"></span>`;
-  const timer = setTimeout(() => toast.remove(), 7000);
-  const dismiss = () => { clearTimeout(timer); toast.remove(); };
+  let timer;
+  let leaving = false;
+  const dismiss = () => {
+    clearTimeout(timer);
+    if (leaving) return;
+    leaving = true;
+    toast.classList.add("is-leaving");
+    const remove = () => toast.remove();
+    toast.addEventListener("transitionend", remove, { once: true });
+    setTimeout(remove, 220);
+  };
+  timer = setTimeout(dismiss, 7000);
   toast.querySelector("[data-toast-close]")?.addEventListener("click", dismiss);
   toast.querySelector("[data-toast-action]")?.addEventListener("click", async () => {
     dismiss();
@@ -398,7 +436,15 @@ function readConfigForm(form) {
   return body;
 }
 
+function markSettingsDirty(form) {
+  if (!form || form.classList.contains("is-dirty")) return;
+  form.classList.add("is-dirty");
+  const submit = form.querySelector("[data-save-section]");
+  if (submit) submit.disabled = false;
+}
+
 async function saveSettings(form) {
+  if (!form.classList.contains("is-dirty")) return;
   const section = form.dataset.configSection;
   const submit = form.querySelector("[type=submit]");
   submit.disabled = true;
@@ -410,7 +456,7 @@ async function saveSettings(form) {
   } catch {
     setInlineFeedback(section, "Enter valid JSON in the structured field.", true);
     submit.disabled = false;
-    submit.textContent = "Save changes";
+    submit.textContent = "Save";
     return;
   }
   try {
@@ -423,7 +469,7 @@ async function saveSettings(form) {
   } catch (error) {
     setInlineFeedback(section, error instanceof Error ? error.message : "Settings could not be saved.", true);
     submit.disabled = false;
-    submit.textContent = "Save changes";
+    submit.textContent = "Save";
   }
 }
 
@@ -434,7 +480,7 @@ document.addEventListener("submit", async (event) => {
     event.preventDefault();
     const submit = form.querySelector("[type=submit]");
     submit.disabled = true;
-    submit.querySelector("span").textContent = "Checking…";
+    submit.textContent = "Checking…";
     try {
       const result = await api.login(new FormData(form).get("password"));
       await enterDashboard(result.csrfToken);
@@ -495,33 +541,37 @@ document.addEventListener("click", async (event) => {
   if (settingToggle) {
     const checked = settingToggle.getAttribute("aria-checked") === "true";
     settingToggle.setAttribute("aria-checked", String(!checked));
+    markSettingsDirty(settingToggle.closest("[data-config-section]"));
   }
 });
 
 document.addEventListener("input", (event) => {
   const target = event.target;
-  if (!(target instanceof HTMLInputElement)) return;
-  if (target.id === "view-search") {
-    state.search = target.value;
-    renderMain(true);
+  if (!(target instanceof HTMLElement)) return;
+  if (target instanceof HTMLInputElement) {
+    if (target.id === "view-search") {
+      state.search = target.value;
+      renderMain(true);
+    }
+    if (target.id === "volume-control") {
+      const output = document.querySelector('output[for="volume-control"]');
+      if (output) output.value = `${target.value}%`;
+      target.setAttribute("aria-valuetext", `${target.value} percent`);
+    }
+    if (target.id === "voice-channel") {
+      state.voiceChannelId = target.value.trim();
+      if (state.guildId) localStorage.setItem(`siela.voice.${state.guildId}`, state.voiceChannelId);
+    }
+    if (target.id === "track-seek") {
+      const duration = Number(target.max);
+      const position = Number(target.value);
+      const label = `${Math.floor(position / 1000)}s of ${Math.floor(duration / 1000)}s`;
+      target.setAttribute("aria-valuetext", label);
+      const output = document.querySelector("#track-position");
+      if (output) output.value = formatPosition(position);
+    }
   }
-  if (target.id === "volume-control") {
-    const output = document.querySelector('output[for="volume-control"]');
-    if (output) output.value = `${target.value}%`;
-    target.setAttribute("aria-valuetext", `${target.value} percent`);
-  }
-  if (target.id === "voice-channel") {
-    state.voiceChannelId = target.value.trim();
-    if (state.guildId) localStorage.setItem(`siela.voice.${state.guildId}`, state.voiceChannelId);
-  }
-  if (target.id === "track-seek") {
-    const duration = Number(target.max);
-    const position = Number(target.value);
-    const label = `${Math.floor(position / 1000)}s of ${Math.floor(duration / 1000)}s`;
-    target.setAttribute("aria-valuetext", label);
-    const output = document.querySelector("#track-position");
-    if (output) output.value = formatPosition(position);
-  }
+  markSettingsDirty(target.closest("[data-config-section]"));
 });
 
 document.addEventListener("change", async (event) => {
@@ -538,6 +588,7 @@ document.addEventListener("change", async (event) => {
   if (target instanceof HTMLInputElement && target.id === "track-seek") {
     await runMusicAction("seek", { positionMs: Number(target.value) });
   }
+  if (target instanceof Element) markSettingsDirty(target.closest("[data-config-section]"));
 });
 
 window.addEventListener("hashchange", async () => {
