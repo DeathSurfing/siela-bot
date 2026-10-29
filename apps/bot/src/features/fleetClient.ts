@@ -21,7 +21,7 @@ export interface FleetNodePlayback {
 }
 
 interface RouterErrorBody {
-  error?: { message?: unknown };
+  error?: { message?: unknown; code?: unknown };
 }
 
 export class FleetClient {
@@ -84,15 +84,20 @@ export class FleetClient {
     return typeof message === "string" ? message : fallback;
   }
 
+  private errorCode(parsed: unknown): string {
+    const code = (parsed as RouterErrorBody | null)?.error?.code;
+    return typeof code === "string" ? code : "user_error";
+  }
+
   private throwForStatus(
     status: number,
     parsed: unknown,
     fallback: string,
     logContext: Record<string, unknown>,
   ): never {
-    if (status === 429) throw new UserError(FULL_MESSAGE);
+    if (status === 429) throw new UserError(FULL_MESSAGE, "all_nodes_busy");
     this.logger.debug({ status, ...logContext }, "fleet request failed");
-    throw new UserError(this.errorMessage(parsed, fallback));
+    throw new UserError(this.errorMessage(parsed, fallback), this.errorCode(parsed));
   }
 
   /** Live playback state (plus voice channel) of one fleet node. */

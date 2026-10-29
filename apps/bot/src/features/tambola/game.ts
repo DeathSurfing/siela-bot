@@ -28,6 +28,8 @@ export interface TambolaPlayer {
   tickets: TambolaTicket[];
   marked: Set<number>;
   autoMark: boolean;
+  /** True once the player paid for auto-mark; survives host-wide toggles. */
+  autoMarkPurchased: boolean;
   joinedAt: number;
 }
 
@@ -216,6 +218,7 @@ export class TambolaGame {
       tickets: [generateTicket(this.rng)],
       marked: new Set(),
       autoMark: this.autoMark,
+      autoMarkPurchased: false,
       joinedAt: Date.now(),
     };
     this.players.set(userId, player);
@@ -359,13 +362,16 @@ export class TambolaGame {
     const player = this.players.get(userId);
     if (!player) return false;
     player.autoMark = value;
+    if (value) player.autoMarkPurchased = true;
     return true;
   }
 
   setAutoMark(value: boolean): void {
     if (this.status !== "lobby") return;
     this.autoMark = value;
-    for (const player of this.players.values()) player.autoMark = value;
+    for (const player of this.players.values()) {
+      player.autoMark = value || player.autoMarkPurchased;
+    }
   }
 
   transferHost(userId: string): boolean {

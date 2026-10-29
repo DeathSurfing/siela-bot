@@ -103,25 +103,20 @@ impl TtsHandle {
         }
     }
 
-    pub async fn enabled(&self) -> bool {
-        self.inner
-            .lock()
-            .await
-            .session
-            .as_ref()
-            .map(|session| session.enabled)
-            .unwrap_or(false)
-    }
-
     pub async fn enable(&self, channel_id: String) -> Result<(), PlayerError> {
         // One voice connection per bot per guild. When music is already
         // playing, TTS shares that channel instead of moving the bot and
-        // cutting the music off.
-        let target = self
-            .player
-            .current_channel()
-            .await
-            .unwrap_or(channel_id);
+        // cutting the music off. A request for any other channel is refused
+        // rather than silently speaking in the wrong one.
+        let target = match self.player.current_channel().await {
+            Some(current) if current != channel_id => {
+                return Err(PlayerError::Invalid(
+                    "TTS must share the node's current voice channel.".into(),
+                ));
+            }
+            Some(current) => current,
+            None => channel_id,
+        };
         self.player.join(Some(target.clone())).await?;
         // Music keeps playing; TTS clips are mixed on top of it.
         self.player.lock_tts().await?;
@@ -154,10 +149,25 @@ impl TtsHandle {
         utterance: String,
         _speaker_id: Option<String>,
     ) -> Result<(), PlayerError> {
-        if !self.enabled().await {
-            return Ok(());
-        }
+        let channel = {
+            let inner = self.inner.lock().await;
+            match inner.session.as_ref() {
+                Some(session) if session.enabled => Some(session.channel_id.clone()),
+                _ => None,
+            }
+        };
+        let Some(channel) = channel else {
+            // A 200 with no audio would leave the commander believing TTS is
+            // on forever. Tell it the session is gone so it can reset.
+            return Err(PlayerError::TtsDisabled);
+        };
         self.touch().await;
+
+        // Music may have disconnected while the TTS session stayed open.
+        // Rejoin the session channel so speech keeps working.
+        if self.player.current_channel().await.is_none() {
+            self.player.join(Some(channel)).await?;
+        }
 
         let path = self.clip(&utterance).await?;
         self.player

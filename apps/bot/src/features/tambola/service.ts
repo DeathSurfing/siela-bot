@@ -21,6 +21,7 @@ import type { ReplyPayload } from "../../framework/types.js";
 import { UserError } from "../../lib/errors.js";
 import type { Logger } from "../../lib/logger.js";
 import type { MusicService } from "../music.js";
+import { FleetClient } from "../fleetClient.js";
 import type { EconomyService } from "./../economy.js";
 import { UI_ACCENT, text } from "../ui.js";
 import {
@@ -113,7 +114,15 @@ export class TambolaService {
   }
 
   isUsingVoice(guildId: string): boolean {
-    return Boolean(this.get(guildId)?.voice?.connected);
+    // The game owns the channel while it is live, even if the voice socket
+    // is briefly reconnecting. `connected` would release the lock on a blip.
+    const session = this.get(guildId);
+    return Boolean(session?.voice && session.voiceChannelId);
+  }
+
+  /** Voice channel this guild's game owns, or null when voice is off. */
+  voiceChannel(guildId: string): string | null {
+    return this.get(guildId)?.voiceChannelId ?? null;
   }
 
   require(guildId: string): TambolaSession {
@@ -768,6 +777,22 @@ export class TambolaService {
       this.logger.info({ guildId }, "tambola voice not configured; running text-only");
       return false;
     }
+    // The selected channel may be served by a fleet worker. The commander's
+    // own player can't see it, so stop that node explicitly before joining.
+    const fleetNode = this.music.getFleetNode(guildId, session.voiceChannelId);
+    if (fleetNode && this.config.ROUTER_URL) {
+      try {
+        await new FleetClient(this.config.ROUTER_URL, this.config.MCP_TOKEN, this.logger, guildId)
+          .control(fleetNode, "disconnect");
+        this.logger.info(
+          { guildId, nodeId: fleetNode, channelId: session.voiceChannelId },
+          "tambola stopped fleet music",
+        );
+      } catch (error) {
+        this.logger.warn({ err: error, guildId, nodeId: fleetNode }, "tambola could not stop fleet music");
+      }
+      this.music.setFleetNode(guildId, session.voiceChannelId, null);
+    }
     if (this.music.isConnected(guildId)) {
       try {
         await this.music.disconnect(guildId);
@@ -947,10 +972,6 @@ export class TambolaService {
   }
 
   private detach(session: TambolaSession): void {
-    if (session.voiceTimer) {
-      clearTimeout(session.voiceTimer);
-      session.voiceTimer = null;
-    }
     if (this.byGuild.get(session.game.guildId) === session) {
       this.byGuild.delete(session.game.guildId);
     }

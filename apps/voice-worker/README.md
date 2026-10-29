@@ -84,6 +84,13 @@ instead of replacing it. A new utterance stops only the previous clip. Track
 end events are attached per music track with a sequence number, so a finished
 TTS clip never advances the queue and a replaced track cannot advance it twice.
 
+Speech uses its own gain, so `/volume 0` does not silence narration. The
+session ends 30 seconds after the last text and releases the voice connection
+after the same idle grace as music. Turning TTS off never moves the bot away
+from a stream, and a music play for another channel is refused while a TTS
+session owns the connection. `/internal/music/disconnect` ends the TTS session
+with the connection.
+
 The router can therefore attach a TTS session to a worker that is already
 playing, as long as the music is in the same channel and no idle node exists.
 That lets a three-node fleet carry three music streams plus speech.
