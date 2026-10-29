@@ -193,6 +193,7 @@ export class ControlServer {
       const body = this.parse(featureUpdateSchema, request.body);
       const guildId = this.guildId(request);
       const actor = this.actor(request);
+      await services.settings.ensure(guildId);
       const before = (await services.features.list(guildId)).find((feature) => feature.id === body.featureId);
       const result = await services.features.set(guildId, body.featureId, body.enabled, actor);
       await services.audit.log({
@@ -213,6 +214,7 @@ export class ControlServer {
       const body = this.parse(featureBulkUpdateSchema, request.body);
       const guildId = this.guildId(request);
       const actor = this.actor(request);
+      await services.settings.ensure(guildId);
       const before = new Map((await services.features.list(guildId)).map((feature) => [feature.id, feature.enabled]));
       const results = await services.features.setMany(guildId, body.updates, actor);
       await services.audit.log({

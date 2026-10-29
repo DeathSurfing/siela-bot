@@ -15,14 +15,16 @@ export const configCommand: Command = {
     .setDescription("Overview of all server settings")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   async execute(ctx: CommandContext) {
-    const [prefix, welcome, autorole, tempvc, music, relics] = await Promise.all([
+    const [prefix, welcome, autorole, tempvc, music, relics, features] = await Promise.all([
       ctx.services.settings.getPrefix(ctx.guild.id),
       ctx.services.settings.getWelcome(ctx.guild.id),
       ctx.services.settings.getAutoRole(ctx.guild.id),
       ctx.services.settings.getTempVc(ctx.guild.id),
       ctx.services.settings.getMusic(ctx.guild.id),
       ctx.services.relics.getSettings(ctx.guild.id),
+      ctx.services.features.list(ctx.guild.id),
     ]);
+    const enabledFeatures = features.filter((feature) => feature.enabled).length;
     await ctx.reply(
       card({ theme: "admin",
         title: "Server configuration",
@@ -33,6 +35,7 @@ export const configCommand: Command = {
           `**Temp VC** · ${tempvc.enabled ? (tempvc.hubChannelId ? `On · <#${tempvc.hubChannelId}>` : "On · Not set") : "Off"}`,
           `**Music** · volume ${music.defaultVolume} · queue ${music.maxQueueSize}`,
           `**Relics** · ${relics.enabled ? (relics.channelId ? `Auctions · <#${relics.channelId}>` : "Auctions · Not set") : "Off"}`,
+          `**Features** · ${enabledFeatures} of ${features.length} on · \`features\` to change`,
           "",
           "-# Use the feature commands to change these values.",
         ].join("\n"),

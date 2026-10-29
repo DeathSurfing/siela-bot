@@ -35,6 +35,7 @@ function server(options: { multiGuild?: boolean; features?: unknown } = {}) {
       setMany: async (_guildId: string, updates: Array<{ featureId: string; enabled: boolean }>) => updates,
     },
     audit: { log: async (entry: unknown) => { audits.push(entry); } },
+    settings: { ensure: async () => undefined },
     registry: { metadata: () => [] },
   } as unknown as Services;
   const instance = new ControlServer({
