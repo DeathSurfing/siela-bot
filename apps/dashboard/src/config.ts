@@ -10,7 +10,10 @@ const snowflake = z.string().regex(/^\d{17,20}$/, "must be a Discord snowflake")
 
 const configSchema = z
   .object({
-    DASHBOARD_PASSWORD: z.string().min(12, "must be at least 12 characters"),
+    DASHBOARD_PASSWORD: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.string().min(12, "must be at least 12 characters").optional(),
+    ),
     DASHBOARD_SESSION_SECRET: z.string().min(32, "must be at least 32 characters"),
     DASHBOARD_HOST: z.string().default("0.0.0.0"),
     DASHBOARD_PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
@@ -37,8 +40,8 @@ const configSchema = z
       value.DASHBOARD_OWNER_IDS,
     ];
     const provided = oauthFields.filter(Boolean).length;
-    if (provided === 0) return;
-    if (provided < oauthFields.length || !value.DISCORD_CLIENT_ID) {
+    const oauthComplete = provided === oauthFields.length && Boolean(value.DISCORD_CLIENT_ID);
+    if (provided > 0 && !oauthComplete) {
       context.addIssue({
         code: "custom",
         path: ["DASHBOARD_OAUTH_REDIRECT_URI"],
@@ -47,6 +50,16 @@ const configSchema = z
       });
       return;
     }
+    if (!value.DASHBOARD_PASSWORD && !oauthComplete) {
+      context.addIssue({
+        code: "custom",
+        path: ["DASHBOARD_PASSWORD"],
+        message:
+          "set DASHBOARD_PASSWORD (12 or more characters), or configure Discord sign-in with DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DASHBOARD_OAUTH_REDIRECT_URI, and DASHBOARD_OWNER_IDS",
+      });
+      return;
+    }
+    if (!oauthComplete) return;
     const owners = value.DASHBOARD_OWNER_IDS!.split(",")
       .map((id) => id.trim())
       .filter(Boolean);

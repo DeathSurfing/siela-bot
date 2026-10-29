@@ -4,6 +4,7 @@ export const state = {
   authenticated: false,
   user: null,
   oauth: false,
+  password: false,
   csrfToken: null,
   guilds: [],
   guildId: storedGuildId,
