@@ -309,7 +309,7 @@ td code { overflow-wrap: anywhere; }
 .toast-progress { position: absolute; inset: auto 0 0; height: 1px; background: var(--accent-bright); transform-origin: left; animation: toast-life 7s linear forwards; }
 .toast[data-tone="error"] { border-color: var(--status-danger-border); background: var(--surface-error); }
 .toast[data-tone="error"] .toast-progress { background: var(--danger); }
-@keyframes toast-life { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@keyframes toast-life { from { transform: scaleX(1); } to { transform: scaleX(0.01); } }
 
 .login-wrap { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
 .login-panel { width: min(100%, 370px); }
