@@ -209,7 +209,15 @@ export class SielaBot {
       this.config.MCP_TOKEN,
       (guildId) => features.isEnabled(guildId, "automation-scheduled-events"),
     );
-    const activity = new ActivityService(this.dbHandle.db, friendship, tempVc, music, this.logger, economy);
+    const activity = new ActivityService(
+      this.dbHandle.db,
+      friendship,
+      tempVc,
+      music,
+      this.logger,
+      economy,
+      (guildId, feature) => features.isEnabled(guildId, feature),
+    );
     const leveling = new LevelingService(this.dbHandle.db, settings, this.client, this.logger);
     activity.leveling = leveling;
     this.services = {
@@ -395,7 +403,14 @@ export class SielaBot {
     await this.services.settings.ensure(guild.id);
     await this.registerCommands(guild);
     await this.services.tempVc.reconcile(guild).catch((error) => this.logger.warn({ err: error }, "temp VC reconcile failed"));
-    await this.services.activity.reconcile(guild).catch((error) => this.logger.warn({ err: error, guildId: guild.id }, "activity reconcile failed"));
+    const activityEnabled = await this.services.features.isEnabled(guild.id, "engagement-activity");
+    this.services.activity.setLevelingEnabled(
+      guild.id,
+      await this.services.features.isEnabled(guild.id, "engagement-leveling"),
+    );
+    if (activityEnabled) {
+      await this.services.activity.reconcile(guild).catch((error) => this.logger.warn({ err: error, guildId: guild.id }, "activity reconcile failed"));
+    }
     await this.services.leveling.reconcile(guild).catch((error) => this.logger.warn({ err: error, guildId: guild.id }, "leveling reconcile failed"));
     this.startGlobalSchedulers();
     const randomVc = new RandomVcService(

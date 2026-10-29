@@ -430,28 +430,33 @@ export class ControlServer {
       return music.state(this.guildId(request)) ?? { playing: false, paused: false, volume: 0, loop: "off", position: 0, current: null, upcoming: [] };
     });
     this.route("POST", "/v1/music/join", async (request) => {
+      await this.musicGuild(request);
       const body = this.parse(musicJoinSchema, request.body ?? {});
       const member = await this.guild(request).members.fetch(this.options.client.user!.id);
       const channelId = await this.requireMusic().join(member, body.voiceChannelId);
       return { channelId };
     });
     this.route("POST", "/v1/music/play", async (request) => {
+      await this.musicGuild(request);
       const body = this.parse(musicPlaySchema, request.body);
       const music = this.requireMusic();
       const member = await this.guild(request).members.fetch(this.options.client.user!.id);
       return music.play(member, body.query, body.voiceChannelId, body.next);
     });
     this.route("POST", "/v1/music/pause", async (request) => {
-      await this.requireMusic().pause(this.guildId(request));
+      const guildId = await this.musicGuild(request);
+      await this.requireMusic().pause(guildId);
       return { ok: true };
     });
     this.route("POST", "/v1/music/resume", async (request) => {
-      await this.requireMusic().resume(this.guildId(request));
+      const guildId = await this.musicGuild(request);
+      await this.requireMusic().resume(guildId);
       return { ok: true };
     });
     this.route("POST", "/v1/music/skip", async (request) => {
+      const guildId = await this.musicGuild(request);
       const body = this.parse(musicSkipSchema, request.body ?? {});
-      await this.requireMusic().skip(this.guildId(request), body.count);
+      await this.requireMusic().skip(guildId, body.count);
       return { ok: true };
     });
     this.route("POST", "/v1/music/stop", async (request) => {
@@ -459,50 +464,60 @@ export class ControlServer {
       return { ok: true };
     });
     this.route("POST", "/v1/music/volume", async (request) => {
+      const guildId = await this.musicGuild(request);
       const body = this.parse(musicVolumeSchema, request.body);
-      return { volume: await this.requireMusic().volume(this.guildId(request), body.volume) };
+      return { volume: await this.requireMusic().volume(guildId, body.volume) };
     });
     this.route("POST", "/v1/music/seek", async (request) => {
+      const guildId = await this.musicGuild(request);
       const body = this.parse(musicSeekSchema, request.body);
-      await this.requireMusic().seek(this.guildId(request), body.positionMs);
+      await this.requireMusic().seek(guildId, body.positionMs);
       return { ok: true };
     });
     this.route("POST", "/v1/music/loop", async (request) => {
+      const guildId = await this.musicGuild(request);
       const body = this.parse(musicLoopSchema, request.body);
-      await this.requireMusic().loop(this.guildId(request), body.mode);
+      await this.requireMusic().loop(guildId, body.mode);
       return { ok: true };
     });
     this.route("POST", "/v1/music/shuffle", async (request) => {
-      await this.requireMusic().shuffle(this.guildId(request));
+      const guildId = await this.musicGuild(request);
+      await this.requireMusic().shuffle(guildId);
       return { ok: true };
     });
     this.route("POST", "/v1/music/remove", async (request) => {
+      const guildId = await this.musicGuild(request);
       const body = this.parse(musicRemoveSchema, request.body);
-      const removed = await this.requireMusic().remove(this.guildId(request), body.index);
+      const removed = await this.requireMusic().remove(guildId, body.index);
       return { removed: removed.title };
     });
     this.route("POST", "/v1/music/clear", async (request) => {
-      await this.requireMusic().clear(this.guildId(request));
+      const guildId = await this.musicGuild(request);
+      await this.requireMusic().clear(guildId);
       return { ok: true };
     });
     this.route("POST", "/v1/music/move", async (request) => {
+      const guildId = await this.musicGuild(request);
       const body = this.parse(musicMoveSchema, request.body);
-      await this.requireMusic().move(this.guildId(request), body.from, body.to);
+      await this.requireMusic().move(guildId, body.from, body.to);
       return { ok: true };
     });
     this.route("POST", "/v1/music/jump", async (request) => {
+      const guildId = await this.musicGuild(request);
       const body = this.parse(musicJumpSchema, request.body);
-      await this.requireMusic().jump(this.guildId(request), body.index);
+      await this.requireMusic().jump(guildId, body.index);
       return { ok: true };
     });
     this.route("POST", "/v1/music/autoplay", async (request) => {
+      const guildId = await this.musicGuild(request);
       const body = this.parse(musicAutoplaySchema, request.body);
-      await this.requireMusic().autoplay(this.guildId(request), body.enabled);
+      await this.requireMusic().autoplay(guildId, body.enabled);
       return { ok: true };
     });
     this.route("POST", "/v1/music/filters", async (request) => {
+      const guildId = await this.musicGuild(request);
       const body = this.parse(musicFilterSchema, request.body);
-      await this.requireMusic().filters(this.guildId(request), body.preset);
+      await this.requireMusic().filters(guildId, body.preset);
       return { ok: true };
     });
     this.route("POST", "/v1/music/disconnect", async (request) => {
@@ -560,6 +575,15 @@ export class ControlServer {
   private requireMusic() {
     if (!this.options.services.music) throw new UserError("Music service is not ready.", "not_ready");
     return this.options.services.music;
+  }
+
+  /** Music controls require the guild's music-playback flag. Cleanup does not. */
+  private async musicGuild(request: FastifyRequest): Promise<string> {
+    const guildId = this.guildId(request);
+    if (!(await this.options.services.features.isEnabled(guildId, "music-playback"))) {
+      throw new UserError("Music playback is turned off on this server.", "feature_disabled");
+    }
+    return guildId;
   }
 
   async start(host: string, port: number): Promise<void> {
