@@ -325,6 +325,26 @@ describe("help payloads", () => {
     expect(selectOptions(payload)).toHaveLength(0);
   });
 
+  it("hides commands whose feature is disabled", () => {
+    const visible = visibleCommands(commands, categoriesFor(true), true, new Set(["music-playback"]));
+    expect(visible.find((command) => command.name === "play")).toBeUndefined();
+    expect(visible.find((command) => command.name === "queue")).toBeUndefined();
+    expect(visible.find((command) => command.name === "help")).toBeDefined();
+  });
+
+  it("keeps a disabled feature's command out of search results", async () => {
+    const payload = await buildHelpPayload({
+      registry,
+      member: member(),
+      config,
+      prefix: "!",
+      query: "play",
+      disabledFeatures: new Set(["music-playback"]),
+    });
+    const texts = textDisplays(payload);
+    expect(texts.join("\n")).toContain("Nothing matched");
+  });
+
   it("labels slash and prefix aliases for play", async () => {
     const payload = await buildHelpPayload({
       registry,

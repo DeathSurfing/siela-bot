@@ -153,6 +153,17 @@ describe("FeatureFlagService", () => {
     expect(counters.selects).toBe(1);
   });
 
+  it("reports the disabled id set for command hiding", async () => {
+    const { db, rows } = makeDb();
+    rows.push({ guildId: GUILD_A, featureId: "relics", enabled: false, updatedBy: null });
+    rows.push({ guildId: GUILD_A, featureId: "voice-tempvc", enabled: false, updatedBy: null });
+    const service = new FeatureFlagService(db);
+
+    const disabled = await service.disabledIds(GUILD_A);
+    expect([...disabled].sort()).toEqual(["relics", "voice-tempvc"]);
+    expect(await service.disabledIds(GUILD_B)).toEqual(new Set());
+  });
+
   it("honours an explicit off override", async () => {
     const { db, rows } = makeDb();
     rows.push({ guildId: GUILD_A, featureId: "relics", enabled: false, updatedBy: null });

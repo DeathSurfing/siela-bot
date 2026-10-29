@@ -9,6 +9,8 @@ import {
   autoroleUpdateSchema,
   countersQuerySchema,
   countersResetSchema,
+  featureBulkUpdateSchema,
+  featureUpdateSchema,
   messageSendSchema,
   musicAutoplaySchema,
   musicFilterSchema,
@@ -177,6 +179,51 @@ export class ControlServer {
       }),
     }));
     this.route("GET", "/v1/commands", async (request) => services.registry.metadata());
+
+    this.route("GET", "/v1/features", async (request) => {
+      const guildId = this.guildId(request);
+      return { guildId, features: await services.features.list(guildId) };
+    });
+    this.route("PATCH", "/v1/features", async (request) => {
+      const body = this.parse(featureUpdateSchema, request.body);
+      const guildId = this.guildId(request);
+      const actor = this.actor(request);
+      const before = (await services.features.list(guildId)).find((feature) => feature.id === body.featureId);
+      const result = await services.features.set(guildId, body.featureId, body.enabled, actor);
+      await services.audit.log({
+        guildId,
+        actorId: actor,
+        actorType: "mcp",
+        source: "control",
+        action: "features.update",
+        targetType: "feature",
+        targetId: body.featureId,
+        before: before ? { enabled: before.enabled } : null,
+        after: { enabled: result.enabled },
+        requestId: this.requestId(request),
+      });
+      return result;
+    });
+    this.route("PATCH", "/v1/features/bulk", async (request) => {
+      const body = this.parse(featureBulkUpdateSchema, request.body);
+      const guildId = this.guildId(request);
+      const actor = this.actor(request);
+      const before = new Map((await services.features.list(guildId)).map((feature) => [feature.id, feature.enabled]));
+      const results = await services.features.setMany(guildId, body.updates, actor);
+      await services.audit.log({
+        guildId,
+        actorId: actor,
+        actorType: "mcp",
+        source: "control",
+        action: "features.update_many",
+        targetType: "guild",
+        targetId: guildId,
+        before: Object.fromEntries(before),
+        after: Object.fromEntries(results.map((result) => [result.featureId, result.enabled])),
+        requestId: this.requestId(request),
+      });
+      return { features: results };
+    });
 
     this.route("GET", "/v1/prefix", async (request) => ({
       prefix: await services.settings.getPrefix(this.guildId(request)),

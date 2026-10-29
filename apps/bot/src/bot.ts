@@ -30,7 +30,7 @@ import {
   type VoiceState,
 } from "discord.js";
 import { getVoiceConnection } from "@discordjs/voice";
-import { APP_VERSION, DEFAULTS, type BotStatus } from "@siela/shared";
+import { APP_VERSION, DEFAULTS, featureForCommand, getFeature, type BotStatus } from "@siela/shared";
 import { pingDatabase, type DatabaseHandle, type TempVoiceChannelRow } from "@siela/db";
 import type { BotConfig } from "@siela/config";
 import { commands } from "./commands/index.js";
@@ -49,6 +49,7 @@ import {
 import { createPrefixContext, createSlashContext } from "./framework/context.js";
 import type { Command, CommandContext, Services } from "./framework/types.js";
 import { SettingsService } from "./features/settings.js";
+import { FeatureFlagService } from "./features/features.js";
 import { AuditService } from "./features/audit.js";
 import { CounterService } from "./features/counters.js";
 import { WelcomeService } from "./features/welcome.js";
@@ -135,6 +136,7 @@ export class SielaBot {
     });
     this.registry = new CommandRegistry().register(...commands);
     const settings = new SettingsService(this.dbHandle.db);
+    const features = new FeatureFlagService(this.dbHandle.db);
     const counters = new CounterService(this.dbHandle.db);
     this.valkey = new ValkeyService(this.config.VALKEY_URL ?? null, this.logger);
     this.fleetHeartbeat = this.config.NODE_ADVERTISE_URL
@@ -150,6 +152,7 @@ export class SielaBot {
     const economy = new EconomyService(this.dbHandle.db, this.valkey, this.logger);
     const audit = new AuditService(this.dbHandle.db, this.logger);
     const relics = new RelicService(this.dbHandle.db, this.client, economy, audit, this.logger);
+    relics.setEnabledChecker((guildId) => features.isEnabled(guildId, "relics"));
     const friendship = new FriendshipService(this.dbHandle.db, this.logger, this.valkey);
     const lyrics = new LyricsService(this.logger);
     const confession = new ConfessionService(this.dbHandle.db, settings, this.client, this.logger);
@@ -204,6 +207,7 @@ export class SielaBot {
       this.config.FFMPEG_PATH,
       this.config.ROUTER_URL ?? null,
       this.config.MCP_TOKEN,
+      (guildId) => features.isEnabled(guildId, "automation-scheduled-events"),
     );
     const activity = new ActivityService(this.dbHandle.db, friendship, tempVc, music, this.logger, economy);
     const leveling = new LevelingService(this.dbHandle.db, settings, this.client, this.logger);
@@ -212,6 +216,7 @@ export class SielaBot {
       config: this.config,
       registry: this.registry,
       settings,
+      features,
       audit,
       activity,
       leveling,
@@ -221,7 +226,13 @@ export class SielaBot {
       bias: new BiasService(this.dbHandle.db),
       family: new FamilyService(this.dbHandle.db, this.logger),
       delulu: new DeluluService(this.config.LLM_URL ?? null, this.config.HF_TOKEN ?? null, this.logger),
-      birthday: new BirthdayService(this.dbHandle.db, settings, this.client, this.logger),
+      birthday: new BirthdayService(
+        this.dbHandle.db,
+        settings,
+        this.client,
+        this.logger,
+        (guildId) => features.isEnabled(guildId, "engagement-birthday"),
+      ),
       confession,
       friendship,
       tempVc,
@@ -317,14 +328,24 @@ export class SielaBot {
     this.client.on(Events.VoiceStateUpdate, (oldState, newState) => void this.onVoiceState(oldState, newState));
     this.client.on(Events.ChannelDelete, (channel) => {
       if (this.isVoiceWorker) return;
-      if (channel.type === ChannelType.GuildVoice) void this.services.tempVc.onChannelDelete(channel.id);
-      this.services.tambola.onChannelDelete(channel.id);
-      this.services.cah.onChannelDelete(channel.id);
+      if (!("guildId" in channel)) return;
+      const guildId = channel.guildId;
+      void (async () => {
+        if (channel.type === ChannelType.GuildVoice && await this.services.features.isEnabled(guildId, "voice-tempvc")) {
+          void this.services.tempVc.onChannelDelete(channel.id);
+        }
+        if (await this.services.features.isEnabled(guildId, "games-tambola")) this.services.tambola.onChannelDelete(channel.id);
+        if (await this.services.features.isEnabled(guildId, "games-cah")) this.services.cah.onChannelDelete(channel.id);
+      })();
     });
     this.client.on(Events.ChannelUpdate, (oldChannel, newChannel) => {
       if (this.isVoiceWorker) return;
       if (newChannel.type === ChannelType.GuildVoice) {
-        void this.services.tempVc.onChannelUpdate(oldChannel.id, newChannel);
+        void (async () => {
+          if (await this.services.features.isEnabled(newChannel.guildId, "voice-tempvc")) {
+            void this.services.tempVc.onChannelUpdate(oldChannel.id, newChannel);
+          }
+        })();
       }
     });
     this.client.on(Events.Error, (error) => this.logger.error({ err: error }, "discord client error"));
@@ -375,7 +396,12 @@ export class SielaBot {
     await this.services.activity.reconcile(guild).catch((error) => this.logger.warn({ err: error, guildId: guild.id }, "activity reconcile failed"));
     await this.services.leveling.reconcile(guild).catch((error) => this.logger.warn({ err: error, guildId: guild.id }, "leveling reconcile failed"));
     this.startGlobalSchedulers();
-    const randomVc = new RandomVcService(this.music, this.logger, this.isVoiceBusy);
+    const randomVc = new RandomVcService(
+      this.music,
+      this.logger,
+      this.isVoiceBusy,
+      (guildId) => this.services.features.isEnabled(guildId, "automation-random-drops"),
+    );
     randomVc.start(guild);
     this.randomVc.set(guild.id, randomVc);
     this.scheduledEvents.start(guild);
@@ -416,15 +442,26 @@ export class SielaBot {
       if (this.isVoiceWorker) return;
       if (message.author.bot || !message.inGuild() || message.webhookId) return;
       if (!this.isServing(message.guild.id)) return;
-      this.services.activity.recordMessage(message.guild.id, message.author.id);
-      void this.services.leveling.awardMessage(message.guild.id, message.author.id).catch(() => undefined);
-      if (this.services.tts.isEnabledChannel(message.guild.id, message.channel.id)) {
+      const guildId = message.guild.id;
+      const features = this.services.features;
+      if (await features.isEnabled(guildId, "engagement-activity")) {
+        this.services.activity.recordMessage(guildId, message.author.id);
+      }
+      if (await features.isEnabled(guildId, "engagement-leveling")) {
+        void this.services.leveling.awardMessage(guildId, message.author.id).catch(() => undefined);
+      }
+      if (
+        (await features.isEnabled(guildId, "voice-tts")) &&
+        this.services.tts.isEnabledChannel(guildId, message.channel.id)
+      ) {
         void this.services.tts.speakMessage(message).catch(() => undefined);
       }
-      const prefix = await this.services.settings.getPrefix(message.guild.id);
+      const prefix = await this.services.settings.getPrefix(guildId);
       const parsed = parsePrefixCommand(message.content, prefix, this.client.user?.id ?? "");
       if (!parsed) {
-        void this.services.voiceSfx.maybePlay(message).catch(() => undefined);
+        if (await features.isEnabled(guildId, "voice-sfx")) {
+          void this.services.voiceSfx.maybePlay(message).catch(() => undefined);
+        }
         return;
       }
       const command = this.registry.get(parsed.name);
@@ -456,10 +493,13 @@ export class SielaBot {
       const allowed = await this.guard(command, ctx);
       if (!allowed) return;
       await command.execute(ctx);
-      this.services.activity.recordCommand(message.guild.id, message.author.id);
+      if (await features.isEnabled(guildId, "engagement-activity")) {
+        this.services.activity.recordCommand(guildId, message.author.id);
+      }
       void (async () => {
-        const allowed = await this.services.economy.rateLimit(`command:${message.guild.id}:${message.author.id}`, 5, 60 * 60 * 1000).catch(() => true);
-        if (allowed) await this.services.economy.award(message.guild.id, message.author.id, 1, "command", message.id).catch(() => undefined);
+        if (!(await features.isEnabled(guildId, "economy-core"))) return;
+        const allowed = await this.services.economy.rateLimit(`command:${guildId}:${message.author.id}`, 5, 60 * 60 * 1000).catch(() => true);
+        if (allowed) await this.services.economy.award(guildId, message.author.id, 1, "command", message.id).catch(() => undefined);
       })();
     } catch (error) {
       await this.handleCommandError(message, error);
@@ -481,9 +521,13 @@ export class SielaBot {
         guildId = message?.guildId ?? null;
       }
       if (!guildId || !this.isServing(guildId)) return;
-      this.services.activity.recordReaction(guildId, user.id);
-      void this.services.leveling.awardReaction(guildId, user.id).catch(() => undefined);
-      if (reaction.emoji?.name === "💰") {
+      if (await this.services.features.isEnabled(guildId, "engagement-activity")) {
+        this.services.activity.recordReaction(guildId, user.id);
+      }
+      if (await this.services.features.isEnabled(guildId, "engagement-leveling")) {
+        void this.services.leveling.awardReaction(guildId, user.id).catch(() => undefined);
+      }
+      if (reaction.emoji?.name === "💰" && (await this.services.features.isEnabled(guildId, "relics"))) {
         await this.services.relics.handleReaction(reaction, user).catch((error) => {
           this.logger.warn({ err: error }, "relic reaction bid failed");
         });
@@ -503,6 +547,7 @@ export class SielaBot {
       }
       if ((interaction.isButton() || interaction.isModalSubmit()) && interaction.customId.startsWith(DELULU_SETUP_PREFIX)) {
         if (!interaction.guildId || !this.isServing(interaction.guildId)) return;
+        if (!(await this.allowFeature(interaction, "social-delulu"))) return;
         await handleDeluluSetup(interaction, this.services);
         return;
       }
@@ -512,6 +557,7 @@ export class SielaBot {
           interaction.isChannelSelectMenu()) &&
         interaction.customId.startsWith("tambola:")
       ) {
+        if (!(await this.allowFeature(interaction, "games-tambola"))) return;
         await this.services.tambola.handleInteraction(interaction);
         return;
       }
@@ -521,10 +567,12 @@ export class SielaBot {
           interaction.isChannelSelectMenu()) &&
         interaction.customId.startsWith("cah:")
       ) {
+        if (!(await this.allowFeature(interaction, "games-cah"))) return;
         await this.services.cah.handleInteraction(interaction);
         return;
       }
       if (interaction.isButton() && interaction.customId.startsWith("economy:bj:")) {
+        if (!(await this.allowFeature(interaction, "economy-core"))) return;
         await this.services.economy.handleBlackjackInteraction(interaction);
         return;
       }
@@ -532,34 +580,42 @@ export class SielaBot {
         (interaction.isButton() || interaction.isModalSubmit()) &&
         interaction.customId.startsWith("relics:")
       ) {
+        if (!(await this.allowFeature(interaction, "relics"))) return;
         await this.services.relics.handleInteraction(interaction);
         return;
       }
       if (interaction.isButton() && interaction.customId.startsWith("stocks:")) {
+        if (!(await this.allowFeature(interaction, "economy-stocks"))) return;
         await handleStockButton(this.services.economy, interaction);
         return;
       }
       if (interaction.isModalSubmit() && interaction.customId.startsWith("stocks:")) {
+        if (!(await this.allowFeature(interaction, "economy-stocks"))) return;
         await handleStockModal(this.services.economy, interaction);
         return;
       }
       if (interaction.isButton() && interaction.customId.startsWith("music:")) {
+        if (!(await this.allowFeature(interaction, "music-playback"))) return;
         await this.onMusicButton(interaction);
         return;
       }
       if (interaction.isStringSelectMenu() && interaction.customId.startsWith("music:filter:")) {
+        if (!(await this.allowFeature(interaction, "music-playback"))) return;
         await this.onMusicFilterSelect(interaction);
         return;
       }
       if (interaction.isStringSelectMenu() && interaction.customId.startsWith("music:more:")) {
+        if (!(await this.allowFeature(interaction, "music-playback"))) return;
         await this.onMusicMoreSelect(interaction);
         return;
       }
       if ((interaction.isButton() || interaction.isUserSelectMenu() || interaction.isStringSelectMenu()) && interaction.customId.startsWith("tempvc:")) {
+        if (!(await this.allowFeature(interaction, "voice-tempvc"))) return;
         await this.onTempVcComponent(interaction);
         return;
       }
       if (interaction.isModalSubmit() && interaction.customId.startsWith("tempvc:")) {
+        if (!(await this.allowFeature(interaction, "voice-tempvc"))) return;
         await this.onTempVcModal(interaction);
         return;
       }
@@ -610,11 +666,18 @@ export class SielaBot {
       await this.handleCommandError(ctx, error);
       return;
     }
-    this.services.activity.recordCommand(interaction.guild!.id, interaction.user.id);
-    void this.services.leveling.awardCommand(interaction.guild!.id, interaction.user.id).catch(() => undefined);
+    const guildId = interaction.guild.id;
+    const features = this.services.features;
+    if (await features.isEnabled(guildId, "engagement-activity")) {
+      this.services.activity.recordCommand(guildId, interaction.user.id);
+    }
+    if (await features.isEnabled(guildId, "engagement-leveling")) {
+      void this.services.leveling.awardCommand(guildId, interaction.user.id).catch(() => undefined);
+    }
     void (async () => {
-      const allowed = await this.services.economy.rateLimit(`command:${interaction.guild!.id}:${interaction.user.id}`, 5, 60 * 60 * 1000).catch(() => true);
-      if (allowed) await this.services.economy.award(interaction.guild!.id, interaction.user.id, 1, "command", interaction.id).catch(() => undefined);
+      if (!(await features.isEnabled(guildId, "economy-core"))) return;
+      const allowed = await this.services.economy.rateLimit(`command:${guildId}:${interaction.user.id}`, 5, 60 * 60 * 1000).catch(() => true);
+      if (allowed) await this.services.economy.award(guildId, interaction.user.id, 1, "command", interaction.id).catch(() => undefined);
     })();
   }
 
@@ -661,6 +724,7 @@ export class SielaBot {
       prefix,
       category,
       query,
+      disabledFeatures: await this.services.features.disabledIds(guild.id),
     });
     await interaction.update(styleMessage({
       components: payload.components,
@@ -687,6 +751,7 @@ export class SielaBot {
       config: this.config,
       prefix,
       query,
+      disabledFeatures: await this.services.features.disabledIds(guild.id),
     });
     await interaction.update(styleMessage({
       components: payload.components,
@@ -1317,6 +1382,12 @@ export class SielaBot {
   }
 
   private async guard(command: Command, ctx: CommandContext): Promise<boolean> {
+    const featureId = featureForCommand(command.name);
+    if (featureId && !(await this.services.features.isEnabled(ctx.guild.id, featureId))) {
+      const label = getFeature(featureId)?.label ?? "That feature";
+      await ctx.reply({ content: `${label} is turned off on this server. An admin can enable it from the dashboard.`, ephemeral: true });
+      return false;
+    }
     if (command.adminOnly && !isAdmin(ctx.member, this.config, ctx.guild)) {
       await ctx.reply({ content: "You need admin permissions for that.", ephemeral: true });
       return false;
@@ -1346,6 +1417,20 @@ export class SielaBot {
     return true;
   }
 
+  /** Reply once and return false when a feature is off. Components bypass guard. */
+  private async allowFeature(interaction: Interaction, featureId: string): Promise<boolean> {
+    const guildId = interaction.guildId;
+    if (!guildId) return false;
+    if (await this.services.features.isEnabled(guildId, featureId)) return true;
+    const label = getFeature(featureId)?.label ?? "That feature";
+    if (interaction.isRepliable()) {
+      await interaction
+        .reply(styleMessage({ content: `${label} is turned off on this server.`, ephemeral: true }))
+        .catch(() => undefined);
+    }
+    return false;
+  }
+
   private async handleCommandError(source: Message | CommandContext, error: unknown): Promise<void> {
     const requestId = randomUUID().slice(0, 8);
     const message = error instanceof UserError ? error.message : "Something went wrong.";
@@ -1360,30 +1445,42 @@ export class SielaBot {
 
   private async onMemberAdd(member: GuildMember): Promise<void> {
     if (this.isVoiceWorker || !this.isServing(member.guild.id)) return;
-    await Promise.allSettled([
-      this.services.welcome.onMemberJoin(member),
-      this.services.autoRole.onMemberJoin(member),
-    ]);
+    const guildId = member.guild.id;
+    const jobs: Array<Promise<unknown>> = [];
+    if (await this.services.features.isEnabled(guildId, "onboarding-welcome")) {
+      jobs.push(this.services.welcome.onMemberJoin(member));
+    }
+    if (await this.services.features.isEnabled(guildId, "onboarding-autorole")) {
+      jobs.push(this.services.autoRole.onMemberJoin(member));
+    }
+    await Promise.allSettled(jobs);
   }
 
   private async onMemberRemove(member: GuildMember | PartialGuildMember): Promise<void> {
     if (this.isVoiceWorker || !this.isServing(member.guild.id)) return;
-    this.services.tambola.onMemberRemove(member.guild.id, member.user.id);
-    this.services.cah.onMemberRemove(member.guild.id, member.user.id);
-    await Promise.allSettled([
-      this.services.welcome.onMemberRemove(member),
-      this.services.tempVc.onMemberRemove(member.guild, member.user.id),
-    ]);
+    const guildId = member.guild.id;
+    const features = this.services.features;
+    if (await features.isEnabled(guildId, "games-tambola")) this.services.tambola.onMemberRemove(guildId, member.user.id);
+    if (await features.isEnabled(guildId, "games-cah")) this.services.cah.onMemberRemove(guildId, member.user.id);
+    const jobs: Array<Promise<unknown>> = [];
+    if (await features.isEnabled(guildId, "onboarding-welcome")) jobs.push(this.services.welcome.onMemberRemove(member));
+    if (await features.isEnabled(guildId, "voice-tempvc")) jobs.push(this.services.tempVc.onMemberRemove(member.guild, member.user.id));
+    await Promise.allSettled(jobs);
   }
 
   private async onVoiceState(oldState: VoiceState, newState: VoiceState): Promise<void> {
     if (this.isVoiceWorker || !this.isServing(oldState.guild.id)) return;
-    await this.services.activity.handleVoiceState(oldState, newState).catch((error) => {
-      this.logger.warn({ err: error }, "activity voice handling failed");
-    });
-    await this.services.tempVc.handleVoiceState(oldState, newState).catch((error) => {
-      this.logger.warn({ err: error }, "voice state handling failed");
-    });
+    const guildId = oldState.guild.id;
+    if (await this.services.features.isEnabled(guildId, "engagement-activity")) {
+      await this.services.activity.handleVoiceState(oldState, newState).catch((error) => {
+        this.logger.warn({ err: error }, "activity voice handling failed");
+      });
+    }
+    if (await this.services.features.isEnabled(guildId, "voice-tempvc")) {
+      await this.services.tempVc.handleVoiceState(oldState, newState).catch((error) => {
+        this.logger.warn({ err: error }, "voice state handling failed");
+      });
+    }
   }
 
   async status(): Promise<BotStatus> {

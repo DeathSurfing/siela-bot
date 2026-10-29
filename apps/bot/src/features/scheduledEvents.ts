@@ -108,6 +108,7 @@ export class ScheduledEventService {
     private readonly ffmpegPath = "ffmpeg",
     private readonly routerUrl: string | null = null,
     private readonly routerToken: string | null = null,
+    private readonly isEnabled?: (guildId: string) => Promise<boolean>,
   ) {}
 
   private stateFor(guildId: string): GuildState {
@@ -210,6 +211,7 @@ export class ScheduledEventService {
   }
 
   private async tickGuild(guild: Guild): Promise<void> {
+    if (this.isEnabled && !(await this.isEnabled(guild.id))) return;
     const state = this.stateFor(guild.id);
     const today = delhiDate();
     if (state.prayerDate !== today || !state.prayerStart) {

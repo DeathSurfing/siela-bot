@@ -14,6 +14,7 @@ export class BirthdayService {
     private readonly settings: SettingsService,
     private readonly client: Client,
     private readonly logger: Logger,
+    private readonly isEnabled?: (guildId: string) => Promise<boolean>,
   ) {}
 
   async get(guildId: string, userId: string): Promise<UserBirthdayRow | null> {
@@ -71,6 +72,7 @@ export class BirthdayService {
     this.logger.info({ today, month, day, rows: rows.length }, "processing birthdays");
 
     for (const row of rows) {
+      if (this.isEnabled && !(await this.isEnabled(row.guildId))) continue;
       this.logger.info({ row }, "birthday candidate");
       if (row.lastWishedDate === today) {
         this.logger.info({ userId: row.userId }, "already wished today");

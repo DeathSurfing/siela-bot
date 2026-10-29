@@ -20,6 +20,19 @@ export const interactionKindSchema = z.enum(["slap", "kiss", "hug", "chodu", "wu
 
 export const prefixSetSchema = z.object({ prefix: prefixSchema }).strict();
 
+export const featureUpdateSchema = z
+  .object({
+    featureId: z.string().min(1).max(64),
+    enabled: z.boolean(),
+  })
+  .strict();
+
+export const featureBulkUpdateSchema = z
+  .object({
+    updates: z.array(featureUpdateSchema).min(1).max(50),
+  })
+  .strict();
+
 export const welcomeUpdateSchema = z
   .object({
     enabled: z.boolean().optional(),

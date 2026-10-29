@@ -66,33 +66,65 @@ explicit row per catalog entry when a caller wants the dashboard to show stored 
 
 ## API contract
 
-These routes are part of the control API and are wired by the integration work, not by
-`FeatureFlagService` itself.
-
-`GET /v1/features`
+`GET /v1/features` is guild-scoped by `x-guild-id` and returns the catalog in order:
 
 ```json
 {
   "guildId": "1561548714823258172",
   "features": [
-    { "id": "music-playback", "label": "Music playback", "category": "Music", "enabled": true }
+    {
+      "id": "music-playback",
+      "label": "Music playback",
+      "category": "Music",
+      "description": "Stream and control music in voice channels.",
+      "defaultEnabled": true,
+      "enabled": true,
+      "commands": ["play", "join", "skip"],
+      "dependsOn": []
+    }
   ]
 }
 ```
 
-`PATCH /v1/features` with body `{ "featureId": "relics", "enabled": false }` returns
-`{ "featureId": "relics", "enabled": false }` and invalidates that guild's cache. Unknown
-`featureId` returns `400` with `{ "error": { "code": "unknown_feature" } }`.
+`PATCH /v1/features` with `{ "featureId": "relics", "enabled": false }` returns
+`{ "featureId": "relics", "enabled": false }`. Unknown ids return `400` with code
+`unknown_feature`.
 
-Both routes are guild-scoped by the `x-guild-id` header. The service is per-guild; handlers must
-pass that guild id through and must reject requests without it.
+`PATCH /v1/features/bulk` with `{ "updates": [{ "featureId": "relics", "enabled": false }] }`
+validates every id before writing, then returns `{ "features": [...] }`.
+
+Every write records `features.update` or `features.update_many` in the audit log with the actor
+and the before/after state.
+
+## Where the flag is enforced
+
+| Surface | Behaviour when the feature is off |
+| --- | --- |
+| Command dispatch | `guard` replies that the feature is off and stops before the command runs. Admin and cooldown checks do not run. |
+| Prefix command rewards | Economy and activity rewards are skipped. |
+| Help | Commands whose feature is off are removed from categories, search, suggestions, and the overview. |
+| Slash registration | Commands stay registered. Toggling is immediate and does not need a restart. |
+| Components | Every button, select, and modal handler for a feature checks the flag and replies ephemerally when off. |
+| Message events | TTS reading, voice sound effects, activity recording, and leveling awards are skipped. |
+| Member events | Welcome and auto-role are skipped. Tambola and CAH membership cleanup is skipped. |
+| Voice state and channel events | Temporary VC creation, cleanup, and channel deletion handling are skipped. |
+| Relic scheduler | Existing auctions still settle and trades still expire. New auctions do not start. |
+| Scheduled events and random drops | The scheduler tick returns without acting. |
+| Birthday sweep | Guilds with the feature off are skipped. |
+
+Passive state is preserved. Turning a feature back on resumes the previous configuration.
+
+`/features` (admin) lists every switch as `on` or `off`; `features off <id>` and
+`features on <id>` toggle one. The dashboard uses the same service.
 
 ## Dispatch and help
 
 - Disabled features hide their commands from help and from command discovery.
 - Commands stay registered with Discord. Registration does not change when a guild toggles a
   feature, so toggling is immediate and does not require a re-register or restart.
-- The command handler should check `isEnabled(guildId, featureForCommand(name))` and silently
-  ignore (or explain) commands whose feature is off.
-- Background loops and event handlers should use `enabledMap(guildId)` once per pass and skip
-  disabled features; cache TTL is 30 seconds by default and writes invalidate only that guild.
+- Background loops and event handlers check the flag per pass. Cache TTL is 30 seconds and a
+  write invalidates only that guild.
+
+Dependency hints (`dependsOn`) are shown to operators and in the catalog, but not enforced. An
+operator can turn on a dependent feature while its dependency is off; the dependent feature's
+commands then fail or no-op the same way they would in a partially configured server.

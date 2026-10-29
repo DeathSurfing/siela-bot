@@ -66,6 +66,16 @@ export class FeatureFlagService {
     return state?.get(featureId) ?? getFeature(featureId)?.defaultEnabled ?? true;
   }
 
+  /** Feature ids this guild has turned off. Use for hiding commands. */
+  async disabledIds(guildId: string): Promise<Set<string>> {
+    const state = await this.snapshot(guildId);
+    const disabled = new Set<string>();
+    for (const feature of FEATURES) {
+      if (!(state?.get(feature.id) ?? feature.defaultEnabled)) disabled.add(feature.id);
+    }
+    return disabled;
+  }
+
   async list(guildId: string): Promise<Array<FeatureDefinition & { enabled: boolean }>> {
     const state = await this.snapshot(guildId);
     return FEATURES.map((feature) => ({
