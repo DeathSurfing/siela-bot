@@ -30,7 +30,7 @@ The interface stays flat. Rules and spacing group content; nested cards do not. 
 
 Settings saves one section at a time. A save no longer re-renders the view, so unsaved edits in other sections survive. `Ctrl` or `Cmd` plus `S` saves every dirty section. A dot next to Save marks an unsaved section.
 
-Motion only marks state. Use transform and opacity, exact transition properties, ease-out, and 90 to 150 ms. Route changes and keyboard navigation do not animate. Toasts enter and leave with transitions and faster exits. Hover motion sits behind `@media (hover: hover) and (pointer: fine)`. Reduced motion collapses every duration while keeping the end state.
+Motion only marks state. Use transform and opacity, exact transition properties, ease-out, and 90 to 190 ms. Route changes and keyboard navigation do not animate. Toasts enter and leave with transitions and faster exits. Hover motion sits behind `@media (hover: hover) and (pointer: fine)`. Reduced motion collapses every duration while keeping the end state.
 
 ## Operating notes
 
