@@ -45,7 +45,8 @@ function showLogin(error = "", oauth = state.oauth) {
   shell.hidden = true;
   loginScreen.hidden = false;
   loginScreen.innerHTML = renderLogin(error, state.oauth);
-  loginScreen.querySelector("#login-password")?.focus();
+  if (state.oauth) loginScreen.querySelector(".login-discord")?.focus();
+  else loginScreen.querySelector("#login-password")?.focus();
 }
 
 function oauthMessage() {
