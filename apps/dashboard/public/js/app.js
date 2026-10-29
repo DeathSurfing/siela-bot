@@ -2,12 +2,14 @@ import { api, ApiError, setCsrfToken } from "./api.js";
 import { navigate, parseRoute, writeRoute } from "./router.js";
 import { installHotkeys } from "./vendor/hotkeys.js";
 import { rememberGuild, state } from "./store.js";
-import { escapeHtml, fmtTrackTime, renderLogin, renderStatusPill, renderView, viewTitle } from "./views.js";
+import { escapeHtml, fmtTrackTime, initialOf, renderLogin, renderStatusPill, renderView, viewTitle } from "./views.js";
 
 const boot = document.querySelector("#boot-state");
 const loginScreen = document.querySelector("#login-screen");
 const shell = document.querySelector("#app-shell");
 const rail = document.querySelector("#app-rail");
+const railGuild = document.querySelector("#rail-guild");
+const railToggle = document.querySelector("#rail-toggle");
 const navDrawer = document.querySelector("#nav-drawer");
 const navDrawerBody = document.querySelector("#nav-drawer-body");
 const navToggle = document.querySelector("#nav-toggle");
@@ -22,6 +24,21 @@ const themeIcon = document.querySelector("#theme-icon");
 let loadSequence = 0;
 let currentRoute = { view: "overview", guildId: null };
 let progressTimer = null;
+const RAIL_COLLAPSED_KEY = "siela.rail.collapsed";
+let railCollapsed = false;
+try { railCollapsed = localStorage.getItem(RAIL_COLLAPSED_KEY) === "1"; } catch { /* storage may be blocked */ }
+
+function applyRailCollapsed(collapsed = railCollapsed) {
+  railCollapsed = Boolean(collapsed);
+  shell.classList.toggle("is-rail-collapsed", railCollapsed);
+  if (railToggle) {
+    const label = railCollapsed ? "Expand sidebar" : "Collapse sidebar";
+    railToggle.setAttribute("aria-label", label);
+    railToggle.setAttribute("aria-expanded", String(!railCollapsed));
+    railToggle.setAttribute("title", label);
+  }
+  try { localStorage.setItem(RAIL_COLLAPSED_KEY, railCollapsed ? "1" : "0"); } catch { /* storage may be blocked */ }
+}
 
 function applyTheme(theme) {
   const next = theme === "light" ? "light" : "dark";
@@ -77,21 +94,21 @@ function updateUserChip() {
   if (nameNode) nameNode.textContent = name;
   const avatar = document.querySelector("#session-avatar");
   if (avatar) {
-    avatar.dataset.initial = name.slice(0, 1).toUpperCase();
+    avatar.dataset.initial = initialOf(name);
     avatar.innerHTML = user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" loading="lazy">` : "";
   }
 }
 
 function guildLogoMarkup(guild, extra = "") {
-  const initial = (guild?.name ?? "?").slice(0, 1).toUpperCase();
-  const image = guild?.iconUrl ? `<img src="${escapeHtml(guild.iconUrl)}" alt="" loading="lazy">` : "";
+  const initial = initialOf(guild?.name);
+  const image = guild?.iconUrl ? `<img src="${escapeHtml(guild.iconUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-guild-icon>` : "";
   return `<span class="guild-logo ${extra}" data-initial="${escapeHtml(initial)}" aria-hidden="true">${image}</span>`;
 }
 
 function setAvatar(node, guild) {
   if (!node) return;
-  node.dataset.initial = (guild?.name ?? "?").slice(0, 1).toUpperCase();
-  node.innerHTML = guild?.iconUrl ? `<img src="${escapeHtml(guild.iconUrl)}" alt="" loading="lazy">` : "";
+  node.dataset.initial = initialOf(guild?.name);
+  node.innerHTML = guild?.iconUrl ? `<img src="${escapeHtml(guild.iconUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-guild-icon>` : "";
 }
 
 function updateGuildPicker() {
@@ -100,6 +117,9 @@ function updateGuildPicker() {
   guildPickerButton.disabled = state.guilds.length === 0;
   if (guildPickerName) guildPickerName.textContent = selected?.name ?? (state.guilds.length ? "Select a server" : "No servers");
   setAvatar(guildPickerAvatar, selected);
+  setAvatar(railGuild, selected);
+  if (railGuild) railGuild.hidden = !selected;
+  shell.classList.toggle("has-rail-guild", Boolean(selected));
   const activeId = state.guildId ?? selected?.id ?? null;
   guildPickerMenu.innerHTML = state.guilds.map((guild) => `<button type="button" class="guild-option" role="option" aria-selected="${guild.id === activeId}" data-guild-id="${escapeHtml(guild.id)}">${guildLogoMarkup(guild, "guild-logo-option")}<span class="guild-option-copy"><strong>${escapeHtml(guild.name ?? "Unnamed server")}</strong><small>${Number(guild.memberCount ?? 0).toLocaleString()} members</small></span></button>`).join("");
 }
@@ -688,7 +708,9 @@ document.addEventListener("click", async (event) => {
   }
   if (!target.closest("[data-guild-picker]")) closeGuildMenu();
   const action = target.closest("[data-action]");
-  if (action?.dataset.action === "toggle-nav") {
+  if (action?.dataset.action === "toggle-rail") {
+    applyRailCollapsed(!railCollapsed);
+  } else if (action?.dataset.action === "toggle-nav") {
     if (navDrawer?.open) closeNavDrawer();
     else openNavDrawer();
   } else if (action?.dataset.action === "close-nav") {
@@ -820,6 +842,12 @@ installHotkeys({
 });
 
 applyTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
+applyRailCollapsed();
+
+document.addEventListener("error", (event) => {
+  const target = event.target;
+  if (target instanceof HTMLImageElement && target.dataset.guildIcon !== undefined) target.remove();
+}, true);
 
 async function start() {
   try {

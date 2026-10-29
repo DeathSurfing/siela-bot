@@ -71,6 +71,16 @@ export function escapeHtml(value) {
   })[character]);
 }
 
+export function initialOf(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "?";
+  const Segmenter = Intl.Segmenter;
+  const first = Segmenter
+    ? new Segmenter(undefined, { granularity: "grapheme" }).segment(text)[Symbol.iterator]().next().value?.segment
+    : Array.from(text)[0];
+  return String(first ?? "?").toLocaleUpperCase();
+}
+
 function icon(name, className = "") {
   return `<img class="icon ${className}" src="/icons/${escapeHtml(name)}.svg" width="18" height="18" alt="" aria-hidden="true">`;
 }
@@ -215,7 +225,7 @@ function renderOverview(data) {
 function renderServers(data) {
   const guilds = list(data, "guilds");
   const rows = guilds.map((guild) => {
-    const iconImage = guild.iconUrl ? `<img class="guild-avatar" src="${escapeHtml(guild.iconUrl)}" alt="" width="32" height="32" loading="lazy">` : `<span class="guild-avatar guild-avatar-fallback">${escapeHtml((guild.name ?? "?").slice(0, 1).toUpperCase())}</span>`;
+    const iconImage = guild.iconUrl ? `<img class="guild-avatar" src="${escapeHtml(guild.iconUrl)}" alt="" width="32" height="32" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : `<span class="guild-avatar guild-avatar-fallback">${escapeHtml(initialOf(guild.name))}</span>`;
     return `<tr><td><div class="guild-cell">${iconImage}<span class="guild-copy"><a class="guild-name" href="#/g/${encodeURIComponent(guild.id)}/overview" data-server="${escapeHtml(guild.id)}">${escapeHtml(guild.name ?? "Unnamed server")}</a><button class="copy-id" type="button" data-copy="${escapeHtml(guild.id)}" aria-label="Copy server ID ${escapeHtml(guild.id)}"><small>${escapeHtml(guild.id)}</small><span class="copy-hint" aria-hidden="true">Copy</span></button></span></div></td><td class="numeric-cell" data-label="Members">${fmtNumber(guild.memberCount)}</td><td data-label="Owner"><span class="owner-id">${escapeHtml(guild.ownerId ?? "Not reported")}</span></td><td data-label="Connection"><span class="status-inline status-${guild.available ? "ok" : "danger"}"><i class="status-dot"></i>${guild.available ? "Available" : "Unavailable"}</span></td></tr>`;
   }).join("");
   return `${pageHeader("Servers", `${fmtNumber(guilds.length)} Discord ${guilds.length === 1 ? "server" : "servers"} connected to this bot.`)}<section class="table-panel">${guilds.length ? `<div class="table-scroll"><table><thead><tr><th scope="col">Server</th><th scope="col" class="numeric-cell">Members</th><th scope="col">Owner</th><th scope="col">Connection</th></tr></thead><tbody>${rows}</tbody></table></div>` : emptyState("No servers connected", "Invite the bot to a Discord server, then refresh this view.", `<button class="button button-secondary" type="button" data-action="retry">Refresh servers</button>`)}</section>`;

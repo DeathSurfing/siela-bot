@@ -20,6 +20,7 @@ beforeEach(async () => {
   await mkdir(path.join(publicDir, "js"));
   await writeFile(path.join(publicDir, "index.html"), "dashboard");
   await writeFile(path.join(publicDir, "js", "app.js"), "console.log('dashboard')");
+  await writeFile(path.join(publicDir, "font.woff2"), "font");
 });
 
 afterEach(async () => {
@@ -55,12 +56,15 @@ describe("dashboard HTTP boundary", () => {
     const app = createDashboardServer({ config, publicDir, control: controlStub() });
     const health = await app.inject({ method: "GET", url: "/healthz" });
     const asset = await app.inject({ method: "GET", url: "/js/app.js" });
+    const font = await app.inject({ method: "GET", url: "/font.woff2" });
 
     expect(health.statusCode).toBe(200);
     expect(health.json()).toEqual({ ok: true });
     expect(asset.statusCode).toBe(200);
     expect(asset.body).toContain("dashboard");
     expect(asset.headers["content-security-policy"]).toContain("default-src 'self'");
+    expect(font.statusCode).toBe(200);
+    expect(font.headers["content-type"]).toBe("font/woff2");
     await app.close();
   });
 

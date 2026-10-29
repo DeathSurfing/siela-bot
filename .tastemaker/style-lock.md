@@ -78,7 +78,8 @@ Decorative hairlines use `#233238` and do not carry state. The `#19819b` primary
 - Active navigation: tinted row and a 2px teal edge.
 - Inactive hover: subtle surface shift, weaker than the active state.
 - Header: current view label, persistent guild selector, and bot status pill.
-- Shell density: 42px navigation rows at desktop, the same labeled rows in a drawer below 700px.
+- Shell density: 42px navigation rows in a 232px labeled rail, a 58px icon rail when collapsed, and the same labeled rows in a drawer below 700px.
+- Collapsed context: the rail header swaps the Siela mark for the selected server's Discord image, and the chevron restores the labels.
 
 ## Mood descriptors
 
@@ -87,7 +88,7 @@ Quiet, precise, technical.
 ## Assets
 
 - Anchor asset: `apps/dashboard/public/mark.svg`, a geometric signal mark built from vector shapes.
-- Asset style: local Carbon icons, teal monochrome; no remote font or icon dependencies.
+- Asset style: local Carbon icons, teal monochrome; no remote font or icon dependencies. Korean text falls back to the bundled Pretendard Regular subset.
 - Illustration and photography split: none. This app presents live operational data rather than editorial content.
 - Logo: `apps/dashboard/public/mark.svg`, created for this new surface, paired with the system UI wordmark.
 

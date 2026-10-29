@@ -20,10 +20,14 @@
     <div id="login-screen" class="login-screen" hidden></div>
     <div id="app-shell" class="app-shell" hidden>
       <aside id="app-rail" class="rail" aria-label="Main navigation">
-        <a class="brand" href="#/overview" aria-label="Siela Control overview">
-          <img src="/mark.svg" width="28" height="28" alt="">
-          <span class="brand-copy"><strong>Siela</strong></span>
-        </a>
+        <div class="rail-head">
+          <a class="brand" href="#/overview" aria-label="Siela Control overview">
+            <img class="brand-mark" src="/mark.svg" width="28" height="28" alt="">
+            <span id="rail-guild" class="guild-logo rail-guild" data-initial="?" aria-hidden="true"></span>
+            <span class="brand-copy"><strong>Siela</strong></span>
+          </a>
+          <button id="rail-toggle" class="icon-button rail-toggle" type="button" data-action="toggle-rail" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar"><img src="/icons/chevron-left.svg" alt=""></button>
+        </div>
         <nav class="primary-nav" aria-label="Views">
           <a href="#/overview" data-view="overview"><img src="/icons/dashboard.svg" alt=""><span>Overview</span></a>
           <a href="#/servers" data-view="servers"><img src="/icons/server-dns.svg" alt=""><span>Servers</span></a>
