@@ -169,6 +169,7 @@ export class RelicService {
   private readonly artCache = new Map<number, Buffer>();
   private readonly warnedDates = new Set<string>();
   private readonly announcing = new Set<number>();
+  private featureEnabled: (guildId: string) => Promise<boolean> = async () => true;
 
   constructor(
     private readonly db: Database,
@@ -177,6 +178,11 @@ export class RelicService {
     private readonly audit: AuditService,
     private readonly logger: Logger,
   ) {}
+
+  /** Gate auction starts on the guild's feature flag. Settlements always run. */
+  setEnabledChecker(check: (guildId: string) => Promise<boolean>): void {
+    this.featureEnabled = check;
+  }
 
   start(guild: Guild): void {
     this.guilds.set(guild.id, guild);
@@ -308,6 +314,7 @@ export class RelicService {
     await this.settleDueAuctions(guild.id);
     await this.recoverSettlements(guild.id);
     await this.expireDueTrades(guild.id);
+    if (!(await this.featureEnabled(guild.id))) return;
     const settings = await this.getSettings(guild.id);
     if (!settings.enabled || !settings.channelId) return;
     await this.maybeStartDaily(guild, settings);

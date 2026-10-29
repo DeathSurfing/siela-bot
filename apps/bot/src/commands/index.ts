@@ -28,6 +28,7 @@ import { confessionCommand } from "./admin/confession.js";
 import { joinToCreateCommand } from "./admin/jointocreate.js";
 import { musicConfigCommand } from "./admin/musicconfig.js";
 import { configCommand } from "./admin/config.js";
+import { featuresCommand } from "./admin/features.js";
 import { vcCommand } from "./voice/vc.js";
 import { moveallCommand } from "./voice/moveall.js";
 import { loveCalcCommand } from "./social/love.js";
@@ -68,6 +69,7 @@ export const commands: Command[] = [
   joinToCreateCommand,
   musicConfigCommand,
   configCommand,
+  featuresCommand,
   vcCommand,
   moveallCommand,
   loveCalcCommand,

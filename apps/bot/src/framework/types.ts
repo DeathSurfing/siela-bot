@@ -21,6 +21,7 @@ import type {
 import type { CommandCategory, CommandMetadata } from "@siela/shared";
 import type { BotConfig } from "@siela/config";
 import type { SettingsService } from "../features/settings.js";
+import type { FeatureFlagService } from "../features/features.js";
 import type { AuditService } from "../features/audit.js";
 import type { CounterService } from "../features/counters.js";
 import type { WelcomeService } from "../features/welcome.js";
@@ -50,6 +51,7 @@ export interface Services {
   config: BotConfig;
   registry: CommandRegistry;
   settings: SettingsService;
+  features: FeatureFlagService;
   audit: AuditService;
   counters: CounterService;
   welcome: WelcomeService;

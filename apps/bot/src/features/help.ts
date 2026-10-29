@@ -21,6 +21,7 @@ import {
 import type { BotConfig } from "@siela/config";
 import type { CommandRegistry } from "../framework/registry.js";
 import type { ReplyPayload } from "../framework/types.js";
+import { featureForCommand } from "@siela/shared";
 import { isAdmin } from "../framework/permissions.js";
 import { EMOJI, actionRow, card } from "./ui.js";
 
@@ -34,6 +35,8 @@ export interface HelpOptions {
   prefix: string;
   category?: string;
   query?: string;
+  /** Feature ids turned off in this guild. Their commands are hidden. */
+  disabledFeatures?: ReadonlySet<string>;
 }
 
 export interface HelpGroup {
@@ -116,10 +119,13 @@ export function visibleCommands(
   commands: CommandMetadata[],
   categories: CommandCategory[],
   admin: boolean,
+  disabledFeatures?: ReadonlySet<string>,
 ): CommandMetadata[] {
-  return commands.filter(
-    (command) => categories.includes(command.category) && (admin || !command.adminOnly),
-  );
+  return commands.filter((command) => {
+    if (!categories.includes(command.category) || (!admin && command.adminOnly)) return false;
+    const featureId = featureForCommand(command.name);
+    return !(featureId && disabledFeatures?.has(featureId));
+  });
 }
 
 export function groupCategoryCommands(
@@ -503,7 +509,7 @@ export async function buildHelpPayload(options: HelpOptions): Promise<ReplyPaylo
   const { registry, member, config, prefix } = options;
   const admin = isAdmin(member, config, member.guild);
   const categories = categoriesFor(admin);
-  const commands = visibleCommands(registry.metadata(), categories, admin);
+  const commands = visibleCommands(registry.metadata(), categories, admin, options.disabledFeatures);
 
   const explicitCategory = options.category ? findCategory(options.category) : null;
   if (explicitCategory) {

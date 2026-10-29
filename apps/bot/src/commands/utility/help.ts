@@ -25,6 +25,7 @@ export const helpCommand: Command = {
       config: ctx.services.config,
       prefix,
       query,
+      disabledFeatures: await ctx.services.features.disabledIds(ctx.guild.id),
     });
     await ctx.reply(payload);
   },

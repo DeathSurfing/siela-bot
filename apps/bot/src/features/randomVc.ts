@@ -40,6 +40,7 @@ export class RandomVcService {
     private readonly music: MusicService | null,
     private readonly logger: Logger,
     private readonly isVoiceBusy?: (guildId: string) => boolean,
+    private readonly isEnabled?: (guildId: string) => Promise<boolean>,
   ) {}
 
   start(guild: Guild): void {
@@ -87,6 +88,7 @@ export class RandomVcService {
     const guild = this.guild;
     if (!guild) return;
     this.schedule();
+    if (this.isEnabled && !(await this.isEnabled(guild.id))) return;
     if (
       this.music?.isConnected(guild.id) ||
       this.music?.isVoiceLocked(guild.id) ||
