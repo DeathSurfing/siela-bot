@@ -21,7 +21,7 @@ function guild(id: string, name: string): Guild {
   } as unknown as Guild;
 }
 
-function server(options: { multiGuild?: boolean; features?: unknown } = {}) {
+function server(options: { multiGuild?: boolean; features?: unknown; musicEnabled?: boolean } = {}) {
   const guilds = new Map<string, Guild>([
     [GUILD_A, guild(GUILD_A, "Alpha")],
     [GUILD_B, guild(GUILD_B, "Beta")],
@@ -33,6 +33,12 @@ function server(options: { multiGuild?: boolean; features?: unknown } = {}) {
       list: async () => [{ id: "relics", label: "Relics", category: "Relics", description: "Cards.", defaultEnabled: true, enabled: false, commands: ["relics"], dependsOn: [] }],
       set: async (guildId: string, featureId: string, enabled: boolean) => ({ guildId, featureId, enabled }),
       setMany: async (_guildId: string, updates: Array<{ featureId: string; enabled: boolean }>) => updates,
+      isEnabled: async () => options.musicEnabled !== false,
+    },
+    music: {
+      play: async () => ({ added: 1, first: { title: "Song" } }),
+      stop: async () => undefined,
+      state: () => ({ playing: false, paused: false, volume: 0, loop: "off", position: 0, current: null, upcoming: [] }),
     },
     audit: { log: async (entry: unknown) => { audits.push(entry); } },
     settings: { ensure: async () => undefined },
@@ -104,6 +110,20 @@ describe("ControlServer guild scoping", () => {
     });
     expect(response.statusCode).toBe(400);
     expect(response.json().error.code).toBe("unknown_guild");
+  });
+
+  it("rejects music controls when the feature is off but allows cleanup", async () => {
+    const { app } = server({ musicEnabled: false });
+    const play = await app.inject({
+      method: "POST",
+      url: "/v1/music/play",
+      headers: auth,
+      payload: { query: "song" },
+    });
+    expect(play.statusCode).toBe(400);
+    expect(play.json().error.code).toBe("feature_disabled");
+    const stop = await app.inject({ method: "POST", url: "/v1/music/stop", headers: auth, payload: {} });
+    expect(stop.statusCode).toBe(200);
   });
 
   it("toggles a feature and writes an audit entry", async () => {

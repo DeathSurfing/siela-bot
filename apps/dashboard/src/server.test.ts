@@ -112,6 +112,26 @@ describe("dashboard HTTP boundary", () => {
     await app.close();
   });
 
+  it("marks the session cookie Secure when configured", async () => {
+    const secureConfig = loadDashboardConfig({
+      DASHBOARD_PASSWORD: "not-a-real-password-value",
+      DASHBOARD_SESSION_SECRET: "not-a-real-session-secret-with-more-than-32-chars",
+      MCP_TOKEN: "not-a-real-control-token",
+      DASHBOARD_SECURE_COOKIES: "true",
+      NODE_ENV: "test",
+    });
+    const app = createDashboardServer({ config: secureConfig, publicDir, control: controlStub() });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/login",
+      remoteAddress: "10.0.0.9",
+      payload: { password: secureConfig.DASHBOARD_PASSWORD },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["set-cookie"]).toContain("Secure");
+    await app.close();
+  });
+
   it("maps a feature update to the fixed control API route", async () => {
     const control = controlStub();
     const app = createDashboardServer({ config, publicDir, control });

@@ -109,7 +109,11 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
   const control = options.control ?? createControlClient(config.CONTROL_API_URL, config.MCP_TOKEN);
   const publicRoot = path.resolve(options.publicDir);
   const loginWindows = new Map<string, LoginWindow>();
-  const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
+  const app = Fastify({
+    logger: false,
+    bodyLimit: 64 * 1024,
+    trustProxy: config.DASHBOARD_TRUST_PROXY,
+  });
 
   app.addHook("onSend", async (_request, reply, payload) => {
     reply.header("content-security-policy", "default-src 'self'; img-src 'self' https://cdn.discordapp.com data:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
@@ -175,7 +179,7 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
 
     loginWindows.delete(ip);
     const cookie = issueSession(config.DASHBOARD_SESSION_SECRET, timestamp);
-    const secure = request.protocol === "https" ? "; Secure" : "";
+    const secure = config.DASHBOARD_SECURE_COOKIES || request.protocol === "https" ? "; Secure" : "";
     reply.header(
       "set-cookie",
       `${SESSION_COOKIE}=${cookie}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL_SECONDS}${secure}`,

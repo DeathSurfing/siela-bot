@@ -56,6 +56,8 @@ export class ActivityService {
   private flushPromise: Promise<void> | null = null;
   private pairPromise: Promise<void> | null = null;
   private lastPurgeDate: string | null = null;
+  private readonly disabledActivityGuilds = new Set<string>();
+  private readonly disabledLevelingGuilds = new Set<string>();
 
   constructor(
     private readonly db: Database,
@@ -64,6 +66,10 @@ export class ActivityService {
     private readonly music: MusicService,
     private readonly logger: Logger,
     private readonly economy: EconomyService | null = null,
+    private readonly isFeatureEnabled?: (
+      guildId: string,
+      feature: "engagement-activity" | "engagement-leveling",
+    ) => Promise<boolean>,
   ) {}
 
   private guildSessions(guildId: string): Map<string, VoiceSession> {
@@ -96,6 +102,25 @@ export class ActivityService {
 
   private markDirty(guildId: string, userId: string): void {
     this.dirtyActivity.add(`${guildId}:${userId}`);
+  }
+
+  /** Keep the leveling gate current when a guild initializes. */
+  setLevelingEnabled(guildId: string, enabled: boolean): void {
+    if (enabled) this.disabledLevelingGuilds.delete(guildId);
+    else this.disabledLevelingGuilds.add(guildId);
+  }
+
+  /** Drop in-memory activity and voice sessions for a guild that left. */
+  forgetGuild(guildId: string): void {
+    this.voiceSessions.delete(guildId);
+    this.activity.delete(guildId);
+    this.disabledActivityGuilds.add(guildId);
+    for (const key of [...this.dirtyActivity]) {
+      if (key.startsWith(`${guildId}:`)) this.dirtyActivity.delete(key);
+    }
+    for (const key of [...this.pairSessions.keys()]) {
+      if (key.startsWith(`${guildId}:`)) this.pairSessions.delete(key);
+    }
   }
 
   private pairKey(guildId: string, a: string, b: string): string {
@@ -252,6 +277,7 @@ export class ActivityService {
       for (const [key, pair] of this.pairSessions) {
         const [guildId, a, b] = key.split(":") as [string, string, string];
         if (!guildId || !a || !b) continue;
+        if (this.disabledActivityGuilds.has(guildId)) continue;
         const accrued = this.accruePairState(pair, now);
         if (accrued.xp > 0 || accrued.seconds > 0) {
           deltas.push({ guildId, firstUserId: a, secondUserId: b, ...accrued });
@@ -273,7 +299,9 @@ export class ActivityService {
     current.voiceSeconds += seconds;
     current.lastActiveAt = Date.now();
     this.markDirty(guildId, userId);
-    void this.leveling?.awardVoiceSeconds(guildId, userId, seconds).catch(() => undefined);
+    if (!this.disabledLevelingGuilds.has(guildId)) {
+      void this.leveling?.awardVoiceSeconds(guildId, userId, seconds).catch(() => undefined);
+    }
   }
 
   recordMessage(guildId: string, userId: string): void {
@@ -345,6 +373,27 @@ export class ActivityService {
 
   private async doFlush(): Promise<void> {
     const now = Date.now();
+    const knownGuilds = new Set<string>([
+      ...this.voiceSessions.keys(),
+      ...this.activity.keys(),
+    ]);
+    for (const key of this.pairSessions.keys()) {
+      const guildId = key.split(":")[0];
+      if (guildId) knownGuilds.add(guildId);
+    }
+    for (const guildId of knownGuilds) {
+      const activityOn = (await this.isFeatureEnabled?.(guildId, "engagement-activity")) ?? true;
+      if (!activityOn) {
+        this.disabledActivityGuilds.add(guildId);
+        this.forgetGuild(guildId);
+        continue;
+      }
+      this.disabledActivityGuilds.delete(guildId);
+      const levelingOn = (await this.isFeatureEnabled?.(guildId, "engagement-leveling")) ?? true;
+      if (levelingOn) this.disabledLevelingGuilds.delete(guildId);
+      else this.disabledLevelingGuilds.add(guildId);
+    }
+
     for (const guildId of this.voiceSessions.keys()) {
       const sessions = this.voiceSessions.get(guildId)!;
       for (const [userId, session] of sessions) {

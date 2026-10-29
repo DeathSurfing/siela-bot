@@ -54,6 +54,24 @@ describe("RouterServer session + semaphore", () => {
     });
   });
 
+  it("forwards the guild header to the state probe and the play call", async () => {
+    const seen: Array<{ target: string; guild: string | null }> = [];
+    vi.unstubAllGlobals();
+    stubFleetFetch({
+      onHeaders: (_method, target, headers) => seen.push({ target, guild: headers.get("x-guild-id") }),
+    });
+    await withRouterServer(PORT, NODES, async (base) => {
+      const response = await fetch(`${base}/v1/music/play`, {
+        method: "POST",
+        headers: authHeaders({ "x-guild-id": "g1" }),
+        body: JSON.stringify({ query: "song" }),
+      });
+      expect(response.status).toBe(200);
+    });
+    expect(seen.filter((entry) => entry.target.endsWith("/internal/music/state")).every((entry) => entry.guild === "g1")).toBe(true);
+    expect(seen.find((entry) => entry.target.endsWith("/internal/music/play"))?.guild).toBe("g1");
+  });
+
   it("rejects 429 when the fleet is full", async () => {
     vi.unstubAllGlobals();
     stubFleetFetch({ musicBusy: ["n1:3101", "n2:3101"] });

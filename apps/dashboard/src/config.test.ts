@@ -21,7 +21,21 @@ describe("dashboard environment", () => {
     expect(config).toMatchObject({
       DASHBOARD_HOST: "0.0.0.0",
       DASHBOARD_PORT: 3000,
+      DASHBOARD_TRUST_PROXY: false,
+      DASHBOARD_SECURE_COOKIES: false,
       CONTROL_API_URL: "http://bot-control:3001",
     });
+  });
+
+  it("parses the proxy and cookie flags", () => {
+    const config = loadDashboardConfig({
+      DASHBOARD_PASSWORD: "a-long-dashboard-password",
+      DASHBOARD_SESSION_SECRET: "a-session-secret-with-at-least-thirty-two-characters",
+      MCP_TOKEN: "a-long-control-token-value",
+      DASHBOARD_TRUST_PROXY: "true",
+      DASHBOARD_SECURE_COOKIES: "true",
+    });
+    expect(config.DASHBOARD_TRUST_PROXY).toBe(true);
+    expect(config.DASHBOARD_SECURE_COOKIES).toBe(true);
   });
 });
