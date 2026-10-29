@@ -113,7 +113,14 @@ const playCommand: Command = {
     try {
       const service = music(ctx);
       const fleet = new FleetClient(ctx.services.config.ROUTER_URL ?? null, ctx.services.config.MCP_TOKEN, service.logger);
-      const targetChannel = ctx.args[1] ?? ctx.member.voice?.channelId ?? undefined;
+      const targetChannel = (ctx.args[1] ?? ctx.member.voice?.channelId ?? undefined)?.replace(/^<#|>$/g, "");
+      const tambolaChannel = ctx.services.tambola.voiceChannel(ctx.guild.id);
+      if (targetChannel && tambolaChannel === targetChannel) {
+        await ctx
+          .edit(card({ title: "Voice busy", body: "Tambola is using this voice channel. Finish the game first." }))
+          .catch(() => undefined);
+        return;
+      }
 
       if (targetChannel && fleet.enabled) {
         // Every VC is its own music instance: reuse the node already serving
@@ -125,9 +132,13 @@ const playCommand: Command = {
             await fleetPlayCard(ctx, service, fleet, mapped, targetChannel, query);
             return;
           } catch (error) {
-            // Dead mapping (restart, preempt): drop it and route fresh below.
-            service.setFleetNode(ctx.guild.id, targetChannel, null);
-            if (error instanceof UserError && error.message !== "That voice node is unreachable.") throw error;
+            // Drop the binding only when the node itself is gone. A full
+            // queue or an empty search must not unbind a healthy stream.
+            if (error instanceof UserError && error.message === "That voice node is unreachable.") {
+              service.setFleetNode(ctx.guild.id, targetChannel, null);
+            } else {
+              throw error;
+            }
           }
         }
         const locked = service.isVoiceLocked(ctx.guild.id);
@@ -183,9 +194,17 @@ const joinCommand: Command = {
       option.setName("channel").setDescription("Voice channel; defaults to yours").setRequired(false),
     ),
   async execute(ctx) {
-    const channelId = ctx.args[0]?.replace(/^<#|>$/g, "");
-    const joined = await music(ctx).join(ctx.member, channelId);
-    music(ctx).setFleetNode(ctx.guild.id, joined, null);
+    const requested = ctx.args[0]?.replace(/^<#|>$/g, "") ?? ctx.member.voice?.channelId ?? undefined;
+    const service = music(ctx);
+    const fleetNode = requested ? service.getFleetNode(ctx.guild.id, requested) : null;
+    if (requested && fleetNode) {
+      // A worker already owns this channel. Summoning the commander too would
+      // put two bots in it and drop the binding.
+      await ctx.reply(success(`<#${requested}> is already playing on **${fleetNode}**.`));
+      return;
+    }
+    const joined = await service.join(ctx.member, requested);
+    service.setFleetNode(ctx.guild.id, joined, null);
     await ctx.reply(success(`Joined <#${joined}>.`));
   },
 };
