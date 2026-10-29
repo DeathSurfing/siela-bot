@@ -857,7 +857,7 @@ export class SielaBot {
     nodeId: string,
     channelId?: string | null,
   ): Promise<void> {
-    const fleet = new FleetClient(this.config.ROUTER_URL ?? null, this.config.MCP_TOKEN, this.logger);
+    const fleet = new FleetClient(this.config.ROUTER_URL ?? null, this.config.MCP_TOKEN, this.logger, guild.id);
 
     const replyError = async (message: string): Promise<void> => {
       if (interaction.deferred) {
@@ -1019,7 +1019,7 @@ export class SielaBot {
     // against the worker's channel instead.
     const fleetNode = channelId ? music.getFleetNode(guild.id, channelId) : null;
     if (fleetNode && this.config.ROUTER_URL) {
-      const fleet = new FleetClient(this.config.ROUTER_URL, this.config.MCP_TOKEN, this.logger);
+      const fleet = new FleetClient(this.config.ROUTER_URL, this.config.MCP_TOKEN, this.logger, guild.id);
       await interaction.deferUpdate();
       try {
         const playback = await fleet.nodeState(fleetNode);
