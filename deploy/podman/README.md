@@ -110,7 +110,9 @@ podman-compose -p siela -f compose.yaml -f compose.voice.generated.yaml -f compo
 curl -fsS http://127.0.0.1:3002/healthz
 ```
 
-Open `http://<host>:${DASHBOARD_PORT}`. The container listener remains 3000; on this host the portfolio owns 3000, so the dashboard is published on 3002. See [docs/DASHBOARD.md](../../docs/DASHBOARD.md) for the interface, OAuth, and security details.
+Open `http://<host>:${DASHBOARD_PORT}`. The container listener remains 3000; on this host the portfolio owns 3000, so the dashboard is published on 3002.
+
+For Discord OAuth, set all four of `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DASHBOARD_OAUTH_REDIRECT_URI`, and `DASHBOARD_OWNER_IDS` in `.env`, and register the exact callback in the Discord application. The password remains required as the fallback. Behind Caddy set `DASHBOARD_TRUST_PROXY=true` and keep `DASHBOARD_SECURE_COOKIES=false` while the LAN HTTP URL is still used. See [docs/DASHBOARD.md](../../docs/DASHBOARD.md) for the full environment table, the public HTTPS flow, and the security boundary.
 
 ## Quickstart
 
