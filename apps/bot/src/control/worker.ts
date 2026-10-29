@@ -18,6 +18,7 @@ import type { MusicService } from "../features/music.js";
 import type { TtsService } from "../features/tts.js";
 import type { Logger } from "../lib/logger.js";
 import { UserError, errorMessage } from "../lib/errors.js";
+import { selectGuildId } from "./guildScope.js";
 
 export interface WorkerServerOptions {
   services: {
@@ -27,7 +28,10 @@ export interface WorkerServerOptions {
   client: Client;
   token: string;
   logger: Logger;
+  /** Default guild when a request carries no x-guild-id. */
   getGuildId: () => string | null;
+  /** Every guild this node is allowed to serve. */
+  getGuildIds: () => string[];
 }
 
 export class WorkerServer {
@@ -60,15 +64,11 @@ export class WorkerServer {
 
   private guildId(request: FastifyRequest): string {
     const header = request.headers["x-guild-id"];
-    if (typeof header === "string" && header) {
-      if (this.options.client.guilds.cache.has(header)) return header;
-      throw new UserError("Unknown guild.", "unknown_guild");
-    }
-    const guildId = this.options.getGuildId();
-    if (guildId) return guildId;
-    const only = this.options.client.guilds.cache.size === 1 ? [...this.options.client.guilds.cache.keys()][0] : null;
-    if (only) return only;
-    throw new UserError("The worker is not serving a guild yet.", "not_ready");
+    return selectGuildId({
+      explicit: typeof header === "string" && header ? header : null,
+      served: this.options.getGuildIds(),
+      fallback: this.options.getGuildId(),
+    });
   }
 
   private async selfMember(request: FastifyRequest) {

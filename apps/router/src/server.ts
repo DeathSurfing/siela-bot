@@ -43,7 +43,7 @@ export class RouterServer {
     this.registry = new FleetRegistry(this.store, staticNodes);
     this.pool = new FleetPool(
       (guildId) => this.listNodes(guildId),
-      (node) => this.readPlaybackState(node),
+      (node, guildId) => this.readPlaybackState(node, guildId),
     );
     this.app = Fastify({ logger: false, bodyLimit: 16 * 1024 });
     this.app.addHook("preHandler", async (request, reply) => {

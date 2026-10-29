@@ -265,6 +265,7 @@ export class SielaBot {
       token: this.config.MCP_TOKEN,
       logger: this.logger,
       getGuildId: () => this.defaultGuildId(),
+      getGuildIds: () => this.servedGuildIds(),
     });
     this.healthServer = new HealthServer({
       host: this.config.HEALTH_HOST,
@@ -375,6 +376,7 @@ export class SielaBot {
 
   private onGuildDelete(guild: Guild): void {
     this.initializedGuilds.delete(guild.id);
+    this.services.activity.forgetGuild(guild.id);
     this.randomVc.get(guild.id)?.stop();
     this.randomVc.delete(guild.id);
     this.scheduledEvents.stop(guild.id);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { selectGuildId } from "./server.js";
+import { selectGuildId } from "./guildScope.js";
 
 const served = ["111111111111111111", "222222222222222222"];
 
