@@ -60,7 +60,10 @@ export class WorkerServer {
 
   private guildId(request: FastifyRequest): string {
     const header = request.headers["x-guild-id"];
-    if (typeof header === "string" && header && this.options.client.guilds.cache.has(header)) return header;
+    if (typeof header === "string" && header) {
+      if (this.options.client.guilds.cache.has(header)) return header;
+      throw new UserError("Unknown guild.", "unknown_guild");
+    }
     const guildId = this.options.getGuildId();
     if (guildId) return guildId;
     const only = this.options.client.guilds.cache.size === 1 ? [...this.options.client.guilds.cache.keys()][0] : null;

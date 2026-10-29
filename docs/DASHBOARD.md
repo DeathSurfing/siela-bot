@@ -20,7 +20,7 @@ Build and start the dashboard with the rest of the stack:
 podman compose -p siela -f deploy/podman/compose.yaml up -d --build dashboard
 ```
 
-The dashboard listens on `DASHBOARD_HOST` and `DASHBOARD_PORT` inside its container. Compose publishes the host port from `DASHBOARD_PORT` and defaults to `3000`. Set `DASHBOARD_PORT` to change the host port. Put a TLS reverse proxy in front of any public-facing deployment. Do not expose the bot control API.
+Compose fixes the container listener at port `3000` and publishes the host port named by `DASHBOARD_PORT`, which defaults to `3000`. Set `DASHBOARD_PORT` to change only the host port. Put a TLS reverse proxy in front of any public-facing deployment. Do not expose the bot control API.
 
 ## Operating notes
 
