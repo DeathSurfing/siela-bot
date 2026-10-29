@@ -238,6 +238,9 @@ async fn music_stop(State(state): State<ApiState>, headers: HeaderMap) -> ApiRes
 async fn music_disconnect(State(state): State<ApiState>, headers: HeaderMap) -> ApiResult {
     guard!(state, headers);
     state.player.disconnect().await?;
+    // The TTS session shares this connection. Leaving it enabled would make
+    // preempt and music auto-route skip the node forever.
+    state.tts.disable().await?;
     Ok(Json(json!({ "ok": true })))
 }
 
