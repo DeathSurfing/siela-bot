@@ -60,7 +60,7 @@ Decorative hairlines use `#233238` and do not carry state. The `#19819b` primary
 - Dials: variance 4, motion 2, density 7, art direction 5.
 - Foundation: custom CSS and browser JavaScript, no framework or CDN. Fastify, Zod, and tsup follow the repository's existing stack.
 - Quality bar: Linear app chrome, Grafana settings scope, and Discord's task grouping.
-- Direction contract: readiness and server scope lead; the browser never sees the control token; mobile navigation remains persistent.
+- Direction contract: readiness and server scope lead; the browser never sees the control token; mobile navigation opens from a topbar hamburger drawer.
 - Anti-references: generic admin cards, unnecessary gradients, emoji icons, and unscoped proxy routes.
 
 ## Taste memory
@@ -78,7 +78,7 @@ Decorative hairlines use `#233238` and do not carry state. The `#19819b` primary
 - Active navigation: tinted row and a 2px teal edge.
 - Inactive hover: subtle surface shift, weaker than the active state.
 - Header: current view label, persistent guild selector, and bot status pill.
-- Shell density: 42px navigation rows at desktop, icon-only 43px rows below 700px.
+- Shell density: 42px navigation rows at desktop, the same labeled rows in a drawer below 700px.
 
 ## Mood descriptors
 

@@ -19,7 +19,7 @@
     </div>
     <div id="login-screen" class="login-screen" hidden></div>
     <div id="app-shell" class="app-shell" hidden>
-      <aside class="rail" aria-label="Main navigation">
+      <aside id="app-rail" class="rail" aria-label="Main navigation">
         <a class="brand" href="#/overview" aria-label="Siela Control overview">
           <img src="/mark.svg" width="28" height="28" alt="">
           <span class="brand-copy"><strong>Siela</strong></span>
@@ -45,6 +45,7 @@
       </aside>
       <div class="workspace">
         <header class="topbar">
+          <button id="nav-toggle" class="nav-toggle icon-button" type="button" data-action="toggle-nav" aria-label="Open navigation" aria-haspopup="dialog" aria-expanded="false" aria-controls="nav-drawer"><img src="/icons/menu.svg" alt=""></button>
           <div class="topbar-controls">
             <div class="guild-picker" data-guild-picker>
               <button id="guild-picker-button" class="guild-picker-button" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Select a server" aria-controls="guild-picker-menu">
@@ -61,6 +62,11 @@
         <footer class="workspace-foot"><span id="build-version">SIELA</span></footer>
       </div>
     </div>
+    <dialog id="nav-drawer" class="nav-drawer" aria-labelledby="nav-drawer-title">
+      <h2 id="nav-drawer-title" class="sr-only">Navigation</h2>
+      <button class="icon-button nav-drawer-close" type="button" data-action="close-nav" aria-label="Close navigation"><img src="/icons/x.svg" alt=""></button>
+      <div id="nav-drawer-body" class="nav-drawer-body"></div>
+    </dialog>
     <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-title">
       <div class="dialog-head"><div><h2 id="help-title">Keyboard shortcuts</h2></div><button class="icon-button" type="button" data-action="close-help" aria-label="Close shortcuts"><img src="/icons/x.svg" alt=""></button></div>
       <dl class="shortcut-list">

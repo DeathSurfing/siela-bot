@@ -7,6 +7,11 @@ import { escapeHtml, fmtTrackTime, renderLogin, renderStatusPill, renderView, vi
 const boot = document.querySelector("#boot-state");
 const loginScreen = document.querySelector("#login-screen");
 const shell = document.querySelector("#app-shell");
+const rail = document.querySelector("#app-rail");
+const navDrawer = document.querySelector("#nav-drawer");
+const navDrawerBody = document.querySelector("#nav-drawer-body");
+const navToggle = document.querySelector("#nav-toggle");
+const compactNav = window.matchMedia("(max-width: 700px)");
 const main = document.querySelector("#main-content");
 const guildPickerButton = document.querySelector("#guild-picker-button");
 const guildPickerName = document.querySelector("#guild-picker-name");
@@ -36,6 +41,7 @@ function toggleTheme() {
 }
 
 function showLogin(error = "", oauth = state.oauth) {
+  closeNavDrawer({ restoreFocus: false });
   state.authenticated = false;
   state.csrfToken = null;
   state.user = null;
@@ -114,6 +120,59 @@ function closeGuildMenu(restoreFocus = false) {
   if (restoreFocus) guildPickerButton.focus();
 }
 
+function syncNavPlacement() {
+  if (!rail) return;
+  const parent = compactNav.matches ? navDrawerBody : shell;
+  if (parent && rail.parentElement !== parent) parent.prepend(rail);
+}
+
+function openNavDrawer() {
+  if (!compactNav.matches || !navDrawer) return;
+  closeGuildMenu();
+  syncNavPlacement();
+  if (!navDrawer.open) navDrawer.showModal();
+  navToggle?.setAttribute("aria-expanded", "true");
+  const current = navDrawer.querySelector('.primary-nav a[aria-current="page"]');
+  (current ?? navDrawer.querySelector(".nav-drawer-close"))?.focus();
+}
+
+function closeNavDrawer({ restoreFocus = true } = {}) {
+  if (!navDrawer?.open) return;
+  navDrawer.close();
+  navToggle?.setAttribute("aria-expanded", "false");
+  if (restoreFocus && compactNav.matches) navToggle?.focus({ preventScroll: true });
+}
+
+navDrawer?.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeNavDrawer();
+});
+
+navDrawer?.addEventListener("close", () => {
+  navToggle?.setAttribute("aria-expanded", "false");
+});
+
+navDrawer?.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  if (target === navDrawer) {
+    closeNavDrawer();
+    return;
+  }
+  const link = target.closest(".primary-nav a, .brand");
+  if (!link) return;
+  const hash = link.getAttribute("href");
+  closeNavDrawer({ restoreFocus: false });
+  if (hash && hash === location.hash) main.focus({ preventScroll: true });
+});
+
+compactNav.addEventListener("change", (event) => {
+  closeNavDrawer({ restoreFocus: false });
+  syncNavPlacement();
+  if (event.matches) main.focus({ preventScroll: true });
+  else shell.querySelector('.primary-nav a[aria-current="page"]')?.focus({ preventScroll: true });
+});
+
 async function selectGuild(guildId) {
   closeGuildMenu(true);
   if (!guildId || guildId === state.guildId) return;
@@ -165,6 +224,7 @@ function activateShell() {
   boot.hidden = true;
   loginScreen.hidden = true;
   shell.hidden = false;
+  syncNavPlacement();
   updateGuildPicker();
 }
 
@@ -625,7 +685,12 @@ document.addEventListener("click", async (event) => {
   }
   if (!target.closest("[data-guild-picker]")) closeGuildMenu();
   const action = target.closest("[data-action]");
-  if (action?.dataset.action === "help") {
+  if (action?.dataset.action === "toggle-nav") {
+    if (navDrawer?.open) closeNavDrawer();
+    else openNavDrawer();
+  } else if (action?.dataset.action === "close-nav") {
+    closeNavDrawer();
+  } else if (action?.dataset.action === "help") {
     dialog.showModal();
   } else if (action?.dataset.action === "close-help") {
     dialog.close();
@@ -709,6 +774,7 @@ document.addEventListener("change", async (event) => {
 
 window.addEventListener("hashchange", async () => {
   if (!state.authenticated) return;
+  closeNavDrawer({ restoreFocus: false });
   const route = parseRoute(location.hash);
   const guildId = route.guildId && state.guilds.some((guild) => guild.id === route.guildId) ? route.guildId : state.guildId;
   if (guildId !== state.guildId) rememberGuild(guildId);
@@ -719,14 +785,24 @@ window.addEventListener("hashchange", async () => {
 
 installHotkeys({
   view: (view) => navigate(view, state.guildId),
-  search: () => document.querySelector("#view-search")?.focus(),
+  search: () => {
+    closeNavDrawer({ restoreFocus: false });
+    document.querySelector("#view-search")?.focus();
+  },
   help: () => dialog.showModal(),
   save: () => {
     if (state.view !== "settings") return;
     for (const form of document.querySelectorAll("form.settings-section.is-dirty")) void saveSettings(form);
   },
   escape: () => {
-    if (dialog.open) dialog.close();
+    if (dialog.open) {
+      dialog.close();
+      return;
+    }
+    if (navDrawer?.open) {
+      closeNavDrawer();
+      return;
+    }
     closeGuildMenu();
   },
 });

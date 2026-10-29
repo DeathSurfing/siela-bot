@@ -28,7 +28,7 @@ Put a TLS reverse proxy in front of any public-facing deployment, then set `DASH
 
 ## Interface principles
 
-The interface stays flat. Rules and spacing group content; nested cards do not. The topbar carries the server picker and bot status only, and the page heading carries the view name. The Overview keeps one status line, three inline metrics, and two rule-separated columns. Features are compact rows, and their commands live in the Commands view instead of repeating on every row. Servers keeps the owner ID, and Audit keeps the action source.
+The interface stays flat. Rules and spacing group content; nested cards do not. The topbar carries the navigation toggle below 700px, the server picker, and bot status. The page heading carries the view name. Below 700px the persistent rail gives way to a hamburger button that opens the same navigation, labels and all, as a left drawer. The Overview keeps one status line, three inline metrics, and two rule-separated columns. Features are compact rows, and their commands live in the Commands view instead of repeating on every row. Servers keeps the owner ID, and Audit keeps the action source.
 
 Settings saves one section at a time. A save no longer re-renders the view, so unsaved edits in other sections survive. `Ctrl` or `Cmd` plus `S` saves every dirty section. A dot next to Save marks an unsaved section.
 
