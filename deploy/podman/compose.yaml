@@ -220,4 +220,33 @@ services:
       retries: 10
     mem_limit: 128m
 
-
+  dashboard:
+    image: localhost/siela-dashboard:latest
+    build:
+      context: ../..
+      dockerfile: deploy/podman/Containerfile.dashboard
+    container_name: siela-dashboard
+    env_file: .env
+    networks: [edge, control]
+    depends_on:
+      - bot
+      - migrate
+    environment:
+      DASHBOARD_HOST: 0.0.0.0
+      DASHBOARD_PORT: 3000
+      CONTROL_API_URL: ${CONTROL_API_URL:-http://bot-control:3001}
+    ports: ["${DASHBOARD_BIND:-0.0.0.0}:${DASHBOARD_PORT:-3000}:3000"]
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m

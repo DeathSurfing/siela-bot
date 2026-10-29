@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0a0a0a">
+    <meta name="description" content="Siela bot operator dashboard">
+    <title>Siela Control</title>
+    <link rel="icon" href="/mark.svg" type="image/svg+xml">
+    <script src="/js/theme-init.js"></script>
+    <link rel="stylesheet" href="/app.css">
+    <script type="module" src="/js/app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <div id="boot-state" class="boot-state" aria-live="polite" aria-label="Loading dashboard">
+      <aside class="boot-rail"><span class="boot-mark"></span><i></i><i></i><i></i><i></i><i></i></aside>
+      <div class="boot-page"><span class="skeleton skeleton-label"></span><span class="skeleton skeleton-heading"></span><div class="boot-grid"><span class="skeleton"></span><span class="skeleton"></span><span class="skeleton"></span></div><span class="skeleton skeleton-table"></span></div>
+    </div>
+    <div id="login-screen" class="login-screen" hidden></div>
+    <div id="app-shell" class="app-shell" hidden>
+      <aside id="app-rail" class="rail" aria-label="Main navigation">
+        <div class="rail-head">
+          <div class="guild-picker rail-picker" data-guild-picker>
+            <button id="guild-picker-button" class="guild-picker-button rail-picker-button" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Select a server" aria-controls="guild-picker-menu">
+              <span id="guild-picker-avatar" class="guild-logo" data-initial="?" aria-hidden="true"></span>
+              <span id="guild-picker-name" class="guild-picker-name">Loading servers</span>
+              <img class="guild-picker-chevron" src="/icons/chevron-down.svg" alt="" aria-hidden="true">
+            </button>
+            <div id="guild-picker-menu" class="guild-picker-menu" role="listbox" aria-label="Servers" hidden></div>
+          </div>
+          <button id="rail-toggle" class="icon-button rail-toggle" type="button" data-action="toggle-rail" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar"><img src="/icons/chevron-left.svg" alt=""></button>
+        </div>
+        <nav class="primary-nav" aria-label="Views">
+          <a href="#/overview" data-view="overview"><img src="/icons/dashboard.svg" alt=""><span>Overview</span></a>
+          <a href="#/servers" data-view="servers"><img src="/icons/server-dns.svg" alt=""><span>Servers</span></a>
+          <a href="#/features" data-view="features"><img src="/icons/toggle-on.svg" alt=""><span>Features</span></a>
+          <a href="#/music" data-view="music"><img src="/icons/music.svg" alt=""><span>Music</span></a>
+          <a href="#/settings" data-view="settings"><img src="/icons/settings.svg" alt=""><span>Settings</span></a>
+          <a href="#/audit" data-view="audit"><img src="/icons/time.svg" alt=""><span>Audit</span></a>
+          <a href="#/commands" data-view="commands"><img src="/icons/mac-command.svg" alt=""><span>Commands</span></a>
+        </nav>
+        <div class="rail-bottom">
+          <div class="rail-user" id="session-user" hidden>
+            <span class="rail-user-avatar" id="session-avatar" data-initial="O" aria-hidden="true"></span>
+            <span class="rail-user-name" id="session-name">Operator</span>
+          </div>
+          <button class="icon-button help-button" type="button" data-action="help" aria-label="Keyboard shortcuts"><img src="/icons/help.svg" alt=""><span class="help-label">Shortcuts</span></button>
+          <button class="icon-button" type="button" data-action="toggle-theme" aria-label="Switch to light theme"><img id="theme-icon" src="/icons/sun.svg" alt=""><span class="help-label">Theme</span></button>
+          <button class="icon-button" type="button" data-action="logout" aria-label="Sign out"><img src="/icons/logout.svg" alt=""><span class="help-label">Sign out</span></button>
+        </div>
+      </aside>
+      <div class="workspace">
+        <header class="topbar">
+          <button id="nav-toggle" class="nav-toggle icon-button" type="button" data-action="toggle-nav" aria-label="Open navigation" aria-haspopup="dialog" aria-expanded="false" aria-controls="nav-drawer"><img src="/icons/menu.svg" alt=""></button>
+          <div class="topbar-controls">
+            <span id="bot-status" class="status-pill status-unknown"><span class="status-dot"></span><span>Status loading</span></span>
+          </div>
+        </header>
+        <main id="main-content" class="content" tabindex="-1"></main>
+        <footer class="workspace-foot"><span id="build-version">SIELA</span></footer>
+      </div>
+    </div>
+    <dialog id="nav-drawer" class="nav-drawer" aria-labelledby="nav-drawer-title">
+      <h2 id="nav-drawer-title" class="sr-only">Navigation</h2>
+      <button class="icon-button nav-drawer-close" type="button" data-action="close-nav" aria-label="Close navigation"><img src="/icons/x.svg" alt=""></button>
+      <div id="nav-drawer-body" class="nav-drawer-body"></div>
+    </dialog>
+    <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-title">
+      <div class="dialog-head"><div><h2 id="help-title">Keyboard shortcuts</h2></div><button class="icon-button" type="button" data-action="close-help" aria-label="Close shortcuts"><img src="/icons/x.svg" alt=""></button></div>
+      <dl class="shortcut-list">
+        <div><dt><kbd>G</kbd> then <kbd>O</kbd></dt><dd>Overview</dd></div>
+        <div><dt><kbd>G</kbd> then <kbd>S</kbd></dt><dd>Servers</dd></div>
+        <div><dt><kbd>G</kbd> then <kbd>F</kbd></dt><dd>Features</dd></div>
+        <div><dt><kbd>G</kbd> then <kbd>M</kbd></dt><dd>Music</dd></div>
+        <div><dt><kbd>G</kbd> then <kbd>T</kbd></dt><dd>Settings</dd></div>
+        <div><dt><kbd>G</kbd> then <kbd>A</kbd></dt><dd>Audit</dd></div>
+        <div><dt><kbd>G</kbd> then <kbd>C</kbd></dt><dd>Commands</dd></div>
+        <div><dt><kbd>/</kbd></dt><dd>Focus view search</dd></div>
+        <div><dt><kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd></dt><dd>Save settings changes</dd></div>
+        <div><dt><kbd>?</kbd></dt><dd>Open shortcuts</dd></div>
+        <div><dt><kbd>Esc</kbd></dt><dd>Close this dialog</dd></div>
+      </dl>
+      <p class="dialog-note">Shortcuts pause while you type in a field.</p>
+    </dialog>
+    <div id="toast-stack" class="toast-stack" role="region" aria-label="Notifications"></div>
+    <div id="announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  </body>
+</html>

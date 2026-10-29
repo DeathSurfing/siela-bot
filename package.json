@@ -18,9 +18,9 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "bun run --cwd apps/bot build && bun run --cwd apps/router build && bun run --cwd apps/watchtower build",
-    "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/config typecheck && bun run --cwd packages/db typecheck && bun run --cwd apps/router typecheck && bun run --cwd apps/watchtower typecheck && bun run --cwd apps/bot typecheck",
-    "test": "bun run --cwd packages/shared test && bun run --cwd apps/bot test && bun run --cwd apps/router test && bun run --cwd apps/watchtower test",
+    "build": "bun run --cwd apps/bot build && bun run --cwd apps/router build && bun run --cwd apps/watchtower build && bun run --cwd apps/dashboard build",
+    "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/config typecheck && bun run --cwd packages/db typecheck && bun run --cwd apps/router typecheck && bun run --cwd apps/watchtower typecheck && bun run --cwd apps/bot typecheck && bun run --cwd apps/dashboard typecheck",
+    "test": "bun run --cwd packages/shared test && bun run --cwd apps/bot test && bun run --cwd apps/router test && bun run --cwd apps/watchtower test && bun run --cwd apps/dashboard test",
     "db:generate": "bun run --cwd packages/db generate",
     "db:migrate": "bun run --cwd apps/bot migrate",
     "dev:bot": "bun run --cwd apps/bot dev",

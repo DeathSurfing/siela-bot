@@ -1,0 +1,241 @@
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { loadDashboardConfig } from "./config.js";
+import type { ControlClient } from "./control-client.js";
+import { createDashboardServer, resolvePublicPath } from "./server.js";
+import { issueSession, csrfToken } from "./session.js";
+
+const config = loadDashboardConfig({
+  DASHBOARD_PASSWORD: "not-a-real-password-value",
+  DASHBOARD_SESSION_SECRET: "not-a-real-session-secret-with-more-than-32-chars",
+  MCP_TOKEN: "not-a-real-control-token",
+  NODE_ENV: "test",
+});
+
+let publicDir: string;
+
+beforeEach(async () => {
+  publicDir = await mkdtemp(path.join(process.cwd(), ".dashboard-test-"));
+  await mkdir(path.join(publicDir, "js"));
+  await writeFile(path.join(publicDir, "index.html"), "dashboard");
+  await writeFile(path.join(publicDir, "js", "app.js"), "console.log('dashboard')");
+  await writeFile(path.join(publicDir, "font.woff2"), "font");
+});
+
+afterEach(async () => {
+  if (publicDir) await rm(publicDir, { recursive: true, force: true });
+});
+
+function controlStub(overrides: Partial<ControlClient> = {}): ControlClient {
+  return {
+    getStatus: vi.fn().mockResolvedValue({ ready: true }),
+    getGuilds: vi.fn().mockResolvedValue({ guilds: [] }),
+    getFeatures: vi.fn().mockResolvedValue({ features: [] }),
+    updateFeature: vi.fn().mockResolvedValue({ featureId: "welcome", enabled: false }),
+    getAudit: vi.fn().mockResolvedValue({ entries: [] }),
+    getMusic: vi.fn().mockResolvedValue({ queue: [] }),
+    musicAction: vi.fn().mockResolvedValue({ ok: true }),
+    getConfig: vi.fn().mockResolvedValue({}),
+    patchConfig: vi.fn().mockResolvedValue({}),
+    getCommands: vi.fn().mockResolvedValue({ commands: [] }),
+    ...overrides,
+  };
+}
+
+function sessionHeaders(): Record<string, string> {
+  const cookie = issueSession(config.DASHBOARD_SESSION_SECRET);
+  return {
+    cookie: `siela_dashboard=${cookie}`,
+    "x-csrf-token": csrfToken(cookie, config.DASHBOARD_SESSION_SECRET),
+  };
+}
+
+describe("dashboard HTTP boundary", () => {
+  it("serves health and static assets with security headers", async () => {
+    const app = createDashboardServer({ config, publicDir, control: controlStub() });
+    const health = await app.inject({ method: "GET", url: "/healthz" });
+    const asset = await app.inject({ method: "GET", url: "/js/app.js" });
+    const font = await app.inject({ method: "GET", url: "/font.woff2" });
+
+    expect(health.statusCode).toBe(200);
+    expect(health.json()).toEqual({ ok: true });
+    expect(asset.statusCode).toBe(200);
+    expect(asset.body).toContain("dashboard");
+    expect(asset.headers["content-security-policy"]).toContain("default-src 'self'");
+    expect(font.statusCode).toBe(200);
+    expect(font.headers["content-type"]).toBe("font/woff2");
+    await app.close();
+  });
+
+  it("rejects static path traversal", () => {
+    expect(resolvePublicPath(publicDir, "../secret.txt")).toBeNull();
+    expect(resolvePublicPath(publicDir, "%2e%2e%2fsecret.txt")).toBeNull();
+    expect(resolvePublicPath(publicDir, "js/app.js")).toBe(path.join(publicDir, "js", "app.js"));
+  });
+
+  it("requires a valid session and CSRF token for mutations", async () => {
+    const app = createDashboardServer({ config, publicDir, control: controlStub() });
+    const denied = await app.inject({ method: "PATCH", url: "/api/guilds/123/features/welcome", payload: { enabled: false } });
+    const mismatch = await app.inject({
+      method: "PATCH",
+      url: "/api/guilds/123/features/welcome",
+      headers: { ...sessionHeaders(), "x-csrf-token": "wrong" },
+      payload: { enabled: false },
+    });
+
+    expect(denied.statusCode).toBe(401);
+    expect(mismatch.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("issues an HttpOnly signed cookie and limits bad sign-in attempts", async () => {
+    let now = 1_700_000_000_000;
+    const app = createDashboardServer({ config, publicDir, control: controlStub(), now: () => now });
+    const success = await app.inject({
+      method: "POST",
+      url: "/api/login",
+      payload: { password: config.DASHBOARD_PASSWORD },
+    });
+    const cookie = success.headers["set-cookie"];
+
+    expect(success.statusCode).toBe(200);
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Lax");
+    expect(cookie).not.toContain(config.DASHBOARD_PASSWORD);
+    expect(success.json()).toHaveProperty("csrfToken");
+    await app.inject({ method: "POST", url: "/api/logout", headers: { cookie, "x-csrf-token": success.json().csrfToken }, payload: {} });
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect((await app.inject({ method: "POST", url: "/api/login", payload: { password: "incorrect-password" } })).statusCode).toBe(401);
+    }
+    const limited = await app.inject({ method: "POST", url: "/api/login", payload: { password: "incorrect-password" } });
+    expect(limited.statusCode).toBe(429);
+    now += 5 * 60_000;
+    expect((await app.inject({ method: "POST", url: "/api/login", payload: { password: "incorrect-password" } })).statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("reports whether Discord OAuth is available", async () => {
+    const app = createDashboardServer({ config, publicDir, control: controlStub() });
+    const session = await app.inject({ method: "GET", url: "/api/session" });
+    expect(session.json()).toEqual({ authenticated: false, oauth: false });
+    expect((await app.inject({ method: "GET", url: "/auth/discord" })).statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("runs the Discord state, callback, owner, and session flow", async () => {
+    const oauthSettings = loadDashboardConfig({
+      DASHBOARD_PASSWORD: "not-a-real-password-value",
+      DASHBOARD_SESSION_SECRET: "not-a-real-session-secret-with-more-than-32-chars",
+      MCP_TOKEN: "not-a-real-control-token",
+      DISCORD_CLIENT_ID: "123456789012345678",
+      DISCORD_CLIENT_SECRET: "a-long-discord-client-secret",
+      DASHBOARD_OAUTH_REDIRECT_URI: "http://localhost:3000/auth/discord/callback",
+      DASHBOARD_OWNER_IDS: "111111111111111111",
+      NODE_ENV: "test",
+    });
+    const owner = { id: "111111111111111111", name: "Owner", avatarUrl: "https://cdn.discordapp.com/avatars/1/a.png?size=64" };
+    const exchange = vi.fn(async (code: string) => {
+      if (code === "owner") return owner;
+      if (code === "stranger") return { ...owner, id: "222222222222222222" };
+      throw new Error("denied");
+    });
+    const oauth = {
+      authorizeUrl: (state: string) => `https://discord.com/oauth2/authorize?state=${state}`,
+      exchange,
+    };
+    const app = createDashboardServer({ config: oauthSettings, publicDir, control: controlStub(), oauth });
+
+    const begin = await app.inject({ method: "GET", url: "/auth/discord" });
+    expect(begin.statusCode).toBe(302);
+    const beginCookies = Array.isArray(begin.headers["set-cookie"])
+      ? begin.headers["set-cookie"].join("; ")
+      : String(begin.headers["set-cookie"] ?? "");
+    const state = beginCookies.match(/siela_oauth_state=([^;]+)/)?.[1];
+    expect(state).toBeTruthy();
+    expect(begin.headers.location).toContain(`state=${state}`);
+
+    const badState = await app.inject({ method: "GET", url: "/auth/discord/callback?code=owner&state=wrong" });
+    expect(badState.statusCode).toBe(302);
+    expect(badState.headers.location).toBe("/?oauth=state");
+    expect(exchange).not.toHaveBeenCalled();
+
+    const denied = await app.inject({
+      method: "GET",
+      url: `/auth/discord/callback?code=stranger&state=${state}`,
+      headers: { cookie: `siela_oauth_state=${state}` },
+    });
+    expect(denied.headers.location).toBe("/?oauth=denied");
+    expect(denied.headers["set-cookie"]).not.toContain("siela_dashboard=");
+
+    const success = await app.inject({
+      method: "GET",
+      url: `/auth/discord/callback?code=owner&state=${state}`,
+      headers: { cookie: `siela_oauth_state=${state}` },
+    });
+    expect(success.statusCode).toBe(302);
+    expect(success.headers.location).toBe("/");
+    const cookies = Array.isArray(success.headers["set-cookie"])
+      ? success.headers["set-cookie"].join("; ")
+      : String(success.headers["set-cookie"]);
+    const sessionCookie = cookies.match(/siela_dashboard=([^;]+)/)?.[1];
+    expect(sessionCookie).toBeTruthy();
+    const session = await app.inject({ method: "GET", url: "/api/session", headers: { cookie: `siela_dashboard=${sessionCookie}` } });
+    expect(session.json()).toMatchObject({ authenticated: true, oauth: true, user: { id: owner.id, name: owner.name } });
+    await app.close();
+  });
+
+  it("marks the session cookie Secure when configured", async () => {
+    const secureConfig = loadDashboardConfig({
+      DASHBOARD_PASSWORD: "not-a-real-password-value",
+      DASHBOARD_SESSION_SECRET: "not-a-real-session-secret-with-more-than-32-chars",
+      MCP_TOKEN: "not-a-real-control-token",
+      DASHBOARD_SECURE_COOKIES: "true",
+      NODE_ENV: "test",
+    });
+    const app = createDashboardServer({ config: secureConfig, publicDir, control: controlStub() });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/login",
+      remoteAddress: "10.0.0.9",
+      payload: { password: secureConfig.DASHBOARD_PASSWORD },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["set-cookie"]).toContain("Secure");
+    await app.close();
+  });
+
+  it("maps a feature update to the fixed control API route", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/guilds/123456789/features/music-playback",
+      headers: sessionHeaders(),
+      payload: { enabled: false },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(control.updateFeature).toHaveBeenCalledWith("123456789", "music-playback", false);
+    await app.close();
+  });
+
+  it("does not proxy unknown API paths or music actions", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const unknown = await app.inject({ method: "GET", url: "/api/proxy?path=/v1/status", headers: sessionHeaders() });
+    const action = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/music/reboot",
+      headers: sessionHeaders(),
+      payload: {},
+    });
+
+    expect(unknown.statusCode).toBe(404);
+    expect(action.statusCode).toBe(404);
+    expect(control.getStatus).not.toHaveBeenCalled();
+    expect(control.musicAction).not.toHaveBeenCalled();
+    await app.close();
+  });
+});
