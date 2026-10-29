@@ -154,9 +154,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .guild-picker-button:disabled { color: var(--muted); cursor: not-allowed; }
 .guild-picker-name { min-width: 0; max-width: 190px; overflow: hidden; font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }
 .guild-picker-chevron { width: 11px; height: 11px; flex: 0 0 11px; opacity: 0.65; }
-.guild-picker-menu { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; width: min(320px, calc(100vw - 24px)); max-height: 340px; overflow: auto; padding: 5px; border: 1px solid var(--line-strong); border-radius: var(--radius-control); background: var(--surface-raised); box-shadow: 0 14px 34px var(--dialog-shadow); }
-.guild-option { width: 100%; display: flex; align-items: center; gap: 9px; padding: 7px 8px; border: 0; border-radius: var(--radius-xs); color: var(--text); background: transparent; text-align: left; cursor: pointer; }
-.guild-option:hover, .guild-option:focus-visible { background: var(--surface-hover); }
+.guild-picker-menu { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; width: min(320px, calc(100vw - 24px)); max-height: 340px; overflow: auto; padding: 5px; border: 1px solid var(--line-strong); border-radius: var(--radius-control); background: var(--surface-raised); box-shadow: 0 14px 34px var(--dialog-shadow); transform-origin: top right; opacity: 1; transform: none; transition: opacity 140ms var(--ease-out), transform 140ms var(--ease-out); }
+@starting-style { .guild-picker-menu { opacity: 0; transform: translateY(-4px); } }
+.guild-option { width: 100%; display: flex; align-items: center; gap: 9px; padding: 7px 8px; border: 0; border-radius: var(--radius-xs); color: var(--text); background: transparent; text-align: left; cursor: pointer; transition: background-color var(--duration-press) var(--ease-out); }
+.guild-option:focus-visible { background: var(--surface-hover); }
 .guild-option[aria-selected="true"] { background: var(--accent-soft); }
 .guild-option-copy { min-width: 0; display: flex; flex-direction: column; }
 .guild-option-copy strong { overflow: hidden; font-size: 0.78rem; font-weight: 560; text-overflow: ellipsis; white-space: nowrap; }
@@ -400,6 +401,7 @@ td code { overflow-wrap: anywhere; }
 
 @media (hover: hover) and (pointer: fine) {
   .primary-nav a:hover, .icon-button:hover { color: var(--text); background: var(--surface); }
+  .guild-option:hover { background: var(--surface-hover); }
   .text-link:hover, .guild-name:hover { text-decoration: underline; text-underline-offset: 3px; }
   .copy-id:hover { color: var(--text); }
   .copy-id:hover .copy-hint, .copy-id:focus-visible .copy-hint { opacity: 1; }
