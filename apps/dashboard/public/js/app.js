@@ -167,8 +167,11 @@ navDrawer?.addEventListener("click", (event) => {
 });
 
 compactNav.addEventListener("change", (event) => {
+  const focusInNav = Boolean(rail?.contains(document.activeElement) || navDrawer?.contains(document.activeElement));
+  const focusOnToggle = document.activeElement === navToggle;
   closeNavDrawer({ restoreFocus: false });
   syncNavPlacement();
+  if (!focusInNav && !focusOnToggle) return;
   if (event.matches) main.focus({ preventScroll: true });
   else shell.querySelector('.primary-nav a[aria-current="page"]')?.focus({ preventScroll: true });
 });
@@ -784,7 +787,16 @@ window.addEventListener("hashchange", async () => {
 });
 
 installHotkeys({
-  view: (view) => navigate(view, state.guildId),
+  view: (view) => {
+    if (!navDrawer?.open) {
+      navigate(view, state.guildId);
+      return;
+    }
+    const sameView = view === state.view;
+    closeNavDrawer({ restoreFocus: false });
+    navigate(view, state.guildId);
+    if (sameView) main.focus({ preventScroll: true });
+  },
   search: () => {
     closeNavDrawer({ restoreFocus: false });
     document.querySelector("#view-search")?.focus();
