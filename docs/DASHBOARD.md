@@ -14,6 +14,46 @@ To set your own values, export them before running the init script or edit `.env
 
 `MCP_TOKEN` is the same bearer token used by the bot control API. `CONTROL_API_URL` is the bot control service address. In the Podman stack, the default is `http://bot-control:3001`.
 
+### Required environment
+
+The dashboard reads these values from `deploy/podman/.env` through the compose `env_file`. Do not put them in `compose.yaml` or a command line.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DASHBOARD_PASSWORD` | yes | Password fallback, 12+ characters. Still required when Discord OAuth is enabled. |
+| `DASHBOARD_SESSION_SECRET` | yes | HMAC signing secret, 32+ characters. |
+| `MCP_TOKEN` | yes | Same bearer token as the bot control API. |
+| `CONTROL_API_URL` | yes | Control API address, `http://bot-control:3001` in the stack. |
+| `DASHBOARD_PORT` | no | Host port. The container listener stays on 3000. Defaults to 3000; the current host uses 3002. |
+| `DASHBOARD_BIND` | no | Host interface. Defaults to `0.0.0.0`; keep it there when Caddy runs on another host. |
+| `DASHBOARD_HOST` | no | Container listener. Compose sets `0.0.0.0`. |
+| `DASHBOARD_TRUST_PROXY` | behind a proxy | Set `true` when Caddy or nginx is in front, so client IP and HTTPS protocol are trusted. |
+| `DASHBOARD_SECURE_COOKIES` | no | Set `true` only when every access is HTTPS. Keep `false` while the LAN HTTP URL is used; HTTPS requests get `Secure` automatically with `DASHBOARD_TRUST_PROXY=true`. |
+| `DISCORD_CLIENT_ID` | for OAuth | Discord application ID. Already present for the bot. |
+| `DISCORD_CLIENT_SECRET` | for OAuth | Discord application client secret. This is not the bot token. |
+| `DASHBOARD_OAUTH_REDIRECT_URI` | for OAuth | Exact registered callback. |
+| `DASHBOARD_OWNER_IDS` | for OAuth | Comma-separated Discord user IDs allowed to sign in. |
+
+A complete host configuration:
+
+```sh
+DASHBOARD_PASSWORD=...
+DASHBOARD_SESSION_SECRET=...
+MCP_TOKEN=...
+CONTROL_API_URL=http://bot-control:3001
+
+DASHBOARD_HOST=0.0.0.0
+DASHBOARD_PORT=3002
+DASHBOARD_BIND=0.0.0.0
+DASHBOARD_TRUST_PROXY=true
+DASHBOARD_SECURE_COOKIES=false
+
+DISCORD_CLIENT_ID=...
+DISCORD_CLIENT_SECRET=...
+DASHBOARD_OAUTH_REDIRECT_URI=https://dashboard.adityavikram.dev/auth/discord/callback
+DASHBOARD_OWNER_IDS=...
+```
+
 Build and start the dashboard with the rest of the stack:
 
 ```sh
@@ -39,7 +79,7 @@ The container listener stays on port `3000`. `DASHBOARD_PORT` is the host port i
 
 The dashboard container is `siela-dashboard`, has restart policy `unless-stopped`, and exposes `/healthz`. It is not in the watchtower deploy set, so a stack deploy leaves it running.
 
-Put a TLS reverse proxy in front of any public-facing deployment, then set `DASHBOARD_TRUST_PROXY=true` so the client IP comes from the proxy and the sign-in limit applies per operator. Also set `DASHBOARD_SECURE_COOKIES=true` so the session cookie carries `Secure`. Without TLS, the password and cookie cross the network in clear text. Do not expose the bot control API.
+Put a TLS reverse proxy in front of any public-facing deployment. Set `DASHBOARD_TRUST_PROXY=true` so the client IP comes from the proxy and the sign-in limit applies per operator. Keep `DASHBOARD_SECURE_COOKIES=false` while the LAN HTTP URL is still used; with `DASHBOARD_TRUST_PROXY=true`, the dashboard adds `Secure` on HTTPS requests. Set it to `true` only when every request reaches the dashboard over HTTPS. Do not publish the dashboard port directly. The current host uses Caddy on `192.168.1.2` for `https://dashboard.adityavikram.dev` and forwards to `192.168.1.3:3002`; the dashboard binds `0.0.0.0` so the proxy can reach it. Do not expose the bot control API.
 
 ## Interface principles
 
@@ -72,13 +112,17 @@ Then set four values in `.env`:
 ```sh
 DISCORD_CLIENT_ID=...          # already present for the bot
 DISCORD_CLIENT_SECRET=...
-DASHBOARD_OAUTH_REDIRECT_URI=https://dashboard.example.com/auth/discord/callback
-DASHBOARD_OWNER_IDS=123456789012345678
+DASHBOARD_OAUTH_REDIRECT_URI=https://dashboard.adityavikram.dev/auth/discord/callback
+DASHBOARD_OWNER_IDS=123456789012345678,234567890123456789
 ```
 
-All four are required together. Only the listed Discord user IDs can sign in. The flow uses a short-lived state cookie, exchanges the code server-side, fetches the user with `identify`, and stores only the id, display name, and avatar in the signed session cookie. Access and refresh tokens are never stored. The password form remains available as a fallback.
+All four are required together. A partial set makes the dashboard exit at startup. Only the listed Discord user IDs can sign in. The flow uses a short-lived state cookie, exchanges the code server-side, fetches the user with `identify`, and stores only the id, display name, and avatar in the signed session cookie. Access and refresh tokens are never stored.
 
-If the values are absent, the Discord button is hidden and `/auth/discord` returns 404.
+Start the sign-in from the public HTTPS origin, not the LAN IP. The state cookie is host-only, so starting at the LAN address and returning to the public callback fails with `oauth=state`.
+
+The password form remains available as a fallback. `DASHBOARD_PASSWORD` is still required by the current schema even when OAuth is enabled; OAuth-only mode is not implemented. The owner allowlist is the current authorization gate. Per-guild Administrator permission checks are not enforced yet.
+
+If the OAuth values are absent, the Discord button is hidden and `/auth/discord` returns 404.
 
 ## Browser API
 
