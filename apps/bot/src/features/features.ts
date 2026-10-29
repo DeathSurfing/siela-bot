@@ -54,6 +54,8 @@ interface CacheEntry {
 
 export class FeatureFlagService {
   private readonly cache = new Map<string, CacheEntry>();
+  /** Collapse concurrent cold reads for one guild into a single query. */
+  private readonly loading = new Map<string, Promise<Map<string, boolean>>>();
 
   constructor(
     private readonly db: Database,
@@ -127,18 +129,27 @@ export class FeatureFlagService {
     const cached = this.cache.get(guildId);
     if (cached && cached.expiresAt > Date.now()) return cached.state;
 
-    const rows = await this.db
-      .select({ featureId: guildFeatures.featureId, enabled: guildFeatures.enabled })
-      .from(guildFeatures)
-      .where(eq(guildFeatures.guildId, guildId));
+    const pending = this.loading.get(guildId);
+    if (pending) return pending;
 
-    const state = resolveFeatureState(FEATURES, rows);
-    this.cache.set(guildId, { state, expiresAt: Date.now() + this.cacheTtlMs });
-    return state;
+    const load = (async (): Promise<Map<string, boolean>> => {
+      const rows = await this.db
+        .select({ featureId: guildFeatures.featureId, enabled: guildFeatures.enabled })
+        .from(guildFeatures)
+        .where(eq(guildFeatures.guildId, guildId));
+
+      const state = resolveFeatureState(FEATURES, rows);
+      this.cache.set(guildId, { state, expiresAt: Date.now() + this.cacheTtlMs });
+      return state;
+    })().finally(() => this.loading.delete(guildId));
+
+    this.loading.set(guildId, load);
+    return load;
   }
 
   invalidate(guildId: string): void {
     this.cache.delete(guildId);
+    this.loading.delete(guildId);
   }
 
   async ensureRows(guildId: string): Promise<void> {
