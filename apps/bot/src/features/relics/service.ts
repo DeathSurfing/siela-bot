@@ -162,10 +162,10 @@ interface CollectionRow {
 }
 
 export class RelicService {
-  private guild: Guild | null = null;
+  private readonly guilds = new Map<string, Guild>();
   private timer: NodeJS.Timeout | null = null;
-  private ticking = false;
-  private starting = false;
+  private readonly ticking = new Set<string>();
+  private readonly starting = new Set<string>();
   private readonly artCache = new Map<number, Buffer>();
   private readonly warnedDates = new Set<string>();
   private readonly announcing = new Set<number>();
@@ -179,22 +179,30 @@ export class RelicService {
   ) {}
 
   start(guild: Guild): void {
+    this.guilds.set(guild.id, guild);
     if (this.timer) return;
-    this.guild = guild;
     this.timer = setInterval(() => {
       void this.tick();
     }, TICK_MS);
     this.timer.unref?.();
     setTimeout(() => void this.tick(), 4_000).unref?.();
-    this.logger.info({ guildId: guild.id }, "relic scheduler started");
+    this.logger.info({ guilds: this.guilds.size }, "relic scheduler started");
   }
 
-  stop(): void {
+  stop(guildId?: string): void {
+    if (guildId) {
+      this.guilds.delete(guildId);
+      this.ticking.delete(guildId);
+      this.starting.delete(guildId);
+      if (this.guilds.size > 0) return;
+    }
+    this.guilds.clear();
+    this.ticking.clear();
+    this.starting.clear();
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
     }
-    this.guild = null;
   }
 
   async getSettings(guildId: string): Promise<RelicSettingsRow> {
@@ -283,25 +291,30 @@ export class RelicService {
   }
 
   private async tick(): Promise<void> {
-    const guild = this.guild;
-    if (!guild || this.ticking) return;
-    this.ticking = true;
-    try {
-      await this.settleDueAuctions(guild.id);
-      await this.recoverSettlements(guild.id);
-      await this.expireDueTrades(guild.id);
-      const settings = await this.getSettings(guild.id);
-      if (!settings.enabled || !settings.channelId) return;
-      await this.maybeStartDaily(guild, settings);
-    } catch (error) {
-      this.logger.warn({ err: error }, "relic scheduler tick failed");
-    } finally {
-      this.ticking = false;
+    for (const guild of this.guilds.values()) {
+      if (this.ticking.has(guild.id)) continue;
+      this.ticking.add(guild.id);
+      try {
+        await this.tickGuild(guild);
+      } catch (error) {
+        this.logger.warn({ err: error, guildId: guild.id }, "relic scheduler tick failed");
+      } finally {
+        this.ticking.delete(guild.id);
+      }
     }
   }
 
+  private async tickGuild(guild: Guild): Promise<void> {
+    await this.settleDueAuctions(guild.id);
+    await this.recoverSettlements(guild.id);
+    await this.expireDueTrades(guild.id);
+    const settings = await this.getSettings(guild.id);
+    if (!settings.enabled || !settings.channelId) return;
+    await this.maybeStartDaily(guild, settings);
+  }
+
   private async maybeStartDaily(guild: Guild, settings: RelicSettingsRow): Promise<void> {
-    if (this.starting) return;
+    if (this.starting.has(guild.id)) return;
     const now = new Date();
     const window = relicDropWindow(now, {
       startHourIst: settings.startHourIst,
@@ -320,13 +333,14 @@ export class RelicService {
     if (await this.getLiveAuction(guild.id)) return;
     const channel = await this.resolveChannel(guild, settings.channelId);
     if (!channel) {
-      if (!this.warnedDates.has(window.dateKey)) {
-        this.warnedDates.add(window.dateKey);
+      const warnKey = `${guild.id}:${window.dateKey}`;
+      if (!this.warnedDates.has(warnKey)) {
+        this.warnedDates.add(warnKey);
         this.logger.warn({ guildId: guild.id, channelId: settings.channelId }, "relic auction channel is unavailable");
       }
       return;
     }
-    this.starting = true;
+    this.starting.add(guild.id);
     try {
       const bundle = await this.createAuction({
         guild,
@@ -346,7 +360,7 @@ export class RelicService {
         this.logger.error({ err: error, guildId: guild.id }, "failed to start daily relic auction");
       }
     } finally {
-      this.starting = false;
+      this.starting.delete(guild.id);
     }
   }
 
@@ -1892,7 +1906,7 @@ export class RelicService {
   }
 
   private async displayName(guildId: string, userId: string): Promise<string> {
-    const guild = this.guild?.id === guildId ? this.guild : await this.client.guilds.fetch(guildId).catch(() => null);
+    const guild = this.guilds.get(guildId) ?? (await this.client.guilds.fetch(guildId).catch(() => null));
     if (!guild) return `<@${userId}>`;
     const member = guild.members.cache.get(userId) ?? (await guild.members.fetch(userId).catch(() => null));
     return member?.displayName ?? `<@${userId}>`;

@@ -24,7 +24,7 @@ export class FleetHeartbeat {
     private readonly nodeId: string,
     private readonly baseUrl: string,
     private readonly role: "commander" | "voice",
-    private readonly getGuildId: () => string | null,
+    private readonly getGuildIds: () => string[],
     private readonly intervalMs = FLEET_HEARTBEAT_INTERVAL_MS,
     private readonly ttlSec = FLEET_HEARTBEAT_TTL_SEC,
   ) {}
@@ -51,10 +51,12 @@ export class FleetHeartbeat {
   private async beat(): Promise<void> {
     const client = this.valkey?.client;
     if (!client) return;
+    const guildIds = this.getGuildIds();
     const value: FleetNodeRecord = {
       nodeId: this.nodeId,
       baseUrl: this.baseUrl,
-      guildId: this.getGuildId(),
+      guildId: guildIds[0] ?? null,
+      guildIds,
       role: this.role,
       startedAt: new Date().toISOString(),
     };

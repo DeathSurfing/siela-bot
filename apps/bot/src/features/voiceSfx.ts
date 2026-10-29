@@ -73,9 +73,7 @@ export class VoiceSfxService {
   private readonly downloads = new Map<string, Promise<string>>();
   private readonly lastPlayedAt = new Map<string, number>();
   private readonly inFlight = new Set<string>();
-  private connection: VoiceConnection | null = null;
-  private player: AudioPlayer | null = null;
-  private ffmpeg: ChildProcess | null = null;
+  private readonly playback = new Map<string, { connection: VoiceConnection; player: AudioPlayer; ffmpeg: ChildProcess | null }>();
 
   constructor(private readonly options: VoiceSfxOptions) {
     mkdirSync(CACHE_DIR, { recursive: true });
@@ -140,15 +138,15 @@ export class VoiceSfxService {
       adapterCreator: member.guild.voiceAdapterCreator,
       selfDeaf: true,
     });
-    this.connection = connection;
     connection.on("error", (error) => {
       this.options.logger.warn({ err: error, guildId }, "voice sfx connection error");
     });
+    const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Play } });
+    const playback = { connection, player, ffmpeg: null as ChildProcess | null };
+    this.playback.set(guildId, playback);
     try {
       await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
 
-      const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Play } });
-      this.player = player;
       player.on("error", (error) => {
         this.options.logger.warn({ err: error, guildId }, "voice sfx player error");
       });
@@ -172,7 +170,7 @@ export class VoiceSfxService {
         ],
         { cwd: "/tmp", stdio: ["ignore", "pipe", "pipe"] },
       );
-      this.ffmpeg = ffmpeg;
+      playback.ffmpeg = ffmpeg;
       ffmpeg.stderr?.on("data", (chunk: Buffer) => {
         const text = chunk.toString().trim();
         if (text) this.options.logger.debug({ guildId, ffmpeg: text.slice(0, 200) }, "voice sfx ffmpeg");
@@ -205,7 +203,7 @@ export class VoiceSfxService {
         "voice sfx played",
       );
     } finally {
-      this.cleanup();
+      this.cleanup(guildId);
     }
   }
 
@@ -268,29 +266,29 @@ export class VoiceSfxService {
     return target;
   }
 
-  private cleanup(): void {
+  private cleanup(guildId: string): void {
+    const playback = this.playback.get(guildId);
+    this.playback.delete(guildId);
+    if (!playback) return;
     try {
-      this.ffmpeg?.kill("SIGKILL");
+      playback.ffmpeg?.kill("SIGKILL");
     } catch {
       // ignore
     }
-    this.ffmpeg = null;
     try {
-      this.player?.stop(true);
+      playback.player.stop(true);
     } catch {
       // ignore
     }
-    this.player = null;
     try {
-      this.connection?.destroy();
+      playback.connection.destroy();
     } catch {
       // ignore
     }
-    this.connection = null;
   }
 
   stop(): void {
-    this.cleanup();
+    for (const guildId of [...this.playback.keys()]) this.cleanup(guildId);
     this.inFlight.clear();
   }
 }

@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import type { Client } from "discord.js";
 import {
   musicAutoplaySchema,
@@ -58,24 +58,28 @@ export class WorkerServer {
     return provided.length === expected.length && timingSafeEqual(provided, expected);
   }
 
-  private guildId(): string {
+  private guildId(request: FastifyRequest): string {
+    const header = request.headers["x-guild-id"];
+    if (typeof header === "string" && header && this.options.client.guilds.cache.has(header)) return header;
     const guildId = this.options.getGuildId();
-    if (!guildId) throw new UserError("The worker is not bound to a guild yet.", "not_ready");
-    return guildId;
+    if (guildId) return guildId;
+    const only = this.options.client.guilds.cache.size === 1 ? [...this.options.client.guilds.cache.keys()][0] : null;
+    if (only) return only;
+    throw new UserError("The worker is not serving a guild yet.", "not_ready");
   }
 
-  private async selfMember() {
-    const guildId = this.guildId();
+  private async selfMember(request: FastifyRequest) {
+    const guildId = this.guildId(request);
     const guild = this.options.client.guilds.cache.get(guildId);
     if (!guild) throw new UserError("Guild not available.", "not_ready");
     return guild.members.fetch(this.options.client.user!.id);
   }
 
   private registerRoutes(): void {
-    this.app.get("/internal/tts/state", async () => {
+    this.app.get("/internal/tts/state", async (request) => {
       const tts = this.options.services.tts;
       if (!tts) throw new UserError("TTS service is not ready.", "not_ready");
-      const guildId = this.guildId();
+      const guildId = this.guildId(request);
       return {
         enabled: tts.isEnabled(guildId),
         channelId: tts.sessionChannel(guildId),
@@ -88,13 +92,13 @@ export class WorkerServer {
       if (typeof body.channelId !== "string" || !body.channelId) {
         throw new UserError("channelId is required.", "validation_error");
       }
-      const member = await this.selfMember();
-      await this.options.services.tts!.enable(this.guildId(), member, body.channelId);
+      const member = await this.selfMember(request);
+      await this.options.services.tts!.enable(this.guildId(request), member, body.channelId);
       return { ok: true };
     });
 
-    this.app.post("/internal/tts/disable", async () => {
-      await this.options.services.tts!.disable(this.guildId());
+    this.app.post("/internal/tts/disable", async (request) => {
+      await this.options.services.tts!.disable(this.guildId(request));
       return { ok: true };
     });
 
@@ -104,47 +108,47 @@ export class WorkerServer {
         throw new UserError("utterance is required.", "validation_error");
       }
       await this.options.services.tts!.speakUtterance(
-        this.guildId(),
+        this.guildId(request),
         body.utterance,
         typeof body.speakerId === "string" ? body.speakerId : undefined,
       );
       return { ok: true };
     });
 
-    this.app.get("/internal/music/state", async () => {
+    this.app.get("/internal/music/state", async (request) => {
       const music = this.options.services.music;
       if (!music) throw new UserError("Music service is not ready.", "not_ready");
-      const guildId = this.guildId();
+      const guildId = this.guildId(request);
       const state = music.state(guildId) ?? { playing: false, paused: false, volume: 0, loop: "off", position: 0, current: null, upcoming: [] };
       return { ...state, channelId: music.channelId(guildId) };
     });
 
     this.app.post("/internal/music/join", async (request) => {
       const body = musicJoinSchema.parse(request.body ?? {});
-      const member = await this.selfMember();
+      const member = await this.selfMember(request);
       const channelId = await this.options.services.music!.join(member, body.voiceChannelId);
       return { channelId };
     });
 
     this.app.post("/internal/music/play", async (request) => {
       const body = musicPlaySchema.parse(request.body);
-      const member = await this.selfMember();
+      const member = await this.selfMember(request);
       return this.options.services.music!.play(member, body.query, body.voiceChannelId, body.next);
     });
 
-    const guildOp = (fn: (music: NonNullable<MusicService>, guildId: string) => Promise<unknown>) => async () => {
+    const guildOp = (fn: (music: NonNullable<MusicService>, guildId: string) => Promise<unknown>) => async (request: FastifyRequest) => {
       const music = this.options.services.music;
       if (!music) throw new UserError("Music service is not ready.", "not_ready");
-      return fn(music, this.guildId());
+      return fn(music, this.guildId(request));
     };
 
     // Cleanup ops are idempotent: "nothing playing" is success, not an
     // error, so session preempt works on idle nodes.
-    const idempotentOp = (fn: (music: NonNullable<MusicService>, guildId: string) => Promise<unknown>) => async () => {
+    const idempotentOp = (fn: (music: NonNullable<MusicService>, guildId: string) => Promise<unknown>) => async (request: FastifyRequest) => {
       const music = this.options.services.music;
       if (!music) throw new UserError("Music service is not ready.", "not_ready");
       try {
-        return await fn(music, this.guildId());
+        return await fn(music, this.guildId(request));
       } catch (error) {
         if (error instanceof UserError && error.message === "The bot is not playing anything.") {
           return { ok: true, idle: true };
@@ -179,46 +183,46 @@ export class WorkerServer {
     }));
     this.app.post("/internal/music/skip", async (request) => {
       const body = musicSkipSchema.parse(request.body ?? {});
-      await this.options.services.music!.skip(this.guildId(), body.count);
+      await this.options.services.music!.skip(this.guildId(request), body.count);
       return { ok: true };
     });
     this.app.post("/internal/music/volume", async (request) => {
       const body = musicVolumeSchema.parse(request.body);
-      return { volume: await this.options.services.music!.volume(this.guildId(), body.volume) };
+      return { volume: await this.options.services.music!.volume(this.guildId(request), body.volume) };
     });
     this.app.post("/internal/music/seek", async (request) => {
       const body = musicSeekSchema.parse(request.body);
-      await this.options.services.music!.seek(this.guildId(), body.positionMs);
+      await this.options.services.music!.seek(this.guildId(request), body.positionMs);
       return { ok: true };
     });
     this.app.post("/internal/music/loop", async (request) => {
       const body = musicLoopSchema.parse(request.body);
-      await this.options.services.music!.loop(this.guildId(), body.mode);
+      await this.options.services.music!.loop(this.guildId(request), body.mode);
       return { ok: true };
     });
     this.app.post("/internal/music/remove", async (request) => {
       const body = musicRemoveSchema.parse(request.body);
-      const removed = await this.options.services.music!.remove(this.guildId(), body.index);
+      const removed = await this.options.services.music!.remove(this.guildId(request), body.index);
       return { removed: removed.title };
     });
     this.app.post("/internal/music/move", async (request) => {
       const body = musicMoveSchema.parse(request.body);
-      await this.options.services.music!.move(this.guildId(), body.from, body.to);
+      await this.options.services.music!.move(this.guildId(request), body.from, body.to);
       return { ok: true };
     });
     this.app.post("/internal/music/jump", async (request) => {
       const body = musicJumpSchema.parse(request.body);
-      await this.options.services.music!.jump(this.guildId(), body.index);
+      await this.options.services.music!.jump(this.guildId(request), body.index);
       return { ok: true };
     });
     this.app.post("/internal/music/autoplay", async (request) => {
       const body = musicAutoplaySchema.parse(request.body);
-      await this.options.services.music!.autoplay(this.guildId(), body.enabled);
+      await this.options.services.music!.autoplay(this.guildId(request), body.enabled);
       return { ok: true };
     });
     this.app.post("/internal/music/filters", async (request) => {
       const body = musicFilterSchema.parse(request.body);
-      await this.options.services.music!.filters(this.guildId(), body.preset);
+      await this.options.services.music!.filters(this.guildId(request), body.preset);
       return { ok: true };
     });
   }

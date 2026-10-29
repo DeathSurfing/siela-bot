@@ -30,7 +30,6 @@ export class VoiceWorkerNode {
   private readonly heartbeat: FleetHeartbeat | null;
   private readonly music: MusicService;
   private readonly tts: TtsService;
-  private guildId: string | null = null;
   private stopping = false;
 
   constructor(
@@ -71,7 +70,7 @@ export class VoiceWorkerNode {
         this.config.NODE_ID,
         this.config.NODE_ADVERTISE_URL,
         "voice",
-        () => this.guildId,
+        () => [...this.client.guilds.cache.keys()],
       )
       : null;
     this.workerServer = new WorkerServer({
@@ -79,16 +78,16 @@ export class VoiceWorkerNode {
       client: this.client,
       token: this.config.MCP_TOKEN,
       logger: this.logger,
-      getGuildId: () => this.guildId,
+      getGuildId: () => (this.config.guildId ? this.config.guildId : null),
     });
     this.healthServer = new HealthServer({
       host: this.config.HEALTH_HOST,
       port: this.config.HEALTH_PORT,
       logger: this.logger,
       isReady: async () => {
-        const ready = Boolean(this.client.isReady() && this.guildId);
+        const ready = Boolean(this.client.isReady() && this.client.guilds.cache.size > 0);
         const dbUp = await pingDatabase(this.dbHandle.db);
-        return { ready: ready && dbUp, details: { gateway: this.client.isReady(), guild: Boolean(this.guildId), database: dbUp } };
+        return { ready: ready && dbUp, details: { gateway: this.client.isReady(), guild: this.client.guilds.cache.size > 0, database: dbUp } };
       },
     });
   }
@@ -108,40 +107,21 @@ export class VoiceWorkerNode {
   }
 
   private onReady(): void {
-    const guild = this.resolveGuild();
-    if (guild) {
-      this.guildId = guild.id;
-      void this.client.user?.setPresence({
-        activities: [{ name: `music • ${this.config.NODE_ID}`, type: ActivityType.Listening }],
-        status: "online",
-      });
-      this.logger.info({ guildId: guild.id, nodeId: this.config.NODE_ID }, "voice worker bound");
-    } else {
-      this.logger.warn("no guild bound yet; waiting for the first guild join");
-    }
-  }
-
-  private resolveGuild(): Guild | null {
-    if (this.config.guildId) {
-      return this.client.guilds.cache.get(this.config.guildId) ?? null;
-    }
-    if (this.client.guilds.cache.size === 1) {
-      return this.client.guilds.cache.first() ?? null;
-    }
-    return null;
+    const guilds = [...this.client.guilds.cache.keys()];
+    void this.client.user?.setPresence({
+      activities: [{ name: `music • ${this.config.NODE_ID}`, type: ActivityType.Listening }],
+      status: "online",
+    });
+    this.logger.info({ guilds: guilds.length, nodeId: this.config.NODE_ID }, "voice worker ready");
   }
 
   private async onGuildCreate(guild: Guild): Promise<void> {
     if (this.config.guildId && guild.id !== this.config.guildId) {
+      this.logger.warn({ guildId: guild.id, configuredGuildId: this.config.guildId }, "voice worker leaving unconfigured guild");
       await guild.leave().catch(() => undefined);
       return;
     }
-    if (!this.guildId) {
-      this.guildId = guild.id;
-      this.logger.info({ guildId: guild.id }, "voice worker bound");
-    } else if (guild.id !== this.guildId) {
-      await guild.leave().catch(() => undefined);
-    }
+    this.logger.info({ guildId: guild.id, nodeId: this.config.NODE_ID }, "voice worker joined guild");
   }
 
   async stop(): Promise<void> {

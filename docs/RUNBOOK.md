@@ -11,14 +11,14 @@ git clone https://github.com/DeathSurfing/siela-bot.git
 cd siela-bot
 
 export DISCORD_TOKEN="..."
-export GUILD_ID="..."   # recommended for a single-guild install
+export GUILD_ID="..."   # optional: pins the bot to one server
 ./scripts/podman-init.sh
 
 ./scripts/podman-stack.sh up -d --build
 podman ps --format '{{.Names}}\t{{.Status}}'
 ```
 
-The init script prints an invite URL with the recommended permissions. If `GUILD_ID` is unset, the bot auto-detects the only guild it can see. If it joins another guild first, it binds there and leaves the others.
+The init script prints an invite URL with the recommended permissions. If `GUILD_ID` is unset, the bot serves every guild it joins. If it is set, the bot serves only that guild and leaves the others. See [MULTI-GUILD.md](MULTI-GUILD.md).
 
 The bot container starts after the `migrate` container starts, but compose does not wait for the migration to finish. If the first boot reports a database error, wait for `migrate` to exit and restart the bot.
 

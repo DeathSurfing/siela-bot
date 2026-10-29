@@ -134,7 +134,12 @@ export class FleetRegistry {
       if (!raw) continue;
       try {
         const record = JSON.parse(raw) as Partial<FleetNodeRecord>;
-        if (record.guildId !== guildId) continue;
+        const guilds = Array.isArray(record.guildIds) && record.guildIds.length > 0
+          ? record.guildIds
+          : record.guildId
+            ? [record.guildId]
+            : [];
+        if (!guilds.includes(guildId)) continue;
         const node = parseRecord(raw);
         if (node) nodes.push(node);
       } catch {
