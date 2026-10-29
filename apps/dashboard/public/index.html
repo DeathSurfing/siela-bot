@@ -21,7 +21,7 @@
       <aside class="rail" aria-label="Main navigation">
         <a class="brand" href="#/overview" aria-label="Siela Control overview">
           <img src="/mark.svg" width="28" height="28" alt="">
-          <span class="brand-copy"><strong>Siela</strong><small>CONTROL ROOM</small></span>
+          <span class="brand-copy"><strong>Siela</strong></span>
         </a>
         <nav class="primary-nav" aria-label="Views">
           <a href="#/overview" data-view="overview"><img src="/icons/dashboard.svg" alt=""><span>Overview</span></a>
@@ -39,15 +39,13 @@
       </aside>
       <div class="workspace">
         <header class="topbar">
-          <div class="topbar-context"><span class="context-mark"></span><span id="topbar-title">Overview</span></div>
           <div class="topbar-controls">
-            <label class="guild-picker-label" for="guild-picker">Server</label>
             <select id="guild-picker" name="guild" aria-label="Select a server"></select>
             <span id="bot-status" class="status-pill status-unknown"><span class="status-dot"></span><span>Status loading</span></span>
           </div>
         </header>
         <main id="main-content" class="content" tabindex="-1"></main>
-        <footer class="workspace-foot"><span>SELF-HOSTED CONTROL</span><span id="build-version">SIELA</span></footer>
+        <footer class="workspace-foot"><span id="build-version">SIELA</span></footer>
       </div>
     </div>
     <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-title">
