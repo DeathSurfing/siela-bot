@@ -1,0 +1,12 @@
+[
+  {
+    "date": "2026-10-29",
+    "page": "admin dashboard",
+    "macrostructure": "App shell",
+    "nav": "persistent left rail",
+    "hero": "status-first overview",
+    "footer": "workspace metadata strip",
+    "knobs": "dark technical palette; guild selector in topbar; icon-only rail at narrow widths",
+    "brief": "Siela self-hosted multi-server bot operations"
+  }
+]

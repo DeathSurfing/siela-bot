@@ -1,0 +1,18 @@
+# Build from the repository root:
+#   podman build -f deploy/podman/Containerfile.dashboard -t siela-dashboard .
+
+FROM oven/bun:1 AS build
+WORKDIR /app
+COPY package.json bun.lock bunfig.toml tsconfig.base.json ./
+COPY apps/dashboard/package.json apps/dashboard/package.json
+RUN bun install --frozen-lockfile
+COPY apps/dashboard apps/dashboard
+RUN bun run --cwd apps/dashboard build
+RUN mkdir -p /out/public && cp -Lr /app/apps/dashboard/dist /out/dist && cp -Lr /app/apps/dashboard/public/. /out/public/ && cp -Lr /app/node_modules /out/node_modules
+
+FROM oven/bun:1 AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build /out/ ./
+USER bun
+CMD ["bun", "dist/index.js"]

@@ -7,6 +7,9 @@
 # Optional:
 #   DISCORD_CLIENT_ID  (otherwise derived from the token)
 #   GUILD_ID           (otherwise the bot serves every guild it joins)
+#   DASHBOARD_PASSWORD (otherwise generated)
+#   DASHBOARD_SESSION_SECRET (otherwise generated)
+#   DASHBOARD_PORT     (host port, default 3000)
 #   WATCHTOWER_ENABLED (true starts the auto-deploy watchtower; default false)
 #   WATCHTOWER_REPO_URL (fork URL to follow instead of upstream)
 #   WATCHTOWER_BRANCH  (default main)
@@ -15,7 +18,8 @@
 #   FORCE=1            (overwrite an existing .env)
 #
 # The script generates POSTGRES_PASSWORD, MCP_TOKEN (internal control API
-# bearer), and WATCHTOWER_TOKEN, then writes deploy/podman/.env with mode 600.
+# bearer), WATCHTOWER_TOKEN, and dashboard credentials, then writes
+# deploy/podman/.env with mode 600.
 
 set -euo pipefail
 
@@ -64,6 +68,9 @@ fi
 POSTGRES_PASSWORD="$(rand_secret)"
 MCP_TOKEN="$(rand_secret)"
 WATCHTOWER_TOKEN="$(rand_secret)"
+DASHBOARD_PASSWORD="${DASHBOARD_PASSWORD:-$(rand_secret)}"
+DASHBOARD_SESSION_SECRET="${DASHBOARD_SESSION_SECRET:-$(rand_secret)}"
+DASHBOARD_PORT="${DASHBOARD_PORT:-3000}"
 
 WATCHTOWER_ENABLED="${WATCHTOWER_ENABLED:-false}"
 WATCHTOWER_REPO_DIR="${WATCHTOWER_REPO_DIR:-${ROOT_DIR}}"
@@ -76,6 +83,9 @@ cat >"${ENV_FILE}" <<EOF
 DISCORD_TOKEN=${DISCORD_TOKEN}
 DISCORD_CLIENT_ID=${CLIENT_ID}
 GUILD_ID=${GUILD_ID:-}
+DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
+DASHBOARD_SESSION_SECRET=${DASHBOARD_SESSION_SECRET}
+DASHBOARD_PORT=${DASHBOARD_PORT}
 
 POSTGRES_USER=siela
 POSTGRES_DB=siela
@@ -108,6 +118,8 @@ echo "wrote ${ENV_FILE} (mode 600)"
 echo "client id: ${CLIENT_ID}"
 echo "guild id: ${GUILD_ID:-auto-detect}"
 echo "generated: POSTGRES_PASSWORD, MCP_TOKEN (control API bearer), WATCHTOWER_TOKEN"
+echo "generated: DASHBOARD_PASSWORD, DASHBOARD_SESSION_SECRET"
+echo "dashboard: http://<host>:${DASHBOARD_PORT} (password is DASHBOARD_PASSWORD in ${ENV_FILE})"
 echo "WATCHTOWER: ${WATCHTOWER_ENABLED} (follows ${WATCHTOWER_REPO_URL} ${WATCHTOWER_BRANCH})"
 echo "invite: ${INVITE_URL}"
 echo "next: scripts/podman-stack.sh up -d --build"
