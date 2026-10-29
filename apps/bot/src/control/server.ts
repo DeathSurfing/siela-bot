@@ -74,6 +74,11 @@ export function selectGuildId(input: {
 export class ControlServer {
   private readonly app: FastifyInstance;
 
+  /** Test seam. Routes are exercised with Fastify inject, not a socket. */
+  get instance(): FastifyInstance {
+    return this.app;
+  }
+
   constructor(private readonly options: ControlServerOptions) {
     this.app = Fastify({ logger: false, bodyLimit: 16 * 1024 });
     this.app.addHook("preHandler", async (request, reply) => {
