@@ -7,6 +7,9 @@
 # Optional:
 #   DISCORD_CLIENT_ID  (otherwise derived from the token)
 #   GUILD_ID           (otherwise auto-detected by the bot)
+#   DASHBOARD_PASSWORD (otherwise left blank until the operator sets it)
+#   DASHBOARD_SESSION_SECRET (otherwise left blank until the operator sets it)
+#   DASHBOARD_PORT     (default 3000)
 #   WATCHTOWER_ENABLED (true starts the auto-deploy watchtower; default false)
 #   WATCHTOWER_REPO_URL (fork URL to follow instead of upstream)
 #   WATCHTOWER_BRANCH  (default main)
@@ -76,6 +79,9 @@ cat >"${ENV_FILE}" <<EOF
 DISCORD_TOKEN=${DISCORD_TOKEN}
 DISCORD_CLIENT_ID=${CLIENT_ID}
 GUILD_ID=${GUILD_ID:-}
+DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
+DASHBOARD_SESSION_SECRET=${DASHBOARD_SESSION_SECRET:-}
+DASHBOARD_PORT=${DASHBOARD_PORT:-3000}
 
 POSTGRES_USER=siela
 POSTGRES_DB=siela
@@ -108,6 +114,7 @@ echo "wrote ${ENV_FILE} (mode 600)"
 echo "client id: ${CLIENT_ID}"
 echo "guild id: ${GUILD_ID:-auto-detect}"
 echo "generated: POSTGRES_PASSWORD, MCP_TOKEN (control API bearer), WATCHTOWER_TOKEN"
+echo "dashboard: set DASHBOARD_PASSWORD and DASHBOARD_SESSION_SECRET in .env before starting"
 echo "WATCHTOWER: ${WATCHTOWER_ENABLED} (follows ${WATCHTOWER_REPO_URL} ${WATCHTOWER_BRANCH})"
 echo "invite: ${INVITE_URL}"
-echo "next: scripts/podman-stack.sh up -d --build"
+echo "next: set dashboard credentials in .env, then run scripts/podman-stack.sh up -d --build"
