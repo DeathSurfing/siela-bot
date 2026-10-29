@@ -380,7 +380,7 @@ kbd { min-width: 18px; padding: 1px 4px; border: 1px solid var(--line-strong); b
 .category-tag { text-transform: uppercase; letter-spacing: 0.04em; display: inline-block; padding: 3px 7px; border: 1px solid var(--line); border-radius: var(--radius-tag); color: var(--text-code); background: var(--surface-code); font-size: 0.75rem; white-space: nowrap; }
 .command-name, .usage-code { color: var(--accent-bright); }
 .command-name { display: inline-block; }
-.usage-code { color: var(--text-usage); }
+.usage-code { color: var(--text-usage); display: inline-block; max-width: 42ch; white-space: normal; overflow-wrap: anywhere; line-height: 1.45; vertical-align: top; }
 td code { overflow-wrap: anywhere; }
 
 .login-screen { min-height: 100dvh; }
