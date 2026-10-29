@@ -78,7 +78,7 @@ Workers only exist when `scripts/make-voice-overlay.sh <N>` has generated the ov
 | `router` | `localhost/siela-router:latest` | Voice fleet gateway `:3100`; fans music out by `nodeId`, proxies everything else to the commander |
 | `bot-voice-*` | `localhost/siela-bot:latest` | Generated workers (`scripts/make-voice-overlay.sh <N>`). Slim `dist/worker.js` entrypoint under `bun --smol`, 1 GB cap: voice + music/TTS + worker API only, no commands or schedulers |
 | `bot-voice-*` (Rust) | `localhost/siela-voice-worker:latest` | Same slots with `WORKER_RUNTIME=rust`. `apps/voice-worker`, 512 MB cap, decodes in process so no mpv or ffmpeg runs during playback |
-| `dashboard` | `localhost/siela-dashboard:latest` | Optional operator UI on container port 3000, published at `${DASHBOARD_PORT}`; reads the password from `.env`; not built or started by watchtower |
+| `dashboard` | `localhost/siela-dashboard:latest` | Optional operator UI on container port 3000, published at `${DASHBOARD_PORT}`; reads its sign-in settings from `.env`; not built or started by watchtower |
 | `watchtower` | `localhost/siela-watchtower:latest` | Optional auto-deploy sidecar; mounts the host Podman socket |
 
 Health endpoints:
@@ -90,12 +90,13 @@ Health endpoints:
 
 ### Dashboard
 
-The dashboard is optional and is not in the watchtower deploy set. Its login password and session secret are read from `deploy/podman/.env` through `env_file`, so keep both values there. The password must be at least 12 characters and the session secret at least 32.
+The dashboard is optional and is not in the watchtower deploy set. Its sign-in settings and session secret are read from `deploy/podman/.env` through `env_file`, so keep them there. The session secret must have at least 32 characters. When a password is set, it must have at least 12. Remove the password to require Discord sign-in.
 
 Set a free host port in `.env` when 3000 is already taken:
 
 ```sh
-DASHBOARD_PASSWORD=...
+# Optional password fallback, 12+ characters. Omit it for Discord-only sign-in.
+# DASHBOARD_PASSWORD=...
 DASHBOARD_SESSION_SECRET=...
 DASHBOARD_PORT=3002
 DASHBOARD_BIND=0.0.0.0
@@ -112,7 +113,7 @@ curl -fsS http://127.0.0.1:3002/healthz
 
 Open `http://<host>:${DASHBOARD_PORT}`. The container listener remains 3000; on this host the portfolio owns 3000, so the dashboard is published on 3002.
 
-For Discord OAuth, set all four of `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DASHBOARD_OAUTH_REDIRECT_URI`, and `DASHBOARD_OWNER_IDS` in `.env`, and register the exact callback in the Discord application. The password remains required as the fallback. Behind Caddy set `DASHBOARD_TRUST_PROXY=true` and keep `DASHBOARD_SECURE_COOKIES=false` while the LAN HTTP URL is still used. See [docs/DASHBOARD.md](../../docs/DASHBOARD.md) for the full environment table, the public HTTPS flow, and the security boundary.
+For Discord OAuth, set all four of `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DASHBOARD_OAUTH_REDIRECT_URI`, and `DASHBOARD_OWNER_IDS` in `.env`, and register the exact callback in the Discord application. When `DASHBOARD_PASSWORD` is unset, the four OAuth values are the only sign-in method, and the dashboard exits at startup if they are incomplete. Behind Caddy set `DASHBOARD_TRUST_PROXY=true` and keep `DASHBOARD_SECURE_COOKIES=false` while the LAN HTTP URL is still used. See [docs/DASHBOARD.md](../../docs/DASHBOARD.md) for the full environment table, the public HTTPS flow, and the security boundary.
 
 ## Quickstart
 
