@@ -70,7 +70,7 @@ export class VoiceWorkerNode {
         this.config.NODE_ID,
         this.config.NODE_ADVERTISE_URL,
         "voice",
-        () => [...this.client.guilds.cache.keys()],
+        () => this.servedGuildIds(),
       )
       : null;
     this.workerServer = new WorkerServer({
@@ -79,6 +79,7 @@ export class VoiceWorkerNode {
       token: this.config.MCP_TOKEN,
       logger: this.logger,
       getGuildId: () => (this.config.guildId ? this.config.guildId : null),
+      getGuildIds: () => this.servedGuildIds(),
     });
     this.healthServer = new HealthServer({
       host: this.config.HEALTH_HOST,
@@ -106,8 +107,20 @@ export class VoiceWorkerNode {
     this.logger.info({ user: this.client.user?.tag, nodeId: this.config.NODE_ID }, "voice worker logged in");
   }
 
-  private onReady(): void {
-    const guilds = [...this.client.guilds.cache.keys()];
+  private servedGuildIds(): string[] {
+    if (this.config.guildId) {
+      return this.client.guilds.cache.has(this.config.guildId) ? [this.config.guildId] : [];
+    }
+    return [...this.client.guilds.cache.keys()];
+  }
+
+  private async onReady(): Promise<void> {
+    if (this.config.guildId) {
+      for (const guild of [...this.client.guilds.cache.values()]) {
+        if (guild.id !== this.config.guildId) await guild.leave().catch(() => undefined);
+      }
+    }
+    const guilds = this.servedGuildIds();
     void this.client.user?.setPresence({
       activities: [{ name: `music • ${this.config.NODE_ID}`, type: ActivityType.Listening }],
       status: "online",

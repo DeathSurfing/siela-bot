@@ -6,7 +6,7 @@ export interface NodePlaybackState {
   reachable: boolean;
 }
 
-export type FetchNodeState = (node: FleetNode) => Promise<NodePlaybackState>;
+export type FetchNodeState = (node: FleetNode, guildId?: string | null) => Promise<NodePlaybackState>;
 
 export class AllNodesBusyError extends Error {
   readonly statusCode = 429;
@@ -57,7 +57,7 @@ export class FleetPool {
   async acquire(guildId?: string | null): Promise<FleetNode> {
     const nodes = await this.listNodes(guildId);
     if (nodes.length === 0) throw new NoNodesReachableError();
-    const settled = await Promise.allSettled(nodes.map(async (node) => ({ node, state: await this.fetchState(node) })));
+    const settled = await Promise.allSettled(nodes.map(async (node) => ({ node, state: await this.fetchState(node, guildId) })));
     let anyReachable = false;
     for (const entry of settled) {
       if (entry.status !== "fulfilled") continue;

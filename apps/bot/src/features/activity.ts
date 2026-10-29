@@ -98,6 +98,18 @@ export class ActivityService {
     this.dirtyActivity.add(`${guildId}:${userId}`);
   }
 
+  /** Drop in-memory activity and voice sessions for a guild that left. */
+  forgetGuild(guildId: string): void {
+    this.voiceSessions.delete(guildId);
+    this.activity.delete(guildId);
+    for (const key of [...this.dirtyActivity]) {
+      if (key.startsWith(`${guildId}:`)) this.dirtyActivity.delete(key);
+    }
+    for (const key of [...this.pairSessions.keys()]) {
+      if (key.startsWith(`${guildId}:`)) this.pairSessions.delete(key);
+    }
+  }
+
   private pairKey(guildId: string, a: string, b: string): string {
     const [first, second] = a < b ? [a, b] : [b, a];
     return `${guildId}:${first}:${second}`;
