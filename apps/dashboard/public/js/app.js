@@ -1,5 +1,6 @@
 import { api, ApiError, setCsrfToken } from "./api.js";
-import { navigate, parseRoute, writeRoute, installKeyboardShortcuts } from "./router.js";
+import { navigate, parseRoute, writeRoute } from "./router.js";
+import { installHotkeys } from "./vendor/hotkeys.js";
 import { rememberGuild, state } from "./store.js";
 import { escapeHtml, fmtTrackTime, renderLogin, renderStatusPill, renderView, viewTitle } from "./views.js";
 
@@ -7,11 +8,32 @@ const boot = document.querySelector("#boot-state");
 const loginScreen = document.querySelector("#login-screen");
 const shell = document.querySelector("#app-shell");
 const main = document.querySelector("#main-content");
-const guildPicker = document.querySelector("#guild-picker");
+const guildPickerButton = document.querySelector("#guild-picker-button");
+const guildPickerName = document.querySelector("#guild-picker-name");
+const guildPickerAvatar = document.querySelector("#guild-picker-avatar");
+const guildPickerMenu = document.querySelector("#guild-picker-menu");
 const dialog = document.querySelector("#help-dialog");
+const themeIcon = document.querySelector("#theme-icon");
 let loadSequence = 0;
 let currentRoute = { view: "overview", guildId: null };
 let progressTimer = null;
+
+function applyTheme(theme) {
+  const next = theme === "light" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("siela.theme", next); } catch { /* storage may be blocked */ }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", next === "dark" ? "#0a0a0a" : "#f6f6f4");
+  if (themeIcon) {
+    themeIcon.src = next === "dark" ? "/icons/sun.svg" : "/icons/moon.svg";
+    themeIcon.closest("button")?.setAttribute("aria-label", next === "dark" ? "Switch to light theme" : "Switch to dark theme");
+  }
+}
+
+function toggleTheme() {
+  applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
+  announce(`${document.documentElement.dataset.theme === "light" ? "Light" : "Dark"} theme.`);
+}
 
 function showLogin(error = "") {
   state.authenticated = false;
@@ -24,13 +46,75 @@ function showLogin(error = "") {
   loginScreen.querySelector("#login-password")?.focus();
 }
 
-function updateGuildPicker() {
-  guildPicker.innerHTML = state.guilds.length
-    ? state.guilds.map((guild) => `<option value="${escapeHtml(guild.id)}">${escapeHtml(guild.name ?? guild.id)}</option>`).join("")
-    : `<option value="">No servers available</option>`;
-  guildPicker.disabled = state.guilds.length === 0;
-  guildPicker.value = state.guildId ?? "";
+function guildLogoMarkup(guild, extra = "") {
+  const initial = (guild?.name ?? "?").slice(0, 1).toUpperCase();
+  const image = guild?.iconUrl ? `<img src="${escapeHtml(guild.iconUrl)}" alt="" loading="lazy">` : "";
+  return `<span class="guild-logo ${extra}" data-initial="${escapeHtml(initial)}" aria-hidden="true">${image}</span>`;
 }
+
+function setAvatar(node, guild) {
+  if (!node) return;
+  node.dataset.initial = (guild?.name ?? "?").slice(0, 1).toUpperCase();
+  node.innerHTML = guild?.iconUrl ? `<img src="${escapeHtml(guild.iconUrl)}" alt="" loading="lazy">` : "";
+}
+
+function updateGuildPicker() {
+  if (!guildPickerButton || !guildPickerMenu) return;
+  const selected = state.guilds.find((guild) => guild.id === state.guildId) ?? state.guilds[0] ?? null;
+  guildPickerButton.disabled = state.guilds.length === 0;
+  if (guildPickerName) guildPickerName.textContent = selected?.name ?? (state.guilds.length ? "Select a server" : "No servers");
+  setAvatar(guildPickerAvatar, selected);
+  const activeId = state.guildId ?? selected?.id ?? null;
+  guildPickerMenu.innerHTML = state.guilds.map((guild) => `<button type="button" class="guild-option" role="option" aria-selected="${guild.id === activeId}" data-guild-id="${escapeHtml(guild.id)}">${guildLogoMarkup(guild, "guild-logo-option")}<span class="guild-option-copy"><strong>${escapeHtml(guild.name ?? "Unnamed server")}</strong><small>${Number(guild.memberCount ?? 0).toLocaleString()} members</small></span></button>`).join("");
+}
+
+function openGuildMenu(position = "first") {
+  if (!guildPickerMenu || !guildPickerButton || !state.guilds.length) return;
+  guildPickerMenu.hidden = false;
+  guildPickerButton.setAttribute("aria-expanded", "true");
+  const options = [...guildPickerMenu.querySelectorAll('[role="option"]')];
+  const target = position === "last" ? options.at(-1) : options[0];
+  target?.focus();
+}
+
+function closeGuildMenu(restoreFocus = false) {
+  if (!guildPickerMenu || !guildPickerButton) return;
+  guildPickerMenu.hidden = true;
+  guildPickerButton.setAttribute("aria-expanded", "false");
+  if (restoreFocus) guildPickerButton.focus();
+}
+
+async function selectGuild(guildId) {
+  closeGuildMenu(true);
+  if (!guildId || guildId === state.guildId) return;
+  rememberGuild(guildId);
+  writeRoute(currentRoute.view, guildId);
+  await loadData({ view: currentRoute.view, guildId });
+}
+
+guildPickerButton?.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  event.preventDefault();
+  openGuildMenu(event.key === "ArrowUp" ? "last" : "first");
+});
+
+guildPickerMenu?.addEventListener("keydown", (event) => {
+  const options = [...guildPickerMenu.querySelectorAll('[role="option"]')];
+  const index = options.indexOf(document.activeElement);
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeGuildMenu(true);
+  } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    const next = event.key === "ArrowDown" ? Math.min(options.length - 1, index + 1) : Math.max(0, index - 1);
+    options[next]?.focus();
+  } else if (event.key === "Home" || event.key === "End") {
+    event.preventDefault();
+    (event.key === "Home" ? options[0] : options.at(-1))?.focus();
+  } else if (event.key === "Tab") {
+    closeGuildMenu();
+  }
+});
 
 function setStatusPill(status) {
   const oldPill = document.querySelector("#bot-status");
@@ -74,6 +158,7 @@ function renderMain(preserveSearch = false) {
 async function loadData(route = currentRoute) {
   const sequence = ++loadSequence;
   stopProgress();
+  closeGuildMenu();
   state.view = route.view;
   state.featureErrors = {};
   state.voiceChannelId = route.guildId ? (localStorage.getItem(`siela.voice.${route.guildId}`) ?? "") : "";
@@ -314,7 +399,7 @@ function showToast(message, options = {}) {
   if (options.tone) toast.dataset.tone = options.tone;
   toast.className = "toast";
   toast.setAttribute("role", "status");
-  toast.innerHTML = `<p>${escapeHtml(message)}</p><div class="toast-actions">${options.actionLabel ? `<button class="button button-quiet" type="button" data-toast-action>${escapeHtml(options.actionLabel)}</button>` : ""}<button class="icon-button toast-close" type="button" data-toast-close aria-label="Dismiss">×</button></div><span class="toast-progress" aria-hidden="true"></span>`;
+  toast.innerHTML = `<p>${escapeHtml(message)}</p><div class="toast-actions">${options.actionLabel ? `<button class="button button-quiet" type="button" data-toast-action>${escapeHtml(options.actionLabel)}</button>` : ""}<button class="icon-button toast-close" type="button" data-toast-close aria-label="Dismiss"><img src="/icons/x.svg" alt=""></button></div><span class="toast-progress" aria-hidden="true"></span>`;
   let timer;
   let leaving = false;
   const dismiss = () => {
@@ -465,15 +550,6 @@ async function saveSettings(form) {
   }
 }
 
-document.addEventListener("keydown", (event) => {
-  if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "s") return;
-  if (state.view !== "settings") return;
-  const dirty = [...document.querySelectorAll("form.settings-section.is-dirty")];
-  if (!dirty.length) return;
-  event.preventDefault();
-  for (const form of dirty) void saveSettings(form);
-});
-
 document.addEventListener("submit", async (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
@@ -505,11 +581,24 @@ document.addEventListener("submit", async (event) => {
 document.addEventListener("click", async (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
+  if (target.closest("#guild-picker-button")) {
+    if (guildPickerMenu?.hidden) openGuildMenu();
+    else closeGuildMenu();
+    return;
+  }
+  const guildOption = target.closest("[data-guild-id]");
+  if (guildOption) {
+    await selectGuild(guildOption.dataset.guildId ?? "");
+    return;
+  }
+  if (!target.closest("[data-guild-picker]")) closeGuildMenu();
   const action = target.closest("[data-action]");
   if (action?.dataset.action === "help") {
     dialog.showModal();
   } else if (action?.dataset.action === "close-help") {
     dialog.close();
+  } else if (action?.dataset.action === "toggle-theme") {
+    toggleTheme();
   } else if (action?.dataset.action === "logout") {
     try { await api.logout(); } catch { /* The server clears expired sessions on the next sign-in. */ }
     showLogin();
@@ -577,12 +666,6 @@ document.addEventListener("input", (event) => {
 
 document.addEventListener("change", async (event) => {
   const target = event.target;
-  if (target === guildPicker) {
-    const guildId = guildPicker.value || null;
-    rememberGuild(guildId);
-    writeRoute(currentRoute.view, guildId);
-    await loadData({ view: currentRoute.view, guildId });
-  }
   if (target instanceof HTMLInputElement && target.id === "volume-control") {
     await runMusicAction("volume", { volume: Number(target.value) });
   }
@@ -602,11 +685,21 @@ window.addEventListener("hashchange", async () => {
   main.focus({ preventScroll: true });
 });
 
-installKeyboardShortcuts(
-  (view) => navigate(view, state.guildId),
-  () => document.querySelector("#view-search")?.focus(),
-  () => dialog.showModal(),
-);
+installHotkeys({
+  view: (view) => navigate(view, state.guildId),
+  search: () => document.querySelector("#view-search")?.focus(),
+  help: () => dialog.showModal(),
+  save: () => {
+    if (state.view !== "settings") return;
+    for (const form of document.querySelectorAll("form.settings-section.is-dirty")) void saveSettings(form);
+  },
+  escape: () => {
+    if (dialog.open) dialog.close();
+    closeGuildMenu();
+  },
+});
+
+applyTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
 
 async function start() {
   try {

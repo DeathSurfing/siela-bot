@@ -45,3 +45,6 @@ apps/bot/assets/events/*
 
 # Rust
 target/
+
+# Dashboard client bundle
+apps/dashboard/public/js/vendor/

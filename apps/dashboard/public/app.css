@@ -1,4 +1,5 @@
 /* Tastemaker · quiet operator shell · technical/dark seed 20261029 · flat separators, one accent · contrast: primary/on-primary 4.51, text/bg 17.60, accent/bg 10.76 */
+/* Tastemaker · quiet operator shell · monochrome light/dark 20261030 · flat separators, one accent, functional status hues only */
 :root {
   color-scheme: dark;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -6,39 +7,42 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --bg: #060c0e;
-  --rail: #0b1215;
-  --surface: #10171a;
-  --surface-raised: #141e22;
-  --surface-hover: #1b282d;
-  --text: #e5f5fa;
-  --muted: #91a0a6;
-  --quiet: #76888f;
-  --accent: #19819b;
-  --accent-bright: #62d0d2;
-  --accent-soft: #10333d;
-  --accent-hover: #269bb1;
-  --ok: #58d5ab;
-  --warn: #e9b45c;
-  --danger: #f07378;
-  --line: #233238;
-  --line-strong: #5d747c;
-  --focus: #62d0d2;
-  --status-ok-surface: #10251f;
-  --status-ok-border: #285441;
-  --status-danger-surface: #261719;
-  --status-danger-border: #57343a;
-  --surface-error: #1a1215;
-  --danger-muted: #d4a3a5;
-  --surface-code: #0d1417;
-  --text-code: #a8bdc3;
-  --surface-button-hover: #202d32;
-  --border-button-hover: #54727a;
-  --progress-track: #25343a;
-  --dialog-surface: #10191d;
-  --dialog-shadow: rgb(0 0 0 / 40%);
-  --dialog-backdrop: rgb(1 5 6 / 78%);
-  --topbar-backdrop: rgb(6 12 14 / 96%);
+  --bg: #0a0a0a;
+  --rail: #0f0f0f;
+  --surface: #151515;
+  --surface-raised: #1a1a1a;
+  --surface-hover: #222222;
+  --text: #f2f2f2;
+  --muted: #a3a3a3;
+  --quiet: #8a8a8a;
+  --accent: #f2f2f2;
+  --accent-bright: #ffffff;
+  --accent-soft: #262626;
+  --accent-hover: #ffffff;
+  --on-accent: #0a0a0a;
+  --icon-on-accent: brightness(0);
+  --icon-filter: grayscale(1) brightness(0.95);
+  --ok: #7fc9a3;
+  --warn: #cbb27f;
+  --danger: #cf8f8f;
+  --line: #262626;
+  --line-strong: #616161;
+  --focus: #ffffff;
+  --status-ok-surface: #14211a;
+  --status-ok-border: #2f4d3c;
+  --status-danger-surface: #221515;
+  --status-danger-border: #4d2f2f;
+  --surface-error: #1a1212;
+  --danger-muted: #cf8f8f;
+  --surface-code: #111111;
+  --text-code: #c4c4c4;
+  --surface-button-hover: #222222;
+  --border-button-hover: #7a7a7a;
+  --progress-track: #2a2a2a;
+  --dialog-surface: #121212;
+  --dialog-shadow: rgb(0 0 0 / 55%);
+  --dialog-backdrop: rgb(0 0 0 / 72%);
+  --topbar-backdrop: rgb(10 10 10 / 94%);
   --radius-xs: 2px;
   --radius-sm: 4px;
   --radius-control: 5px;
@@ -47,6 +51,46 @@
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --duration-press: 120ms;
   --duration-panel: 160ms;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f6f4;
+  --rail: #efefec;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-hover: #f0f0ed;
+  --text: #161616;
+  --muted: #5f5f5c;
+  --quiet: #6b6b67;
+  --accent: #161616;
+  --accent-bright: #000000;
+  --accent-soft: #e8e8e4;
+  --accent-hover: #000000;
+  --on-accent: #ffffff;
+  --icon-on-accent: brightness(0) invert(1);
+  --icon-filter: grayscale(1) brightness(0.55);
+  --ok: #2f6b45;
+  --warn: #7a5a00;
+  --danger: #8a2b2b;
+  --line: #deded8;
+  --line-strong: #8f8f87;
+  --focus: #161616;
+  --status-ok-surface: #e9f2ec;
+  --status-ok-border: #b9d6c4;
+  --status-danger-surface: #f8ecec;
+  --status-danger-border: #e0c2c2;
+  --surface-error: #fbf0f0;
+  --danger-muted: #8a2b2b;
+  --surface-code: #f1f1ed;
+  --text-code: #4a4a46;
+  --surface-button-hover: #f0f0ed;
+  --border-button-hover: #8f8f87;
+  --progress-track: #dcdcd6;
+  --dialog-surface: #ffffff;
+  --dialog-shadow: rgb(0 0 0 / 14%);
+  --dialog-backdrop: rgb(0 0 0 / 32%);
+  --topbar-backdrop: rgb(246 246 244 / 94%);
 }
 
 * { box-sizing: border-box; }
@@ -91,7 +135,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .primary-nav { display: grid; gap: 2px; margin-top: 38px; }
 .primary-nav a, .icon-button { min-height: 40px; display: flex; align-items: center; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--muted); background: transparent; transition: transform 90ms var(--ease-out), color var(--duration-press), background-color var(--duration-press), border-color var(--duration-press); }
 .primary-nav a { position: relative; gap: 11px; padding: 0 11px; font-size: 0.87rem; font-weight: 500; }
-.primary-nav a img, .icon { width: 18px; height: 18px; flex: 0 0 18px; opacity: 0.8; }
+.primary-nav a img, .icon, .brand > img, .primary-nav a > img, .icon-button > img, .login-brand > img { filter: var(--icon-filter); }
+.icon { width: 18px; height: 18px; flex: 0 0 18px; opacity: 0.8; }
 .primary-nav a[aria-current="page"] { color: var(--text); background: var(--surface); }
 .primary-nav a[aria-current="page"]::before { position: absolute; inset: 9px auto 9px -1px; width: 2px; border-radius: var(--radius-xs); background: var(--accent-bright); content: ""; }
 .primary-nav a[aria-current="page"] img { opacity: 1; }
@@ -104,8 +149,23 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .workspace { min-width: 0; display: flex; flex-direction: column; }
 .topbar { position: sticky; z-index: 5; top: 0; min-height: 56px; display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 0 clamp(20px, 4vw, 62px); background: var(--topbar-backdrop); border-bottom: 1px solid var(--line); backdrop-filter: blur(10px); }
 .topbar-controls { display: flex; align-items: center; gap: 14px; }
-#guild-picker { max-width: min(280px, 42vw); min-height: 32px; padding: 0 30px 0 9px; border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--text); background: transparent; font-size: 0.8rem; }
-#guild-picker:disabled { color: var(--muted); }
+.guild-picker { position: relative; min-width: 0; }
+.guild-picker-button { max-width: min(300px, 46vw); min-height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--text); background: transparent; cursor: pointer; }
+.guild-picker-button:disabled { color: var(--muted); cursor: not-allowed; }
+.guild-picker-name { min-width: 0; max-width: 190px; overflow: hidden; font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }
+.guild-picker-chevron { width: 11px; height: 11px; flex: 0 0 11px; opacity: 0.65; }
+.guild-picker-menu { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; width: min(320px, calc(100vw - 24px)); max-height: 340px; overflow: auto; padding: 5px; border: 1px solid var(--line-strong); border-radius: var(--radius-control); background: var(--surface-raised); box-shadow: 0 14px 34px var(--dialog-shadow); }
+.guild-option { width: 100%; display: flex; align-items: center; gap: 9px; padding: 7px 8px; border: 0; border-radius: var(--radius-xs); color: var(--text); background: transparent; text-align: left; cursor: pointer; }
+.guild-option:hover, .guild-option:focus-visible { background: var(--surface-hover); }
+.guild-option[aria-selected="true"] { background: var(--accent-soft); }
+.guild-option-copy { min-width: 0; display: flex; flex-direction: column; }
+.guild-option-copy strong { overflow: hidden; font-size: 0.78rem; font-weight: 560; text-overflow: ellipsis; white-space: nowrap; }
+.guild-option-copy small { color: var(--quiet); font: 0.66rem/1.4 ui-monospace, monospace; }
+.guild-logo { position: relative; width: 24px; height: 24px; flex: 0 0 24px; display: grid; place-items: center; overflow: hidden; border-radius: var(--radius-circle); color: var(--muted); background: var(--surface); font-size: 0.62rem; font-weight: 620; }
+.guild-logo::before { content: attr(data-initial); }
+.guild-logo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.guild-logo-button { width: 20px; height: 20px; flex-basis: 20px; }
+.guild-logo-option { width: 22px; height: 22px; flex-basis: 22px; }
 .status-pill { min-height: 28px; display: inline-flex; align-items: center; gap: 7px; padding: 0; border: 0; color: var(--muted); font-size: 0.75rem; white-space: nowrap; }
 .status-pill.status-ok { color: var(--ok); }
 .status-pill.status-danger { color: var(--danger); }
@@ -209,12 +269,12 @@ kbd { min-width: 17px; padding: 1px 4px; border: 1px solid var(--line); border-r
 .switch span { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: var(--radius-circle); background: var(--quiet); transition: transform var(--duration-press) var(--ease-out), background-color var(--duration-press); }
 .switch[aria-busy="true"] { opacity: 0.66; cursor: progress; }
 .switch[aria-checked="true"] { border-color: var(--accent); background: var(--accent); }
-.switch[aria-checked="true"] span { background: white; transform: translateX(14px); }
+.switch[aria-checked="true"] span { background: var(--on-accent); transform: translateX(14px); }
 .switch:disabled { cursor: progress; }
 
 .button { min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 11px; border: 1px solid transparent; border-radius: var(--radius-control); cursor: pointer; font-size: 0.74rem; font-weight: 560; white-space: nowrap; transition: transform 90ms var(--ease-out), color var(--duration-press), background-color var(--duration-press), border-color var(--duration-press); }
 .button .icon { width: 14px; height: 14px; }
-.button-primary { border-color: var(--accent); color: white; background: var(--accent); }
+.button-primary { border-color: var(--accent); color: var(--on-accent); background: var(--accent); }
 .button-secondary { border-color: var(--line); color: var(--text); background: transparent; }
 .button-quiet { border-color: transparent; color: var(--muted); background: transparent; }
 .button:active:not(:disabled), .play-button:active:not(:disabled), .icon-button:active:not(:disabled), .loop-button:active:not(:disabled) { transform: translateY(1px) scale(0.985); }
@@ -237,7 +297,7 @@ kbd { min-width: 17px; padding: 1px 4px; border: 1px solid var(--line); border-r
 .transport { display: flex; align-items: center; justify-content: flex-start; gap: 8px; }
 .transport-secondary { width: 36px; min-height: 36px; justify-content: center; padding: 0; }
 .play-button { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--accent); border-radius: var(--radius-circle); background: var(--accent); cursor: pointer; transition: transform 90ms var(--ease-out), background-color var(--duration-press), border-color var(--duration-press); }
-.play-button .icon { width: 18px; height: 18px; filter: brightness(0) invert(1); }
+.play-button .icon { width: 18px; height: 18px; filter: var(--icon-on-accent); }
 .loop-button { min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 7px; border: 1px solid transparent; border-radius: var(--radius-control); color: var(--muted); background: transparent; cursor: pointer; font-size: 0.73rem; text-transform: capitalize; transition: transform 90ms var(--ease-out), color var(--duration-press), background-color var(--duration-press); }
 .loop-button .icon { width: 14px; height: 14px; }
 .volume-row { display: flex; align-items: center; gap: 9px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
@@ -376,7 +436,9 @@ td code { overflow-wrap: anywhere; }
   .rail-bottom .icon-button { width: 44px; min-height: 40px; justify-content: center; padding: 0; }
   .topbar { min-height: 52px; gap: 8px; padding: 0 12px; }
   .topbar-controls { gap: 10px; }
-  #guild-picker { max-width: min(48vw, 160px); min-height: 32px; padding-left: 8px; font-size: 0.74rem; }
+  .guild-picker-button { max-width: min(48vw, 160px); min-height: 32px; padding: 0 7px; }
+  .guild-picker-name { max-width: 108px; font-size: 0.74rem; }
+  .guild-picker-menu { position: fixed; top: 60px; left: 8px; right: 8px; width: auto; max-height: min(50vh, 340px); }
   .status-pill { font-size: 0.72rem; }
   .content { padding: 26px 14px 38px; }
   .page-heading { flex-direction: column; gap: 10px; margin-bottom: 20px; }

@@ -4,13 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --watch src/index.ts",
-    "build": "tsup",
+    "dev": "bun run build:client && bun --watch src/index.ts",
+    "build": "bun run build:client && tsup",
     "start": "bun dist/index.js",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:client": "mkdir -p public/js/vendor && bun build src/client/hotkeys.ts --outfile public/js/vendor/hotkeys.js --format=esm --target=browser --minify"
   },
   "dependencies": {
+    "@tanstack/hotkeys": "0.18.0",
     "fastify": "^5.12.7",
     "zod": "^4.6.7"
   },
