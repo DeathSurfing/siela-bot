@@ -56,19 +56,20 @@ function toggleTheme() {
   announce(`${document.documentElement.dataset.theme === "light" ? "Light" : "Dark"} theme.`);
 }
 
-function showLogin(error = "", oauth = state.oauth) {
+function showLogin(error = "", oauth = state.oauth, password = state.password) {
   closeNavDrawer({ restoreFocus: false });
   state.authenticated = false;
   state.csrfToken = null;
   state.user = null;
   state.oauth = Boolean(oauth);
+  state.password = Boolean(password);
   setCsrfToken(null);
   boot.hidden = true;
   shell.hidden = true;
   loginScreen.hidden = false;
-  loginScreen.innerHTML = renderLogin(error, state.oauth);
+  loginScreen.innerHTML = renderLogin(error, state.oauth, state.password);
   if (state.oauth) loginScreen.querySelector(".login-discord")?.focus();
-  else loginScreen.querySelector("#login-password")?.focus();
+  else if (state.password) loginScreen.querySelector("#login-password")?.focus();
 }
 
 function oauthMessage() {
@@ -78,7 +79,7 @@ function oauthMessage() {
   if (value === "denied") return "That Discord account is not allowed to use this dashboard.";
   if (value === "state") return "That Discord sign-in attempt expired. Try again.";
   if (value === "cancelled") return "Discord sign-in was cancelled.";
-  return "Discord sign-in failed. Try again or use the password.";
+  return state.password ? "Discord sign-in failed. Try again or use the password." : "Discord sign-in failed. Try again.";
 }
 
 function updateUserChip() {
@@ -850,8 +851,9 @@ async function start() {
   try {
     const session = await api.session();
     state.oauth = Boolean(session.oauth);
+    state.password = Boolean(session.password);
     if (!session.authenticated) {
-      showLogin(oauthMessage(), state.oauth);
+      showLogin(oauthMessage(), state.oauth, state.password);
       return;
     }
     state.user = session.user ?? null;
