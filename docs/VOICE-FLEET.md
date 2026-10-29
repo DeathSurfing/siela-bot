@@ -135,7 +135,9 @@ Discord `!music`/`/play` commands treat **every voice channel as its own
 music instance**. Playing in VC-A then VC-B runs two simultaneous streams:
 the commander takes a channel when its voice is free for it, otherwise the
 track auto-routes to a free fleet node, and the VC→node binding sticks for
-later plays in that channel. Each instance gets the full now-playing card,
+later plays in that channel. Auto-route never picks a node that is speaking
+TTS in another channel; a Rust worker may take the music in its own TTS
+channel and mix the two. Each instance gets the full now-playing card,
 and all interface — card buttons, `/nowplaying`, `/queue`, `/lyrics`, and
 every control command (`pause`, `skip`, `stop`, `volume`, `loop`, …) —
 follows the author's voice channel to the right node. Queues never merge
@@ -196,6 +198,10 @@ TTS binds to exactly one node until `/tts off`:
 
 - `/tts on` uses the commander when its voice is free, otherwise a free
   fleet node. The binding (node + channel) is recorded as the session.
+- Auto-placement skips a node connected to a different channel, so the bot
+  is never moved away from its stream. A node already in the requested
+  channel takes the session; the commander disconnects idle music first,
+  and a Rust worker mixes the speech over its music.
 - Chat in the TTS channel is spoken on the bound node; every other node
   stays silent. TTS never migrates mid-session.
 - Session preempt skips TTS-active nodes, so scheduled events never cut
@@ -215,7 +221,9 @@ TTS binds to exactly one node until `/tts off`:
 
 - Tambola, scheduled prayer events, random VC drops, and activity/leveling
   awards run on the commander only. The commander's schedulers move whoever
-  is in voice, regardless of which node plays there.
+  is in voice, regardless of which node plays there. Tambola stops a fleet
+  player bound to its channel before joining voice, and `/play` refuses that
+  channel while the game is live.
 - Voice-busy checks (`isVoiceBusy`, music voice locks) are per-process, not
   per-fleet. Two nodes can be told to join channels at the same time; the
   last writer wins per channel.

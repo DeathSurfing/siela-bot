@@ -19,6 +19,9 @@ export const ttsCommand: Command = {
   async execute(ctx) {
     const action = (ctx.args[0] ?? "status").toLowerCase();
     if (action === "on" || action === "enable" || action === "start") {
+      if (ctx.services.tambola.isUsingVoice(ctx.guild.id)) {
+        throw new UserError("Tambola is using the voice channel. Finish the game before enabling TTS.");
+      }
       const voiceChannelId = ctx.member.voice?.channelId ?? undefined;
       if (!voiceChannelId) throw new UserError("Join a voice channel first.");
       const music = ctx.services.music;

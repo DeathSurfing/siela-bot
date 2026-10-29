@@ -206,10 +206,14 @@ describe("TambolaGame", () => {
     expect(game.transferHost("missing")).toBe(false);
   });
 
-  it("keeps tickets valid after generation helpers", () => {
-    const ticket: TambolaTicket = generateTicket(mulberry32(3));
-    expect(rowNumbers(ticket, 0)).toHaveLength(5);
-    expect(rowNumbers(ticket, 1)).toHaveLength(5);
-    expect(rowNumbers(ticket, 2)).toHaveLength(5);
+  it("keeps a paid auto-mark across host-wide toggles", () => {
+    const game = makeGame();
+    expect(game.player("player")?.autoMark).toBe(false);
+    game.setPlayerAutoMark("player", true);
+    expect(game.player("player")?.autoMarkPurchased).toBe(true);
+    game.setAutoMark(true);
+    game.setAutoMark(false);
+    expect(game.player("player")?.autoMark).toBe(true);
+    expect(game.player("host")?.autoMark).toBe(false);
   });
 });

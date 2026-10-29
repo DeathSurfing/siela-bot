@@ -11,6 +11,8 @@ export function jsonResponse(body: unknown, status = 200): Response {
 export interface StubFleetOptions {
   musicBusy?: string[];
   ttsOn?: string[];
+  /** Hosts connected to a voice channel, mapped to that channel. */
+  musicChannel?: Record<string, string>;
   onCall?: (method: string, target: string) => void;
   onHeaders?: (method: string, target: string, headers: Headers) => void;
 }
@@ -31,7 +33,11 @@ export function stubFleetFetch(options: StubFleetOptions = {}): { calls: string[
       const host = target.split("/")[2] ?? "";
       if (target.endsWith("/internal/music/state")) {
         const busy = (options.musicBusy ?? []).includes(host);
-        return jsonResponse({ playing: busy, current: busy ? { title: "t" } : null });
+        return jsonResponse({
+          playing: busy,
+          current: busy ? { title: "t" } : null,
+          channelId: options.musicChannel?.[host] ?? null,
+        });
       }
       if (target.endsWith("/internal/tts/state")) {
         const on = (options.ttsOn ?? []).includes(host);

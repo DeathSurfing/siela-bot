@@ -17,8 +17,8 @@ function states(byId: Record<string, NodePlaybackState>) {
   };
 }
 
-const idle = { playing: false, hasCurrent: false, reachable: true };
-const busy = { playing: true, hasCurrent: true, reachable: true };
+const idle: NodePlaybackState = { playing: false, hasCurrent: false, reachable: true };
+const busy: NodePlaybackState = { playing: true, hasCurrent: true, reachable: true };
 
 describe("FleetPool", () => {
   it("acquires an idle node", async () => {
@@ -65,5 +65,44 @@ describe("FleetPool", () => {
     await expect(pool.acquire("g1")).rejects.toBeInstanceOf(AllNodesBusyError);
     await expect(pool.acquire("g2")).rejects.toBeInstanceOf(NoNodesReachableError);
     expect(seen).toEqual(["g1", "g2"]);
+  });
+
+  it("does not route music onto a node speaking TTS in another channel", async () => {
+    const speaking = {
+      playing: false,
+      hasCurrent: false,
+      reachable: true,
+      channelId: "vcA",
+      tts: { enabled: true, channelId: "vcA" },
+    };
+    const pool = new FleetPool(listOf(nodes), states({ commander: busy, "voice-1": speaking }));
+    await expect(pool.acquire("g1", "vcB")).rejects.toBeInstanceOf(AllNodesBusyError);
+  });
+
+  it("lets a mixing node take music in its own TTS channel", async () => {
+    const mixing: FleetNode[] = [{ id: "voice-1", baseUrl: "http://voice-1:3101", ttsMix: true }];
+    const speaking = {
+      playing: false,
+      hasCurrent: false,
+      reachable: true,
+      channelId: "vcA",
+      tts: { enabled: true, channelId: "vcA" },
+    };
+    const pool = new FleetPool(listOf(mixing), states({ "voice-1": speaking }));
+    const node = await pool.acquire("g1", "vcA");
+    expect(node.id).toBe("voice-1");
+  });
+
+  it("does not route music onto a non-mixing node speaking TTS", async () => {
+    const plain: FleetNode[] = [{ id: "voice-1", baseUrl: "http://voice-1:3101" }];
+    const speaking = {
+      playing: false,
+      hasCurrent: false,
+      reachable: true,
+      channelId: "vcA",
+      tts: { enabled: true, channelId: "vcA" },
+    };
+    const pool = new FleetPool(listOf(plain), states({ "voice-1": speaking }));
+    await expect(pool.acquire("g1", "vcA")).rejects.toBeInstanceOf(AllNodesBusyError);
   });
 });
