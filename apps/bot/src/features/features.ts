@@ -55,7 +55,9 @@ interface CacheEntry {
 export class FeatureFlagService {
   private readonly cache = new Map<string, CacheEntry>();
   /** Collapse concurrent cold reads for one guild into a single query. */
-  private readonly loading = new Map<string, Promise<Map<string, boolean>>>();
+  private readonly loading = new Map<string, { promise: Promise<Map<string, boolean>>; epoch: number }>();
+  /** Bumped on every write so a read that started earlier cannot refill the cache. */
+  private readonly epochs = new Map<string, number>();
 
   constructor(
     private readonly db: Database,
@@ -129,25 +131,34 @@ export class FeatureFlagService {
     const cached = this.cache.get(guildId);
     if (cached && cached.expiresAt > Date.now()) return cached.state;
 
+    const epoch = this.epochs.get(guildId) ?? 0;
     const pending = this.loading.get(guildId);
-    if (pending) return pending;
+    if (pending?.epoch === epoch) return pending.promise;
 
-    const load = (async (): Promise<Map<string, boolean>> => {
+    let load: Promise<Map<string, boolean>>;
+    load = (async (): Promise<Map<string, boolean>> => {
       const rows = await this.db
         .select({ featureId: guildFeatures.featureId, enabled: guildFeatures.enabled })
         .from(guildFeatures)
         .where(eq(guildFeatures.guildId, guildId));
 
       const state = resolveFeatureState(FEATURES, rows);
-      this.cache.set(guildId, { state, expiresAt: Date.now() + this.cacheTtlMs });
+      if ((this.epochs.get(guildId) ?? 0) === epoch) {
+        this.cache.set(guildId, { state, expiresAt: Date.now() + this.cacheTtlMs });
+      }
       return state;
-    })().finally(() => this.loading.delete(guildId));
+    })();
 
-    this.loading.set(guildId, load);
+    const cleanup = (): void => {
+      if (this.loading.get(guildId)?.promise === load) this.loading.delete(guildId);
+    };
+    load.then(cleanup, cleanup);
+    this.loading.set(guildId, { promise: load, epoch });
     return load;
   }
 
   invalidate(guildId: string): void {
+    this.epochs.set(guildId, (this.epochs.get(guildId) ?? 0) + 1);
     this.cache.delete(guildId);
     this.loading.delete(guildId);
   }
