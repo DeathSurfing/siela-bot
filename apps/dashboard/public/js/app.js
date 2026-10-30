@@ -595,6 +595,8 @@ function selectResolverResult(input, result) {
   if (!RESOLVE_SNOWFLAKE.test(id)) return;
   if (input.hasAttribute("data-resolve-append")) {
     const values = input.value.split(/[\s,]+/).map((value) => value.trim()).filter(Boolean);
+    const query = resolverQuery(input).toLocaleLowerCase();
+    if (values.length && query && values.at(-1).toLocaleLowerCase() === query) values.pop();
     if (!values.includes(id)) values.push(id);
     input.value = values.join(", ");
   } else {
