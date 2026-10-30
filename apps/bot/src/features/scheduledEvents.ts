@@ -226,11 +226,20 @@ interface Playback {
   ffmpeg: ChildProcess | null;
 }
 
+interface ScheduledEventRunContext {
+  guild: Guild;
+  event: ScheduledVoiceEventRow;
+  runId: number;
+  startedAt: Date;
+  triggeredBy: string;
+}
+
 export class ScheduledEventService {
   private readonly guilds = new Map<string, Guild>();
   private readonly states = new Map<string, GuildState>();
   private readonly playbacks = new Map<string, Playback>();
   private readonly runningGuilds = new Set<string>();
+  private readonly runningEvents = new Set<number>();
   private readonly tickingGuilds = new Set<string>();
   private timer: NodeJS.Timeout | null = null;
 
@@ -373,36 +382,48 @@ export class ScheduledEventService {
     return eventView(event);
   }
 
+  async startNow(guildId: string, id: number, triggeredBy: string): Promise<ScheduledEventRunView> {
+    const context = await this.beginRun(guildId, id, triggeredBy);
+    void this.completeRun(context)
+      .catch((error) => this.logger.warn({ err: error, guildId, eventId: id }, "scheduled event run completion failed"))
+      .finally(() => this.releaseRun(guildId, id));
+    return this.runningRunView(context);
+  }
+
   async runNow(guildId: string, id: number, triggeredBy: string): Promise<ScheduledEventRunView> {
+    const context = await this.beginRun(guildId, id, triggeredBy);
+    try {
+      return await this.completeRun(context);
+    } finally {
+      this.releaseRun(guildId, id);
+    }
+  }
+
+  private async beginRun(guildId: string, id: number, triggeredBy: string): Promise<ScheduledEventRunContext> {
     if (this.runningGuilds.has(guildId) || this.isVoiceBusy?.(guildId)) {
       throw new UserError("A voice event is already running in this server.", "voice_busy");
     }
     const guild = this.guilds.get(guildId);
     if (!guild) throw new ServiceUnavailableError("The bot is not connected to this server.");
     this.runningGuilds.add(guildId);
+    this.runningEvents.add(id);
     try {
       if (this.isEnabled && !(await this.isEnabled(guildId))) {
         throw new UserError("Scheduled events are turned off on this server.", "feature_disabled");
       }
       const event = await this.eventFor(guildId, id);
-      return await this.recordAndExecute(guild, event, triggeredBy);
-    } finally {
-      this.runningGuilds.delete(guildId);
+      return await this.persistRunStart(guild, event, triggeredBy);
+    } catch (error) {
+      this.releaseRun(guildId, id);
+      throw error;
     }
   }
 
-  private validateStartAt(startAt: Date, now: Date): void {
-    if (Number.isNaN(startAt.getTime()) || startAt.getTime() < now.getTime() - 60_000) {
-      throw new UserError("Start time must be in the future or within the last minute.", "invalid_start_at");
-    }
-  }
-
-  private async recordAndExecute(
+  private async persistRunStart(
     guild: Guild,
     event: ScheduledVoiceEventRow,
     triggeredBy: string,
-    skippedReason?: string,
-  ): Promise<ScheduledEventRunView> {
+  ): Promise<ScheduledEventRunContext> {
     const db = this.database();
     const startedAt = new Date();
     const [run] = await db
@@ -410,14 +431,29 @@ export class ScheduledEventService {
       .values({ eventId: event.id, guildId: event.guildId, startedAt, status: "running", triggeredBy })
       .returning();
     if (!run) throw new Error("Scheduled event run could not be recorded.");
-
     await db
       .update(scheduledVoiceEvents)
       .set({ lastRunAt: startedAt, lastStatus: "running", lastError: null, updatedAt: startedAt })
       .where(and(eq(scheduledVoiceEvents.guildId, event.guildId), eq(scheduledVoiceEvents.id, event.id)));
+    return { guild, event, runId: run.id, startedAt, triggeredBy };
+  }
 
+  private runningRunView(context: ScheduledEventRunContext): ScheduledEventRunView {
+    return {
+      id: context.runId,
+      eventName: context.event.name,
+      status: "running",
+      triggeredBy: context.triggeredBy,
+      startedAt: context.startedAt.toISOString(),
+      finishedAt: null,
+      error: null,
+    };
+  }
+
+  private async completeRun(context: ScheduledEventRunContext, skippedReason?: string): Promise<ScheduledEventRunView> {
+    const { event, guild, runId, startedAt, triggeredBy } = context;
     let status: Exclude<ScheduledEventStatus, "running"> = skippedReason ? "skipped" : "success";
-    let error = skippedReason ?? null;
+    let error: string | null = skippedReason ?? null;
     if (!skippedReason) {
       try {
         await this.execute(guild, event);
@@ -429,16 +465,14 @@ export class ScheduledEventService {
       }
     }
 
+    const db = this.database();
     const finishedAt = new Date();
     const nextRunAt = event.repeat === "none"
       ? null
       : nextScheduledRun(event.nextRunAt ?? event.startAt, scheduledRepeat(event.repeat), finishedAt);
-    const update = {
-      status,
-      finishedAt,
-      error,
-    };
-    await db.update(scheduledVoiceEventRuns).set(update).where(eq(scheduledVoiceEventRuns.id, run.id));
+    await db.update(scheduledVoiceEventRuns)
+      .set({ status, finishedAt, error })
+      .where(eq(scheduledVoiceEventRuns.id, runId));
     await db
       .update(scheduledVoiceEvents)
       .set({
@@ -453,7 +487,7 @@ export class ScheduledEventService {
       .where(and(eq(scheduledVoiceEvents.guildId, event.guildId), eq(scheduledVoiceEvents.id, event.id)));
 
     return {
-      id: run.id,
+      id: runId,
       eventName: event.name,
       status,
       triggeredBy,
@@ -461,6 +495,17 @@ export class ScheduledEventService {
       finishedAt: finishedAt.toISOString(),
       error,
     };
+  }
+
+  private releaseRun(guildId: string, eventId: number): void {
+    this.runningEvents.delete(eventId);
+    this.runningGuilds.delete(guildId);
+  }
+
+  private validateStartAt(startAt: Date, now: Date): void {
+    if (Number.isNaN(startAt.getTime()) || startAt.getTime() < now.getTime() - 60_000) {
+      throw new UserError("Start time must be in the future or within the last minute.", "invalid_start_at");
+    }
   }
 
   protected async execute(guild: Guild, event: ScheduledVoiceEventRow): Promise<void> {
@@ -632,16 +677,17 @@ export class ScheduledEventService {
       .limit(MAX_SCHEDULED_EVENTS_PER_TICK);
 
     for (const event of events) {
+      if (this.runningEvents.has(event.id)) continue;
       if (this.runningGuilds.has(guild.id) || this.isVoiceBusy?.(guild.id)) {
-        await this.recordAndExecute(guild, event, "scheduler", "Skipped because another voice session is active.");
+        const context = await this.persistRunStart(guild, event, "scheduler");
+        await this.completeRun(context, "Skipped because another voice session is active.");
         continue;
       }
-      this.runningGuilds.add(guild.id);
-      void this.recordAndExecute(guild, event, "scheduler")
-        .catch((error) => this.logger.warn({ err: error, guildId: guild.id, eventId: event.id }, "scheduled event run failed"))
-        .finally(() => {
-          this.runningGuilds.delete(guild.id);
-        });
+      void this.beginRun(guild.id, event.id, "scheduler")
+        .then((context) => this.completeRun(context)
+          .catch((error) => this.logger.warn({ err: error, guildId: guild.id, eventId: event.id }, "scheduled event run failed"))
+          .finally(() => this.releaseRun(guild.id, event.id)))
+        .catch((error) => this.logger.warn({ err: error, guildId: guild.id, eventId: event.id }, "scheduled event run could not start"));
       break;
     }
   }

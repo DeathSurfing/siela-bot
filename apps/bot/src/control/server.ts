@@ -333,7 +333,7 @@ export class ControlServer {
         throw new UserError("Scheduled events are turned off on this server.", "feature_disabled");
       }
       const before = (await services.scheduledEvents.list(guildId)).find((event) => event.id === id) ?? null;
-      await services.scheduledEvents.runNow(guildId, id, actor.id);
+      await services.scheduledEvents.startNow(guildId, id, actor.id);
       const after = (await services.scheduledEvents.list(guildId)).find((event) => event.id === id) ?? null;
       await this.auditScheduledEvent(request, guildId, actor.id, "run", id, before, after);
       return this.scheduledEventState(guildId);
