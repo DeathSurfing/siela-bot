@@ -24,6 +24,7 @@ let loadSequence = 0;
 let currentRoute = { view: "overview", guildId: null };
 let progressTimer = null;
 let gamePoll = null;
+let gamePollSequence = 0;
 const RAIL_COLLAPSED_KEY = "siela.rail.collapsed";
 let railCollapsed = false;
 try { railCollapsed = localStorage.getItem(RAIL_COLLAPSED_KEY) === "1"; } catch { /* storage may be blocked */ }
@@ -382,11 +383,12 @@ function renderGamePanel(force = false) {
 
 async function pollGameView(force = false) {
   if (document.hidden || !["cah", "tambola"].includes(state.view) || !state.guildId) return;
+  const sequence = ++gamePollSequence;
   const view = state.view;
   const guildId = state.guildId;
   try {
     const data = await fetchGameState();
-    if (document.hidden || state.view !== view || state.guildId !== guildId) return;
+    if (sequence !== gamePollSequence || document.hidden || state.view !== view || state.guildId !== guildId) return;
     const changed = JSON.stringify(data) !== JSON.stringify(state.data);
     state.data = data;
     if (changed || force) renderGamePanel(force);
@@ -672,6 +674,7 @@ async function runCahAction(action, button) {
   const roundIndex = button.dataset.roundIndex;
   if (roundIndex !== undefined) body.roundIndex = Number(roundIndex);
   button.disabled = true;
+  stopGamePoll();
   try {
     const data = await api.cahAction(guildId, action, body);
     if (state.view !== "cah" || state.guildId !== guildId) return;
@@ -684,6 +687,8 @@ async function runCahAction(action, button) {
     const message = error instanceof Error ? error.message : "The CAH action failed.";
     showToast(message, { key: "cah", tone: "error" });
     announce("The CAH action failed.");
+  } finally {
+    startGamePoll();
   }
 }
 
@@ -692,6 +697,7 @@ async function runTambolaAction(action, button) {
   if (action === "end" && !window.confirm("End this Tambola game for everyone?")) return;
   const guildId = state.guildId;
   button.disabled = true;
+  stopGamePoll();
   try {
     const data = await api.tambolaAction(guildId, action, { gameId: button.dataset.gameId ?? "" });
     if (state.view !== "tambola" || state.guildId !== guildId) return;
@@ -704,6 +710,8 @@ async function runTambolaAction(action, button) {
     const message = error instanceof Error ? error.message : "The Tambola action failed.";
     showToast(message, { key: "tambola", tone: "error" });
     announce("The Tambola action failed.");
+  } finally {
+    startGamePoll();
   }
 }
 
@@ -732,6 +740,7 @@ async function createCahLobby(form) {
     submit.textContent = "Creating…";
   }
   setInlineFeedback("cah-host", "Creating the lobby…");
+  stopGamePoll();
   try {
     const result = await api.cahHost(guildId, { channelId, pointsGoal, maxPlayers });
     if (state.view !== "cah" || state.guildId !== guildId) return;
@@ -745,6 +754,8 @@ async function createCahLobby(form) {
       submit.disabled = false;
       submit.textContent = "Create lobby";
     }
+  } finally {
+    startGamePoll();
   }
 }
 
