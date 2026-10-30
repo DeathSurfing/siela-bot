@@ -80,6 +80,7 @@ describe("dashboard HTTP boundary", () => {
     const app = createDashboardServer({ config, publicDir, control: controlStub() });
     const health = await app.inject({ method: "GET", url: "/healthz" });
     const asset = await app.inject({ method: "GET", url: "/js/app.js" });
+    const index = await app.inject({ method: "GET", url: "/" });
     const font = await app.inject({ method: "GET", url: "/font.woff2" });
 
     expect(health.statusCode).toBe(200);
@@ -88,6 +89,7 @@ describe("dashboard HTTP boundary", () => {
     expect(asset.body).toContain("dashboard");
     expect(asset.headers["content-security-policy"]).toContain("default-src 'self'");
     expect(asset.headers["cache-control"]).toBe("no-store");
+    expect(index.headers["cache-control"]).toBe("no-store");
     expect(font.statusCode).toBe(200);
     expect(font.headers["content-type"]).toBe("font/woff2");
     expect(font.headers["cache-control"]).toBe("public, max-age=3600");

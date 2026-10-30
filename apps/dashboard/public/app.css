@@ -147,6 +147,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .primary-nav { display: grid; gap: 2px; margin-top: 38px; }
 .primary-nav a, .icon-button { min-height: 40px; display: flex; align-items: center; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--muted); background: transparent; transition: transform 90ms var(--ease-out), color var(--duration-press), background-color var(--duration-press), border-color var(--duration-press); }
 .primary-nav a { position: relative; gap: 10px; padding: 0 11px; font-size: 0.87rem; font-weight: 500; }
+.primary-nav a > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .primary-nav a > img { width: 16px; height: 16px; flex: 0 0 16px; }
 .primary-nav a img, .icon, .primary-nav a > img, .icon-button > img, .login-brand > img, .guild-picker-chevron { filter: var(--icon-filter); }
 .icon { width: 18px; height: 18px; flex: 0 0 18px; opacity: 0.8; }
