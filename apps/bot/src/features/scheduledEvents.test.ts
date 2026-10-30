@@ -108,6 +108,9 @@ describe("ScheduledEventService.runNow", () => {
 
   class TestService extends ScheduledEventService {
     protected override async execute(): Promise<void> {}
+    triggerTick(guild: Guild): Promise<void> {
+      return this.tickGuild(guild);
+    }
   }
 
   class FailingService extends ScheduledEventService {
@@ -188,6 +191,29 @@ describe("ScheduledEventService.runNow", () => {
     const first = instance.runNow(guildId, 7, actorId);
     await playbackStarted;
     await expect(instance.runNow(guildId, 7, actorId)).rejects.toThrow("A voice event is already running");
+    release();
+    await first;
+    instance.stop();
+  });
+
+  it("ignores a scheduler tick while the same guild is already being processed", async () => {
+    let release: () => void = () => undefined;
+    let entered: () => void = () => undefined;
+    const checkStarted = new Promise<void>((resolve) => { entered = resolve; });
+    const checkGate = new Promise<void>((resolve) => { release = resolve; });
+    const isEnabled = vi.fn(async () => {
+      entered();
+      await checkGate;
+      return false;
+    });
+    const instance = new TestService(null, logger, false, "Fajr", undefined, undefined, undefined, null, null, isEnabled);
+    const guild = { id: guildId } as Guild;
+    instance.start(guild);
+
+    const first = instance.triggerTick(guild);
+    await checkStarted;
+    await instance.triggerTick(guild);
+    expect(isEnabled).toHaveBeenCalledTimes(1);
     release();
     await first;
     instance.stop();

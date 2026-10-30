@@ -9,6 +9,7 @@
 - [x] Unit 1: Add scheduled-event tables, generate and inspect the migration, and add tested YouTube normalization and next-run rules.
 - [x] Unit 2: Add the persisted service methods, playback exclusion, run history, and scheduler execution.
 - [x] Unit 3: Add token-protected control routes, administrator and channel checks, feature gating, and audit records.
+- [x] Follow-up: Serialize concurrent scheduler ticks for one guild so an overlapping tick cannot record a duplicate skipped run from stale due-event data.
 - [ ] Unit 4: Add dashboard client, routes, navigation, form, event list, history, built-in phases, and the leaderboard spacing fix.
 - [ ] Unit 5: Add service, control, dashboard, and browser coverage; update docs; run all requested checks.
 - [ ] Before every commit, run deslop and inspect the staged diff.

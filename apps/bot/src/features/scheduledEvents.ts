@@ -231,6 +231,7 @@ export class ScheduledEventService {
   private readonly states = new Map<string, GuildState>();
   private readonly playbacks = new Map<string, Playback>();
   private readonly runningGuilds = new Set<string>();
+  private readonly tickingGuilds = new Set<string>();
   private timer: NodeJS.Timeout | null = null;
 
   constructor(
@@ -573,7 +574,17 @@ export class ScheduledEventService {
     }
   }
 
-  private async tickGuild(guild: Guild): Promise<void> {
+  protected async tickGuild(guild: Guild): Promise<void> {
+    if (this.tickingGuilds.has(guild.id)) return;
+    this.tickingGuilds.add(guild.id);
+    try {
+      await this.tickGuildOnce(guild);
+    } finally {
+      this.tickingGuilds.delete(guild.id);
+    }
+  }
+
+  private async tickGuildOnce(guild: Guild): Promise<void> {
     if (this.isEnabled && !(await this.isEnabled(guild.id))) return;
     const state = this.stateFor(guild.id);
     const today = delhiDate();
