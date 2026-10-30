@@ -450,6 +450,232 @@ function setInlineFeedback(section, message, isError = false) {
   feedback.classList.toggle("feedback-error", isError);
 }
 
+const RESOLVE_DELAY_MS = 250;
+const RESOLVE_SNOWFLAKE = /^\d{17,20}$/;
+const resolverRecords = new WeakMap();
+let resolverListSequence = 0;
+let resolverRequestSequence = 0;
+
+function resolverRecord(input) {
+  let record = resolverRecords.get(input);
+  if (!record) {
+    record = { timer: null, sequence: 0, results: [], active: -1 };
+    resolverRecords.set(input, record);
+  }
+  return record;
+}
+
+function resolverQuery(input) {
+  const value = input.value.trim();
+  if (!input.hasAttribute("data-resolve-append")) return value;
+  return value.split(/[\s,]+/).filter(Boolean).at(-1) ?? "";
+}
+
+function enhanceResolver(input) {
+  if (input.dataset.resolveReady === "1") return;
+  input.dataset.resolveReady = "1";
+  const list = document.createElement("ul");
+  list.className = "resolver-list";
+  list.id = `resolver-list-${++resolverListSequence}`;
+  list.setAttribute("role", "listbox");
+  list.hidden = true;
+  const status = document.createElement("small");
+  status.className = "resolved-label";
+  status.hidden = true;
+  input.after(list, status);
+  input.setAttribute("role", "combobox");
+  input.setAttribute("aria-autocomplete", "list");
+  input.setAttribute("aria-expanded", "false");
+  input.setAttribute("aria-controls", list.id);
+  input.setAttribute("autocomplete", "off");
+}
+
+function closeResolverList(input) {
+  const list = document.getElementById(input.getAttribute("aria-controls") ?? "");
+  if (list) {
+    list.hidden = true;
+    list.replaceChildren();
+  }
+  input.setAttribute("aria-expanded", "false");
+  input.removeAttribute("aria-activedescendant");
+  const record = resolverRecords.get(input);
+  if (record) {
+    record.active = -1;
+    record.results = [];
+  }
+}
+
+function closeAllResolverLists() {
+  document.querySelectorAll("[data-resolve-ready]").forEach((node) => {
+    if (node instanceof HTMLInputElement) closeResolverList(node);
+  });
+}
+
+function syncResolvedLabel(input) {
+  const status = input.parentElement?.querySelector(".resolved-label");
+  if (!status || status.hidden) return;
+  const values = input.value.split(/[\s,]+/);
+  if (!values.includes(status.dataset.forId ?? "")) {
+    status.hidden = true;
+    status.textContent = "";
+    delete status.dataset.forId;
+  }
+}
+
+function renderResolverOptions(input, record) {
+  const list = document.getElementById(input.getAttribute("aria-controls") ?? "");
+  if (!list) return;
+  if (!record.results.length) {
+    closeResolverList(input);
+    return;
+  }
+  list.innerHTML = record.results.map((result, index) => `<li role="option" id="${list.id}-${index}" aria-selected="false" data-resolve-index="${index}"><span class="resolver-label">${escapeHtml(result.label ?? result.name ?? "")}</span>${result.description ? `<small>${escapeHtml(result.description)}</small>` : ""}</li>`).join("");
+  list.hidden = false;
+  input.setAttribute("aria-expanded", "true");
+}
+
+function setResolverActive(input, record, index) {
+  const list = document.getElementById(input.getAttribute("aria-controls") ?? "");
+  if (!list) return;
+  const options = [...list.querySelectorAll('[role="option"]')];
+  if (!options.length) return;
+  record.active = Math.max(0, Math.min(options.length - 1, index));
+  options.forEach((option, position) => option.setAttribute("aria-selected", String(position === record.active)));
+  const active = options[record.active];
+  input.setAttribute("aria-activedescendant", active.id);
+  active.scrollIntoView({ block: "nearest" });
+}
+
+async function fetchResolverSuggestions(input, record) {
+  const query = resolverQuery(input);
+  if (!query || RESOLVE_SNOWFLAKE.test(query) || !state.guildId) return;
+  const sequence = ++resolverRequestSequence;
+  record.sequence = sequence;
+  let payload;
+  try {
+    payload = await api.resolve(state.guildId, query, input.dataset.resolveKind || undefined);
+  } catch {
+    if (record.sequence === sequence) record.results = [];
+    return;
+  }
+  if (record.sequence !== sequence || !input.isConnected) return;
+  record.results = Array.isArray(payload?.results) ? payload.results : [];
+  if (document.activeElement !== input) return;
+  renderResolverOptions(input, record);
+}
+
+function handleResolverInput(input) {
+  if (!input.dataset.resolveKind) return;
+  enhanceResolver(input);
+  const record = resolverRecord(input);
+  clearTimeout(record.timer);
+  closeResolverList(input);
+  syncResolvedLabel(input);
+  const query = resolverQuery(input);
+  if (!query || RESOLVE_SNOWFLAKE.test(query)) return;
+  record.timer = setTimeout(() => {
+    record.timer = null;
+    void fetchResolverSuggestions(input, record);
+  }, RESOLVE_DELAY_MS);
+}
+
+function selectResolverResult(input, result) {
+  const id = String(result?.id ?? "");
+  if (!RESOLVE_SNOWFLAKE.test(id)) return;
+  if (input.hasAttribute("data-resolve-append")) {
+    const values = input.value.split(/[\s,]+/).map((value) => value.trim()).filter(Boolean);
+    if (!values.includes(id)) values.push(id);
+    input.value = values.join(", ");
+  } else {
+    input.value = id;
+  }
+  const status = input.parentElement?.querySelector(".resolved-label");
+  if (status) {
+    status.textContent = `${result.label ?? result.name ?? id} · ${id}`;
+    status.dataset.forId = id;
+    status.hidden = false;
+  }
+  closeResolverList(input);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function exactResolverResult(input, record) {
+  const query = resolverQuery(input).toLocaleLowerCase();
+  if (!query) return null;
+  const matches = record.results.filter((result) => String(result.name ?? "").toLocaleLowerCase() === query);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+document.addEventListener("focusin", (event) => {
+  const target = event.target;
+  if (target instanceof HTMLInputElement && target.dataset.resolveKind) enhanceResolver(target);
+});
+
+document.addEventListener("focusout", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement) || !target.dataset.resolveReady) return;
+  const next = event.relatedTarget;
+  if (next instanceof Node && target.parentElement?.contains(next)) return;
+  setTimeout(() => {
+    if (document.activeElement !== target) closeResolverList(target);
+  }, 120);
+});
+
+document.addEventListener("pointerdown", (event) => {
+  const target = event.target;
+  if (target instanceof Element && target.closest(".resolver-list")) event.preventDefault();
+});
+
+document.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const option = target.closest("[data-resolve-index]");
+  if (!option) {
+    if (!target.closest("[data-resolve-kind]")) closeAllResolverLists();
+    return;
+  }
+  const list = option.closest(".resolver-list");
+  if (!list) return;
+  const input = document.querySelector(`[aria-controls="${CSS.escape(list.id)}"]`);
+  if (!(input instanceof HTMLInputElement)) return;
+  const result = resolverRecord(input).results[Number(option.dataset.resolveIndex)];
+  if (result) selectResolverResult(input, result);
+});
+
+document.addEventListener("keydown", (event) => {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement) || !input.dataset.resolveKind) return;
+  const record = resolverRecord(input);
+  const list = document.getElementById(input.getAttribute("aria-controls") ?? "");
+  const open = list && !list.hidden;
+  if (event.key === "Escape" && open) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeResolverList(input);
+    return;
+  }
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    if (!open && event.key === "ArrowDown" && resolverQuery(input)) {
+      event.preventDefault();
+      void fetchResolverSuggestions(input, record);
+      return;
+    }
+    if (!open) return;
+    event.preventDefault();
+    const options = list.querySelectorAll('[role="option"]');
+    const position = event.key === "ArrowDown" ? record.active + 1 : record.active - 1;
+    setResolverActive(input, record, position < 0 ? options.length - 1 : position);
+    return;
+  }
+  if (event.key === "Enter" && open) {
+    const active = record.results[record.active] ?? exactResolverResult(input, record);
+    if (!active) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectResolverResult(input, active);
+  }
+});
+
 function featureButton(featureId) {
   return document.querySelector(`[data-feature-id="${CSS.escape(featureId)}"]`);
 }
@@ -1037,6 +1263,7 @@ document.addEventListener("input", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
   if (target instanceof HTMLInputElement) {
+    if (target.dataset.resolveKind) handleResolverInput(target);
     if (target.id === "view-search") {
       state.search = target.value;
       renderMain(true);

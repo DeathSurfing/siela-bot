@@ -1,7 +1,7 @@
 import { styleMessage } from "../features/ui.js";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
-import { PermissionsBitField, type Client, type Guild, type GuildMember } from "discord.js";
+import { PermissionsBitField, ChannelType, type Client, type Guild, type GuildMember } from "discord.js";
 import type { ZodType } from "zod";
 import {
   auditQuerySchema,
@@ -33,6 +33,7 @@ import {
   musicVolumeSchema,
   prefixSetSchema,
   privacyDeleteSchema,
+  resolveQuerySchema,
   snowflakeSchema,
   tambolaGameActionSchema,
   tempvcChannelUpdateSchema,
@@ -41,6 +42,7 @@ import {
   welcomeTestSchema,
   welcomeUpdateSchema,
   type BotStatus,
+  type ResolveKind,
 } from "@siela/shared";
 import type { Services } from "../framework/types.js";
 import type { Logger } from "../lib/logger.js";
@@ -64,6 +66,26 @@ type Handler = (request: FastifyRequest, reply: FastifyReply) => Promise<unknown
 
 const SNOWFLAKE = /^\d{17,20}$/;
 const AUDIT_ACTOR_FETCH_LIMIT = 10;
+
+const RESOLVE_KIND_ORDER: Record<ResolveKind, number> = { channel: 0, voice: 1, role: 2, user: 3 };
+
+interface ResolveCandidate {
+  id: string;
+  name: string;
+  kind: ResolveKind;
+  label: string;
+  description?: string;
+  rank: number;
+}
+
+/** Exact match outranks a prefix, and a prefix outranks a substring. */
+function resolveRank(name: string, term: string): number {
+  const haystack = name.toLocaleLowerCase();
+  if (haystack === term) return 0;
+  if (haystack.startsWith(term)) return 1;
+  if (haystack.includes(term)) return 2;
+  return -1;
+}
 
 export class ControlServer {
   private readonly app: FastifyInstance;
@@ -130,6 +152,64 @@ export class ControlServer {
       throw new UserError(result.error.issues.map((issue) => issue.message).join("; "), "validation_error");
     }
     return result.data;
+  }
+
+  private async resolveNames(
+    guild: Guild,
+    query: { q: string; kind?: ResolveKind; limit: number },
+  ): Promise<Array<Omit<ResolveCandidate, "rank">>> {
+    const raw = query.q.replace(/^[#@]/, "").trim();
+    const term = raw.toLocaleLowerCase();
+    if (!term) return [];
+    const candidates: ResolveCandidate[] = [];
+    const add = (id: string, name: string, kind: ResolveKind, label: string, description?: string) => {
+      const rank = resolveRank(name, term);
+      if (rank >= 0) candidates.push({ id, name, kind, label, description, rank });
+    };
+
+    if (query.kind !== "role" && query.kind !== "user") {
+      for (const channel of guild.channels.cache.values()) {
+        const kind: ResolveKind = channel.type === ChannelType.GuildVoice ? "voice" : "channel";
+        if (query.kind === "voice" && kind !== "voice") continue;
+        if (query.kind === "channel" && kind === "voice") continue;
+        if (query.kind === "channel" && channel.type !== ChannelType.GuildCategory && !channel.isTextBased()) continue;
+        const description = channel.type === ChannelType.GuildCategory ? "Category" : undefined;
+        add(channel.id, channel.name, kind, `#${channel.name}`, description);
+      }
+    }
+
+    if (!query.kind || query.kind === "role") {
+      for (const role of guild.roles.cache.values()) {
+        const everyone = role.id === guild.id;
+        add(role.id, role.name, "role", everyone ? "@everyone" : `@${role.name}`, everyone ? "Includes every member" : undefined);
+      }
+    }
+
+    if (!query.kind || query.kind === "user") {
+      const members = new Map(guild.members.cache);
+      try {
+        const fetched = await guild.members.fetch({ query: raw, limit: query.limit });
+        for (const member of fetched.values()) members.set(member.id, member);
+      } catch {
+        // A rejected lookup still leaves the cached members as results.
+      }
+      for (const member of members.values()) {
+        add(member.id, member.displayName, "user", member.displayName, member.user?.bot ? "Bot" : undefined);
+      }
+    }
+
+    return candidates
+      .sort((a, b) => a.rank - b.rank
+        || RESOLVE_KIND_ORDER[a.kind] - RESOLVE_KIND_ORDER[b.kind]
+        || a.name.localeCompare(b.name))
+      .slice(0, query.limit)
+      .map(({ id, name, kind, label, description }) => ({
+        id,
+        name,
+        kind,
+        label,
+        ...(description ? { description } : {}),
+      }));
   }
 
   private requestId(request: FastifyRequest): string {
@@ -199,6 +279,11 @@ export class ControlServer {
         administrator: member?.permissions.has(PermissionsBitField.Flags.Administrator) ?? false,
         user: member ? { id: member.id, name: member.displayName } : null,
       };
+    });
+
+    this.route("GET", "/v1/resolve", async (request) => {
+      const query = this.parse(resolveQuerySchema, request.query);
+      return { results: await this.resolveNames(this.guild(request), query) };
     });
 
     this.route("GET", "/v1/features", async (request) => {

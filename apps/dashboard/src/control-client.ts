@@ -6,12 +6,14 @@ export const CONFIG_SECTIONS = ["prefix", "welcome", "autorole", "tempvc", "musi
 export const CAH_ACTIONS = ["start", "reveal", "next", "end"] as const;
 export const TAMBOLA_ACTIONS = ["end", "pause", "resume"] as const;
 export const CASINO_GAMES = ["coinflip", "slots"] as const;
+export const RESOLVE_KINDS = ["channel", "voice", "role", "user"] as const;
 
 export type MusicAction = (typeof MUSIC_ACTIONS)[number];
 export type ConfigSection = (typeof CONFIG_SECTIONS)[number];
 export type CahAction = (typeof CAH_ACTIONS)[number];
 export type TambolaAction = (typeof TAMBOLA_ACTIONS)[number];
 export type CasinoGame = (typeof CASINO_GAMES)[number];
+export type ResolveKind = (typeof RESOLVE_KINDS)[number];
 
 export class ControlApiError extends Error {
   constructor(
@@ -37,6 +39,7 @@ export interface BirthdayInput {
 export interface ControlClient {
   getStatus(): Promise<unknown>;
   getGuilds(): Promise<unknown>;
+  resolve(guildId: string, query: string, kind?: ResolveKind): Promise<unknown>;
   getFeatures(guildId: string): Promise<unknown>;
   updateFeature(guildId: string, featureId: string, enabled: boolean, actorId?: string): Promise<unknown>;
   getAudit(guildId: string, limit: number): Promise<unknown>;
@@ -105,6 +108,11 @@ export function createControlClient(baseUrl: string, token: string, fetcher: Con
   return {
     getStatus: () => request("/v1/status"),
     getGuilds: () => request("/v1/guilds"),
+    resolve: (guildId, query, kind) => {
+      const params = new URLSearchParams({ q: query });
+      if (kind) params.set("kind", kind);
+      return request(`/v1/resolve?${params.toString()}`, { guildId });
+    },
     getFeatures: (guildId) => request("/v1/features", { guildId }),
     updateFeature: (guildId, featureId, enabled, actorId) =>
       request("/v1/features", { guildId, actorId, method: "PATCH", body: { featureId, enabled } }),

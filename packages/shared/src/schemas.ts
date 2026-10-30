@@ -147,6 +147,16 @@ export const auditQuerySchema = z
   })
   .strict();
 
+export const resolveKindSchema = z.enum(["channel", "voice", "role", "user"]);
+
+export const resolveQuerySchema = z
+  .object({
+    q: z.string().trim().min(1, "Enter a name to search for").max(80, "Search text must be at most 80 characters"),
+    kind: resolveKindSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(20).default(8),
+  })
+  .strict();
+
 function daysInMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
@@ -316,5 +326,7 @@ export type TempVcChannelUpdate = z.infer<typeof tempvcChannelUpdateSchema>;
 export type MusicSettingsUpdate = z.infer<typeof musicSettingsUpdateSchema>;
 export type CountersQuery = z.infer<typeof countersQuerySchema>;
 export type CountersReset = z.infer<typeof countersResetSchema>;
+export type ResolveKind = z.infer<typeof resolveKindSchema>;
+export type ResolveQuery = z.infer<typeof resolveQuerySchema>;
 export type MusicPlayInput = z.infer<typeof musicPlaySchema>;
 export type WelcomeTestInput = z.infer<typeof welcomeTestSchema>;

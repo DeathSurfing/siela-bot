@@ -44,6 +44,7 @@ function controlStub(overrides: Partial<ControlClient> = {}): ControlClient {
   return {
     getStatus: vi.fn().mockResolvedValue({ ready: true }),
     getGuilds: vi.fn().mockResolvedValue({ guilds: [] }),
+    resolve: vi.fn().mockResolvedValue({ results: [] }),
     getFeatures: vi.fn().mockResolvedValue({ features: [] }),
     updateFeature: vi.fn().mockResolvedValue({ featureId: "welcome", enabled: false }),
     getAudit: vi.fn().mockResolvedValue({ entries: [] }),
@@ -467,8 +468,48 @@ describe("dashboard HTTP boundary", () => {
   });
 });
 
-describe("dashboard game routes", () => {
-  it("reads CAH and Tambola state for any signed-in session", async () => {
+describe("dashboard resolver proxy", () => {
+  it("proxies a name lookup for any signed-in session without an Administrator check", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/guilds/123/resolve?q=general&kind=channel",
+      headers: sessionHeaders({ id: "operator", name: "Operator", avatarUrl: null }),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ results: [] });
+    expect(control.resolve).toHaveBeenCalledWith("123", "general", "channel");
+    expect(control.authorize).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("rejects a missing query, an overlong query, and an unknown kind", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders();
+    const missing = await app.inject({ method: "GET", url: "/api/guilds/123/resolve", headers });
+    const long = await app.inject({ method: "GET", url: `/api/guilds/123/resolve?q=${"a".repeat(81)}`, headers });
+    const kind = await app.inject({ method: "GET", url: "/api/guilds/123/resolve?q=general&kind=message", headers });
+
+    expect(missing.statusCode).toBe(400);
+    expect(long.statusCode).toBe(400);
+    expect(kind.statusCode).toBe(400);
+    expect(control.resolve).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("requires a session", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({ method: "GET", url: "/api/guilds/123/resolve?q=general" });
+    expect(response.statusCode).toBe(401);
+    await app.close();
+  });
+});
+
+describe("dashboard game routes", () => {  it("reads CAH and Tambola state for any signed-in session", async () => {
     const control = controlStub();
     const app = createDashboardServer({ config, publicDir, control });
     const cah = await app.inject({ method: "GET", url: "/api/guilds/123/cah", headers: sessionHeaders() });

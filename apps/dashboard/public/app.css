@@ -344,6 +344,12 @@ kbd { min-width: 17px; padding: 1px 4px; border: 1px solid var(--line); border-r
 .input-action input { flex: 1; }
 .input-action input::placeholder, .play-form > input::placeholder { color: var(--quiet); }
 .player-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.resolver-list { list-style: none; display: grid; gap: 1px; max-height: 216px; margin: 2px 0 0; padding: 4px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--line-strong); border-radius: var(--radius-control); background: var(--surface-raised); box-shadow: 0 10px 26px var(--dialog-shadow); }
+.resolver-list li { min-width: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 7px 8px; border-radius: var(--radius-xs); color: var(--text); font-size: 0.77rem; cursor: pointer; }
+.resolver-list li[aria-selected="true"] { background: var(--surface-hover); }
+.resolver-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resolver-list li small { flex: 0 0 auto; color: var(--quiet); font: 0.66rem/1.3 ui-monospace, monospace; }
+.resolved-label { color: var(--ok); font: 0.68rem/1.4 ui-monospace, monospace; overflow-wrap: anywhere; }
 .queue-panel { min-width: 0; padding-left: 36px; border-left: 1px solid var(--line); }
 .queue-panel .section-heading { min-height: 32px; }
 .queue-panel h2 { display: flex; align-items: baseline; gap: 8px; }
@@ -501,6 +507,7 @@ td code { overflow-wrap: anywhere; }
   .primary-nav a:hover, .icon-button:hover { color: var(--text); background: var(--surface); }
   .rail-head .rail-picker-button:hover { border-color: var(--line); background: var(--surface); }
   .guild-option:hover { background: var(--surface-hover); }
+  .resolver-list li:hover { background: var(--surface-hover); }
   .rail-user:hover { background: var(--surface); }
   .text-link:hover, .guild-name:hover { text-decoration: underline; text-underline-offset: 3px; }
   .copy-id:hover { color: var(--text); }
@@ -599,6 +606,7 @@ td code { overflow-wrap: anywhere; }
   .settings-save { align-self: flex-end; }
   .input-action { flex-direction: column; }
   .input-action .button { width: 100%; }
+  .resolver-list li { flex-wrap: wrap; }
   .casino-fields { grid-template-columns: minmax(0, 1fr); }
 }
 

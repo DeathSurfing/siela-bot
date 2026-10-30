@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { PermissionsBitField, type Client, type Guild } from "discord.js";
+import { ChannelType, PermissionsBitField, type Client, type Guild } from "discord.js";
 import { ControlServer } from "./server.js";
 import type { Services } from "../framework/types.js";
 import type { Logger } from "../lib/logger.js";
@@ -17,6 +17,19 @@ interface TestMember {
   id: string;
   displayName: string;
   administrator: boolean;
+  bot?: boolean;
+}
+
+interface TestChannel {
+  id: string;
+  name: string;
+  type: ChannelType;
+  text?: boolean;
+}
+
+interface TestRole {
+  id: string;
+  name: string;
 }
 
 interface CahStubGame {
@@ -41,23 +54,39 @@ function member(entry: TestMember) {
   return {
     id: entry.id,
     displayName: entry.displayName,
+    user: { bot: entry.bot ?? false },
     permissions: {
       has: (flag: bigint) => entry.administrator && flag === PermissionsBitField.Flags.Administrator,
     },
   };
 }
 
-function guild(id: string, name: string, members: TestMember[], channel?: { id: string; guildId: string; isTextBased: () => boolean }) {
+function guild(
+  id: string,
+  name: string,
+  members: TestMember[],
+  channel?: { id: string; guildId: string; isTextBased: () => boolean },
+  options: { channels?: TestChannel[]; roles?: TestRole[]; search?: TestMember[] } = {},
+) {
   const cache = new Map(members.map((entry) => [entry.id, member(entry)]));
+  const search = new Map((options.search ?? []).map((entry) => [entry.id, member(entry)]));
   const fetch = vi.fn(async (input: unknown) => {
     if (typeof input === "string") {
       const found = cache.get(input);
       if (!found) throw new Error("Unknown Member");
       return found;
     }
-    return new Map();
+    return search;
   });
   const channelsFetch = vi.fn(async (channelId: string) => channel ? { ...channel, id: channelId } : null);
+  const channelCache = new Map((options.channels ?? []).map((entry) => [entry.id, {
+    id: entry.id,
+    name: entry.name,
+    type: entry.type,
+    guildId: id,
+    isTextBased: () => entry.text ?? false,
+  }]));
+  const roleCache = new Map((options.roles ?? []).map((entry) => [entry.id, { id: entry.id, name: entry.name }]));
   return {
     id,
     name,
@@ -66,7 +95,8 @@ function guild(id: string, name: string, members: TestMember[], channel?: { id: 
     joinedTimestamp: 1_710_000_000_000,
     iconURL: () => null,
     members: { cache, fetch },
-    channels: { cache: new Map(), fetch: channelsFetch },
+    roles: { cache: roleCache },
+    channels: { cache: channelCache, fetch: channelsFetch },
   } as unknown as Guild;
 }
 
@@ -78,6 +108,9 @@ function server(options: {
   tambolaEnabled?: boolean;
   economyEnabled?: boolean;
   members?: TestMember[];
+  channels?: TestChannel[];
+  roles?: TestRole[];
+  search?: TestMember[];
   auditEntries?: unknown[];
   channel?: { id: string; guildId: string; isTextBased: () => boolean };
   cahGame?: CahStubGame | null;
@@ -86,7 +119,7 @@ function server(options: {
   economy?: EconomyStub;
 } = {}) {
   const guilds = new Map<string, Guild>([
-    [GUILD_A, guild(GUILD_A, "Alpha", options.members ?? [], options.channel)],
+    [GUILD_A, guild(GUILD_A, "Alpha", options.members ?? [], options.channel, options)],
     [GUILD_B, guild(GUILD_B, "Beta", [])],
   ]);
   const ids = options.multiGuild ? [GUILD_A, GUILD_B] : [GUILD_A];
@@ -249,6 +282,112 @@ describe("ControlServer guild scoping", () => {
     expect(response.json()).toEqual({ guildId: GUILD_A, featureId: "relics", enabled: true });
     expect(audits).toHaveLength(1);
     expect((audits[0] as { action: string }).action).toBe("features.update");
+  });
+});
+
+describe("ControlServer name resolution", () => {
+  const channels: TestChannel[] = [
+    { id: "333333333333333301", name: "General", type: ChannelType.GuildText, text: true },
+    { id: "333333333333333302", name: "General Chat", type: ChannelType.GuildText, text: true },
+    { id: "333333333333333303", name: "Chatty General", type: ChannelType.GuildText, text: true },
+    { id: "333333333333333304", name: "General Voice", type: ChannelType.GuildVoice },
+    { id: "333333333333333305", name: "General", type: ChannelType.GuildCategory },
+  ];
+  const roles: TestRole[] = [
+    { id: GUILD_A, name: "@everyone" },
+    { id: "333333333333333306", name: "General" },
+  ];
+  const members: TestMember[] = [
+    { id: ADMIN_USER, displayName: "Ada", administrator: true },
+    { id: MEMBER_USER, displayName: "Adam", administrator: false },
+    { id: "900000000000000004", displayName: "Botty", administrator: false, bot: true },
+  ];
+
+  it("ranks an exact channel name, then a prefix, then a substring", async () => {
+    const { app } = server({ channels });
+    const response = await app.inject({ method: "GET", url: "/v1/resolve?q=general&kind=channel", headers: auth });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().results.map((entry: { id: string }) => entry.id)).toEqual([
+      "333333333333333301",
+      "333333333333333305",
+      "333333333333333302",
+      "333333333333333303",
+    ]);
+    expect(response.json().results[0]).toEqual({
+      id: "333333333333333301",
+      name: "General",
+      kind: "channel",
+      label: "#General",
+    });
+    expect(response.json().results[1].description).toBe("Category");
+  });
+
+  it("returns only voice channels for the voice kind", async () => {
+    const { app } = server({ channels });
+    const response = await app.inject({ method: "GET", url: "/v1/resolve?q=general&kind=voice", headers: auth });
+    expect(response.json().results).toEqual([
+      { id: "333333333333333304", name: "General Voice", kind: "voice", label: "#General Voice" },
+    ]);
+  });
+
+  it("resolves roles and marks the everyone role", async () => {
+    const { app } = server({ roles });
+    const exact = await app.inject({ method: "GET", url: "/v1/resolve?q=general&kind=role", headers: auth });
+    const everyone = await app.inject({ method: "GET", url: "/v1/resolve?q=everyone&kind=role", headers: auth });
+    expect(exact.json().results[0]).toEqual({
+      id: "333333333333333306",
+      name: "General",
+      kind: "role",
+      label: "@General",
+    });
+    expect(everyone.json().results[0]).toMatchObject({ label: "@everyone", description: "Includes every member" });
+  });
+
+  it("resolves cached members, marks bots, and searches the gateway when the cache misses", async () => {
+    const { app } = server({
+      members,
+      search: [{ id: "900000000000000005", displayName: "Fetched Friend", administrator: false }],
+    });
+    const response = await app.inject({ method: "GET", url: "/v1/resolve?q=ada&kind=user", headers: auth });
+    const bot = await app.inject({ method: "GET", url: "/v1/resolve?q=botty&kind=user", headers: auth });
+    const fetched = await app.inject({ method: "GET", url: "/v1/resolve?q=fetched&kind=user", headers: auth });
+    expect(response.json().results.map((entry: { id: string }) => entry.id)).toEqual([ADMIN_USER, MEMBER_USER]);
+    expect(bot.json().results[0]).toMatchObject({ id: "900000000000000004", description: "Bot" });
+    expect(fetched.json().results[0]).toMatchObject({ id: "900000000000000005", label: "Fetched Friend" });
+  });
+
+  it("strips a leading # or @ from the search text", async () => {
+    const { app } = server({ channels, members });
+    const channel = await app.inject({ method: "GET", url: "/v1/resolve?q=%23general&kind=channel", headers: auth });
+    const user = await app.inject({ method: "GET", url: "/v1/resolve?q=%40ada&kind=user", headers: auth });
+    expect(channel.json().results[0].id).toBe("333333333333333301");
+    expect(user.json().results[0].id).toBe(ADMIN_USER);
+  });
+
+  it("caps the result list at the requested limit", async () => {
+    const { app } = server({ channels });
+    const response = await app.inject({ method: "GET", url: "/v1/resolve?q=general&kind=channel&limit=2", headers: auth });
+    expect(response.json().results).toHaveLength(2);
+  });
+
+  it("never resolves names from another guild", async () => {
+    const { app } = server({ multiGuild: true, channels });
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/resolve?q=general&kind=channel",
+      headers: { ...auth, "x-guild-id": GUILD_B },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().results).toEqual([]);
+  });
+
+  it("rejects an empty query and an unknown kind", async () => {
+    const { app } = server();
+    const empty = await app.inject({ method: "GET", url: "/v1/resolve?q=%20", headers: auth });
+    const kind = await app.inject({ method: "GET", url: "/v1/resolve?q=general&kind=server", headers: auth });
+    expect(empty.statusCode).toBe(400);
+    expect(empty.json().error.code).toBe("validation_error");
+    expect(kind.statusCode).toBe(400);
   });
 });
 

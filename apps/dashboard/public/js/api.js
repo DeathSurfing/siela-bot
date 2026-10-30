@@ -46,6 +46,11 @@ export const api = {
   logout: () => request("/api/logout", { method: "POST", body: {} }),
   status: () => request("/api/status"),
   guilds: () => request("/api/guilds"),
+  resolve: (guildId, query, kind) => {
+    const params = new URLSearchParams({ q: query });
+    if (kind) params.set("kind", kind);
+    return request(`/api/guilds/${encodeURIComponent(guildId)}/resolve?${params.toString()}`);
+  },
   features: (guildId) => request(`/api/guilds/${encodeURIComponent(guildId)}/features`),
   feature: (guildId, featureId, enabled) => request(`/api/guilds/${encodeURIComponent(guildId)}/features/${encodeURIComponent(featureId)}`, { method: "PATCH", body: { enabled } }),
   audit: (guildId, limit = 50) => request(`/api/guilds/${encodeURIComponent(guildId)}/audit?limit=${limit}`),

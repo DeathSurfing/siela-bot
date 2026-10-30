@@ -26,17 +26,27 @@ const editableFields = {
 };
 
 const hints = {
-  channelId: "Right-click a channel in Discord and copy its ID.",
-  goodbyeChannelId: "Right-click a channel in Discord and copy its ID.",
+  channelId: "Right-click a channel in Discord and copy its ID, or type a name and pick it.",
+  goodbyeChannelId: "Right-click a channel in Discord and copy its ID, or type a name and pick it.",
   hubChannelId: "The voice channel members join to create their own room.",
   categoryId: "The category new temporary rooms are placed in.",
   musicChannelId: "Optional text channel for player prompts.",
-  roleIds: "Comma-separated role IDs.",
-  djRoleIds: "Comma-separated role IDs that can control music.",
+  roleIds: "Comma-separated role IDs. Pick a role by name to append it.",
+  djRoleIds: "Comma-separated role IDs that can control music. Pick a role by name to append it.",
   message: "Placeholders: {mention}, {user}, {server}.",
   dmMessage: "Sent only when direct messages are enabled.",
   goodbyeMessage: "Placeholders: {user}, {server}.",
   nameTemplate: "Use {user} for the owner's name.",
+};
+
+const resolveFieldKinds = {
+  channelId: "channel",
+  goodbyeChannelId: "channel",
+  hubChannelId: "voice",
+  categoryId: "channel",
+  musicChannelId: "channel",
+  roleIds: "role",
+  djRoleIds: "role",
 };
 
 const labels = {
@@ -335,7 +345,7 @@ function renderMusic(data) {
           <button type="button" class="loop-button" data-action="music" data-music-action="loop" data-loop-mode="${loopNext}" aria-label="Change repeat mode. Currently ${escapeHtml(loop)}.">${icon("repeat")}<span>${escapeHtml(loop)} repeat</span></button>
         </div>
         <div class="volume-row">${icon("volume-up")}<label for="volume-control">Volume</label><input id="volume-control" type="range" min="0" max="150" value="${volume}" aria-valuetext="${volume} percent"><output for="volume-control" class="tabular">${volume}%</output></div>
-        <form class="play-form" id="play-form"><label for="voice-channel">Voice channel ID</label><input id="voice-channel" name="voiceChannelId" type="text" inputmode="numeric" placeholder="Right-click a voice channel in Discord, then Copy ID" autocomplete="off" value="${escapeHtml(state.voiceChannelId ?? "")}"><label for="track-query">Add to queue</label><div class="input-action"><input id="track-query" name="query" type="search" placeholder="Song or artist…" autocomplete="off" required><button class="button button-primary" type="submit">Add track</button></div></form>
+        <form class="play-form" id="play-form"><label for="voice-channel">Voice channel ID</label><input id="voice-channel" name="voiceChannelId" type="text" inputmode="numeric" placeholder="Right-click a voice channel in Discord, then Copy ID" autocomplete="off" value="${escapeHtml(state.voiceChannelId ?? "")}" data-resolve-kind="voice"><label for="track-query">Add to queue</label><div class="input-action"><input id="track-query" name="query" type="search" placeholder="Song or artist…" autocomplete="off" required><button class="button button-primary" type="submit">Add track</button></div></form>
         <div class="player-actions"><button type="button" class="button button-secondary" data-action="music" data-music-action="join">Join voice</button><button type="button" class="button button-quiet" data-action="music" data-music-action="disconnect">Disconnect</button><button type="button" class="button button-quiet danger-text" data-action="music" data-music-action="stop" ${playing || paused ? "" : "disabled"}>Stop playback</button></div>
       </section>
       <section class="queue-panel"><div class="section-heading"><h2>Queue <span class="queue-count">${String(queue.length).padStart(2, "0")}</span></h2><button type="button" class="button button-quiet" data-action="music" data-music-action="clear" ${queue.length ? "" : "disabled"}>Clear queue</button></div><ol class="queue-list">${queueHtml}</ol></section>
@@ -473,7 +483,7 @@ function renderCahHostForm() {
   return `<form class="settings-section" id="cah-host-form">
     <div class="settings-heading"><div><h2>Create a lobby</h2><p>The bot posts the lobby card in the channel. Members join, play hands, and judge rounds in Discord.</p></div><div class="settings-save"><button class="button button-primary" type="submit">Create lobby</button></div></div>
     <div class="settings-fields">
-      <label class="setting-field" for="cah-channel"><span><strong>Text channel ID</strong><small>Right-click a text channel in Discord, then Copy ID.</small></span><input id="cah-channel" name="channelId" type="text" inputmode="numeric" autocomplete="off" required placeholder="123456789012345678"></label>
+      <label class="setting-field" for="cah-channel"><span><strong>Text channel ID</strong><small>Right-click a text channel in Discord, then Copy ID, or type its name and pick it.</small></span><input id="cah-channel" name="channelId" type="text" inputmode="numeric" autocomplete="off" required placeholder="123456789012345678" data-resolve-kind="channel"></label>
       <label class="setting-field" for="cah-points"><span><strong>Points to win</strong><small>1 to 50. Default 7.</small></span><input id="cah-points" name="pointsGoal" type="number" min="1" max="50" step="1" value="7" required></label>
       <label class="setting-field" for="cah-players"><span><strong>Maximum players</strong><small>3 to 10.</small></span><input id="cah-players" name="maxPlayers" type="number" min="3" max="10" step="1" value="10" required></label>
     </div>
@@ -633,11 +643,15 @@ function renderConfigField(field, value, disabled = false) {
   const longText = field === "message" || field === "dmMessage" || field === "goodbyeMessage";
   const type = typeof value === "number" ? "number" : "text";
   const valueString = isList ? value.join(", ") : value == null ? "" : String(value);
+  const resolveKind = resolveFieldKinds[field];
+  const resolveAttributes = resolveKind
+    ? ` data-resolve-kind="${resolveKind}"${field === "roleIds" || field === "djRoleIds" ? " data-resolve-append" : ""}`
+    : "";
   const control = isList
-    ? `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="list" type="text" value="${escapeHtml(valueString)}" placeholder="Comma-separated IDs" autocomplete="off" inputmode="numeric" ${off}>`
+    ? `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="list" type="text" value="${escapeHtml(valueString)}" placeholder="Comma-separated IDs" autocomplete="off" inputmode="numeric"${resolveAttributes} ${off}>`
     : longText
       ? `<textarea id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="text" rows="3" ${off}>${escapeHtml(valueString)}</textarea>`
-    : `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="${type}" type="${type}" value="${escapeHtml(valueString)}" ${type === "number" ? "step=1" : "autocomplete=off"} ${off}>`;
+    : `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="${type}" type="${type}" value="${escapeHtml(valueString)}" ${type === "number" ? "step=1" : "autocomplete=off"}${resolveAttributes} ${off}>`;
   return `<label class="setting-field" for="setting-${escapeHtml(field)}"><span><strong>${escapeHtml(label)}</strong>${hint}</span>${control}</label>`;
 }
 

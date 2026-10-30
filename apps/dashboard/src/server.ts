@@ -10,6 +10,7 @@ import {
   CONFIG_SECTIONS,
   ControlApiError,
   MUSIC_ACTIONS,
+  RESOLVE_KINDS,
   TAMBOLA_ACTIONS,
   type CahAction,
   type CasinoGame,
@@ -58,6 +59,12 @@ const cahActionSchema = z
   .object({ gameId: gameIdSchema, roundIndex: z.number().int().min(0).optional() })
   .strict();
 const tambolaActionSchema = z.object({ gameId: gameIdSchema }).strict();
+const resolveQuerySchema = z
+  .object({
+    q: z.string().trim().min(1, "Enter a name to search for.").max(80, "Search text must be at most 80 characters."),
+    kind: z.enum(RESOLVE_KINDS).optional(),
+  })
+  .strict();
 const requestIdSchema = z.string().min(8).max(100);
 const casinoCoinflipSchema = z
   .object({
@@ -397,6 +404,14 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
     if (!guildId) return undefined;
     const user = sessionUser(request);
     return { administrator: user ? await isAdministrator(guildId, user.id) : false };
+  });
+  get("/api/guilds/:guildId/resolve", (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    const query = resolveQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return Promise.resolve(apiError(reply, 400, "invalid_query", query.error.issues.map((issue) => issue.message).join("; ")));
+    }
+    return guildId ? control.resolve(guildId, query.data.q, query.data.kind) : Promise.resolve(undefined);
   });
   get("/api/guilds/:guildId/features", (request, reply) => {
     const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
