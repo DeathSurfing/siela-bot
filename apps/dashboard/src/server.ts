@@ -464,7 +464,11 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
       }
       const body = bodySchema.safeParse(request.body ?? {});
       if (!body.success) return apiError(reply, 400, "invalid_body", "Music actions require a JSON object.");
-      return guildId ? control.musicAction(guildId, request.params.action as MusicAction, body.data) : undefined;
+      if (!guildId) return undefined;
+      const action = request.params.action as MusicAction;
+      const user = sessionUser(request);
+      const userId = user && snowflakePattern.test(user.id) ? user.id : undefined;
+      return control.musicAction(guildId, action, body.data, ["join", "play"].includes(action) ? userId : undefined);
     },
   );
   get("/api/guilds/:guildId/config", (request, reply) => {

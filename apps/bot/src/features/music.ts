@@ -612,6 +612,9 @@ class GuildPlayer {
       position: this.positionMs(),
       current: trackInfo(this.current),
       upcoming: this.queue.map(toInfo),
+      channelId: this.connection.joinConfig.channelId ?? null,
+      channelName: null,
+      filter: this.filterPreset,
     };
   }
 }

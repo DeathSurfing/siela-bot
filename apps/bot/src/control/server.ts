@@ -552,13 +552,26 @@ export class ControlServer {
       return after;
     });
     this.route("GET", "/v1/music/state", async (request) => {
-      const music = this.requireMusic();
-      return music.state(this.guildId(request)) ?? { playing: false, paused: false, volume: 0, loop: "off", position: 0, current: null, upcoming: [] };
+      const guild = this.guild(request);
+      const state = this.requireMusic().state(guild.id) ?? {
+        playing: false,
+        paused: false,
+        volume: 0,
+        loop: "off",
+        position: 0,
+        current: null,
+        upcoming: [],
+        channelId: null,
+        channelName: null,
+        filter: "off",
+      };
+      const channel = state.channelId ? guild.channels.cache.get(state.channelId) : null;
+      return { ...state, channelName: channel?.name ?? null };
     });
     this.route("POST", "/v1/music/join", async (request) => {
       await this.musicGuild(request);
       const body = this.parse(musicJoinSchema, request.body ?? {});
-      const member = await this.guild(request).members.fetch(this.options.client.user!.id);
+      const member = await this.musicMember(request);
       const channelId = await this.requireMusic().join(member, body.voiceChannelId);
       return { channelId };
     });
@@ -566,7 +579,7 @@ export class ControlServer {
       await this.musicGuild(request);
       const body = this.parse(musicPlaySchema, request.body);
       const music = this.requireMusic();
-      const member = await this.guild(request).members.fetch(this.options.client.user!.id);
+      const member = await this.musicMember(request);
       return music.play(member, body.query, body.voiceChannelId, body.next);
     });
     this.route("POST", "/v1/music/pause", async (request) => {
@@ -935,6 +948,16 @@ export class ControlServer {
     } catch {
       throw new UserError("You are not a member of this server.", "not_a_member");
     }
+  }
+
+  /**
+   * Voice joins follow the signed-in member when the dashboard supplies one,
+   * so "join my voice channel" uses their voice state. Automation without a
+   * user header keeps joining as the bot.
+   */
+  private async musicMember(request: FastifyRequest): Promise<GuildMember> {
+    if (request.headers["x-user-id"] !== undefined) return this.controlMember(request);
+    return this.guild(request).members.fetch(this.options.client.user!.id);
   }
 
   private administrator(member: GuildMember): boolean {

@@ -337,11 +337,16 @@ function renderMusic(data) {
   const playAction = paused ? "resume" : playing ? "pause" : "play";
   const playLabel = paused ? "Resume playback" : playing ? "Pause playback" : "Choose a track to play";
   const seekDisabled = !current || current.isStream || duration <= 0;
+  const channelLabel = data?.channelName ? `#${data.channelName}` : data?.channelId ? String(data.channelId) : "Not connected";
+  const activeFilter = ["off", "bassboost", "nightcore", "vaporwave"].includes(data?.filter) ? data.filter : "off";
+  const filters = [["off", "Off"], ["bassboost", "Bass boost"], ["nightcore", "Nightcore"], ["vaporwave", "Vaporwave"]];
+  const voiceNotice = hasDiscordUser() ? "" : permissionNotice("Sign in with Discord to join your own voice channel. You can still paste a channel ID.");
 
-  return `${pageHeader("Music", `Playback and queue for ${currentGuildName}.`)}
+  return `${pageHeader("Music", `Playback and queue for ${currentGuildName}.`)}${voiceNotice}
     <div class="music-layout">
       <section class="player">
         <div class="player-topline"><span class="table-meta">Now playing</span><span class="status-inline status-${paused ? "warn" : playing ? "ok" : "unknown"}"><i class="status-dot"></i>${paused ? "Paused" : playing ? "Playing" : "Idle"}</span></div>
+        <p class="player-channel">${icon("headphones")}<span>Connected to ${escapeHtml(channelLabel)}</span></p>
         <div class="track-info"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(artist)}</p></div>
         <div class="player-progress"><output id="track-position" class="tabular">${escapeHtml(positionLabel)}</output><label class="sr-only" for="track-seek">Seek within current track</label><input id="track-seek" class="progress-line" type="range" min="0" max="${Math.max(duration, 1)}" value="${position}" aria-valuetext="${escapeHtml(`${positionLabel} of ${durationLabel}`)}" ${seekDisabled ? "disabled" : ""}><span class="tabular">${escapeHtml(durationLabel)}</span></div>
         <div class="transport">
@@ -351,8 +356,9 @@ function renderMusic(data) {
           <button type="button" class="loop-button" data-action="music" data-music-action="loop" data-loop-mode="${loopNext}" aria-label="Change repeat mode. Currently ${escapeHtml(loop)}.">${icon("repeat")}<span>${escapeHtml(loop)} repeat</span></button>
         </div>
         <div class="volume-row">${icon("volume-up")}<label for="volume-control">Volume</label><input id="volume-control" type="range" min="0" max="150" value="${volume}" aria-valuetext="${volume} percent"><output for="volume-control" class="tabular">${volume}%</output></div>
+        <div class="filter-row" role="group" aria-label="Audio filter"><span class="table-meta">Filter</span>${filters.map(([value, label]) => `<button type="button" class="button ${activeFilter === value ? "button-primary" : "button-secondary"}" data-action="music" data-music-action="filters" data-filter-preset="${value}" aria-pressed="${activeFilter === value}">${label}</button>`).join("")}</div>
         <form class="play-form" id="play-form"><label for="voice-channel">Voice channel ID</label><input id="voice-channel" name="voiceChannelId" type="text" inputmode="numeric" placeholder="Right-click a voice channel in Discord, then Copy ID" autocomplete="off" value="${escapeHtml(state.voiceChannelId ?? "")}" data-resolve-kind="voice"><label for="track-query">Add to queue</label><div class="input-action"><input id="track-query" name="query" type="search" placeholder="Song or artist…" autocomplete="off" required><button class="button button-primary" type="submit">Add track</button></div></form>
-        <div class="player-actions"><button type="button" class="button button-secondary" data-action="music" data-music-action="join">Join voice</button><button type="button" class="button button-quiet" data-action="music" data-music-action="disconnect">Disconnect</button><button type="button" class="button button-quiet danger-text" data-action="music" data-music-action="stop" ${playing || paused ? "" : "disabled"}>Stop playback</button></div>
+        <div class="player-actions"><button type="button" class="button button-primary" data-action="music" data-music-action="join" data-voice-self="true">Join my voice channel</button><button type="button" class="button button-secondary" data-action="music" data-music-action="join">Join channel ID</button><button type="button" class="button button-quiet" data-action="music" data-music-action="disconnect">Disconnect</button><button type="button" class="button button-quiet danger-text" data-action="music" data-music-action="stop" ${playing || paused ? "" : "disabled"}>Stop playback</button></div>
       </section>
       <section class="queue-panel"><div class="section-heading"><h2>Queue <span class="queue-count">${String(queue.length).padStart(2, "0")}</span></h2><button type="button" class="button button-quiet" data-action="music" data-music-action="clear" ${queue.length ? "" : "disabled"}>Clear queue</button></div><ol class="queue-list">${queueHtml}</ol></section>
     </div>`;

@@ -315,6 +315,11 @@ kbd { min-width: 17px; padding: 1px 4px; border: 1px solid var(--line); border-r
 .music-layout { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(280px, 1.1fr); align-items: start; }
 .player { min-width: 0; padding-right: 36px; }
 .player-topline { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.player-channel { display: flex; align-items: center; gap: 7px; margin: 10px 0 0; color: var(--muted); font-size: 0.74rem; }
+.player-channel .icon { width: 15px; height: 15px; opacity: 0.72; }
+.player-channel span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.filter-row .table-meta { margin-right: 4px; }
 .table-meta { color: var(--quiet); font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .track-info { margin-top: 22px; }
 .track-info h2 { margin: 0 0 3px; overflow-wrap: anywhere; font-size: 1.32rem; font-weight: 570; letter-spacing: -0.03em; line-height: 1.3; }

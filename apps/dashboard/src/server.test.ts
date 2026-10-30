@@ -717,6 +717,57 @@ describe("dashboard economy member routes", () => {
   });
 });
 
+describe("dashboard music member routes", () => {
+  it("forwards the session user for join and play", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders(owner);
+    const join = await app.inject({ method: "POST", url: "/api/guilds/123/music/join", headers, payload: {} });
+    const play = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/music/play",
+      headers,
+      payload: { query: "song" },
+    });
+
+    expect(join.statusCode).toBe(200);
+    expect(play.statusCode).toBe(200);
+    expect(control.musicAction).toHaveBeenCalledWith("123", "join", {}, owner.id);
+    expect(control.musicAction).toHaveBeenCalledWith("123", "play", { query: "song" }, owner.id);
+    await app.close();
+  });
+
+  it("runs the filters action with the requested preset", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/music/filters",
+      headers: sessionHeaders(owner),
+      payload: { preset: "nightcore" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(control.musicAction).toHaveBeenCalledWith("123", "filters", { preset: "nightcore" }, undefined);
+    await app.close();
+  });
+
+  it("leaves the user out for a password-only join", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/music/join",
+      headers: sessionHeaders({ id: "operator", name: "Operator", avatarUrl: null }),
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(control.musicAction).toHaveBeenCalledWith("123", "join", {}, undefined);
+    await app.close();
+  });
+});
+
 describe("dashboard stock routes", () => {
   it("reads the market and portfolio for the session user", async () => {
     const control = controlStub();

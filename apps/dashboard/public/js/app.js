@@ -878,29 +878,39 @@ async function copyText(value) {
   field.remove();
 }
 
-async function runMusicAction(action, body = {}) {
+async function refreshMusic() {
+  if (!state.guildId) return;
+  const data = await api.music(state.guildId);
+  state.data = data;
+  renderMain();
+  stopProgress();
+  startProgress();
+}
+
+async function runMusicAction(action, body = {}, button = null) {
   if (!state.guildId) return;
   if (action === "play" && !body.query) {
     document.querySelector("#track-query")?.focus();
     return;
   }
-  const voiceChannel = document.querySelector("#voice-channel")?.value.trim() ?? state.voiceChannelId ?? "";
-  if (action === "join" && !voiceChannel) {
-    showToast("Paste a voice channel ID before joining.", { key: "music", tone: "error" });
+  const voiceSelf = button?.dataset.voiceSelf === "true";
+  const voiceChannel = document.querySelector("#voice-channel")?.value.trim() || state.voiceChannelId || "";
+  if (action === "join" && !voiceSelf && !voiceChannel) {
+    showToast("Paste a voice channel ID before joining, or use Join my voice channel.", { key: "music", tone: "error" });
     document.querySelector("#voice-channel")?.focus();
     return;
   }
-  if (voiceChannel) body.voiceChannelId = voiceChannel;
-  const button = document.querySelector(`[data-music-action="${CSS.escape(action)}"]`);
-  if (button) button.disabled = true;
+  if (!voiceSelf && voiceChannel && (action === "join" || action === "play")) body.voiceChannelId = voiceChannel;
+  const trigger = button ?? document.querySelector(`[data-music-action="${CSS.escape(action)}"]`);
+  if (trigger) trigger.disabled = true;
   try {
     await api.musicAction(state.guildId, action, body);
-    await loadData(currentRoute);
+    await refreshMusic();
     announce("Player updated.");
   } catch (error) {
     showToast(error instanceof Error ? error.message : "The music action failed.", { key: "music", tone: "error" });
   } finally {
-    if (button?.isConnected) button.disabled = false;
+    if (trigger?.isConnected) trigger.disabled = false;
   }
 }
 
@@ -1305,8 +1315,12 @@ document.addEventListener("click", async (event) => {
   } else if (action?.dataset.action === "clear-birthday") {
     await clearBirthday(action);
   } else if (action?.dataset.action === "music") {
-    const body = action.dataset.musicAction === "loop" ? { mode: action.dataset.loopMode } : {};
-    await runMusicAction(action.dataset.musicAction, body);
+    const body = action.dataset.musicAction === "loop"
+      ? { mode: action.dataset.loopMode }
+      : action.dataset.musicAction === "filters"
+        ? { preset: action.dataset.filterPreset }
+        : {};
+    await runMusicAction(action.dataset.musicAction, body, action);
   } else if (action?.dataset.action === "refresh-games") {
     await pollGameView(true);
     announce("Game state refreshed.");

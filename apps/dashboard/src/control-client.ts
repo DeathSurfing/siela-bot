@@ -1,5 +1,5 @@
 export const MUSIC_ACTIONS = [
-  "join", "play", "pause", "resume", "skip", "stop", "volume", "seek", "loop", "shuffle", "clear", "disconnect",
+  "join", "play", "pause", "resume", "skip", "stop", "volume", "seek", "loop", "shuffle", "clear", "filters", "disconnect",
 ] as const;
 
 export const CONFIG_SECTIONS = ["prefix", "welcome", "autorole", "tempvc", "music"] as const;
@@ -48,7 +48,7 @@ export interface ControlClient {
   updateFeature(guildId: string, featureId: string, enabled: boolean, actorId?: string): Promise<unknown>;
   getAudit(guildId: string, limit: number): Promise<unknown>;
   getMusic(guildId: string): Promise<unknown>;
-  musicAction(guildId: string, action: MusicAction, body: unknown): Promise<unknown>;
+  musicAction(guildId: string, action: MusicAction, body: unknown, userId?: string): Promise<unknown>;
   getConfig(guildId: string): Promise<unknown>;
   patchConfig(guildId: string, section: ConfigSection, body: Record<string, unknown>, actorId?: string): Promise<unknown>;
   getCommands(): Promise<unknown>;
@@ -127,7 +127,8 @@ export function createControlClient(baseUrl: string, token: string, fetcher: Con
       request("/v1/features", { guildId, actorId, method: "PATCH", body: { featureId, enabled } }),
     getAudit: (guildId, limit) => request(`/v1/audit?limit=${encodeURIComponent(String(limit))}`, { guildId }),
     getMusic: (guildId) => request("/v1/music/state", { guildId }),
-    musicAction: (guildId, action, body) => request(`/v1/music/${action}`, { guildId, method: "POST", body }),
+    musicAction: (guildId, action, body, userId) =>
+      request(`/v1/music/${action}`, { guildId, userId, actorId: userId, method: "POST", body }),
     getConfig: async (guildId) => {
       const [prefix, welcome, autorole, tempvc, music] = await Promise.all([
         request("/v1/prefix", { guildId }),

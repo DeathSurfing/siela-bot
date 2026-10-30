@@ -18,6 +18,7 @@ interface TestMember {
   displayName: string;
   administrator: boolean;
   bot?: boolean;
+  voiceChannelId?: string;
 }
 
 interface TestChannel {
@@ -70,6 +71,7 @@ function member(entry: TestMember) {
     id: entry.id,
     displayName: entry.displayName,
     user: { bot: entry.bot ?? false },
+    voice: { channelId: entry.voiceChannelId ?? null },
     permissions: {
       has: (flag: bigint) => entry.administrator && flag === PermissionsBitField.Flags.Administrator,
     },
@@ -126,6 +128,7 @@ function server(options: {
   channels?: TestChannel[];
   roles?: TestRole[];
   search?: TestMember[];
+  musicState?: Record<string, unknown>;
   auditEntries?: unknown[];
   channel?: { id: string; guildId: string; isTextBased: () => boolean };
   cahGame?: CahStubGame | null;
@@ -180,16 +183,29 @@ function server(options: {
       return true;
     },
   };
+  const music = {
+    play: vi.fn(async () => ({ added: 1, first: { title: "Song" } })),
+    join: vi.fn(async (joined: { voice?: { channelId?: string | null } }, channelId?: string) => channelId ?? joined.voice?.channelId ?? "unknown"),
+    stop: vi.fn(async () => undefined),
+    state: vi.fn(() => options.musicState ?? {
+      playing: false,
+      paused: false,
+      volume: 0,
+      loop: "off",
+      position: 0,
+      current: null,
+      upcoming: [],
+      channelId: null,
+      channelName: null,
+      filter: "off",
+    }),
+  };
   const services = {
     features: featuresStub,
     cah,
     tambola,
     economy,
-    music: {
-      play: async () => ({ added: 1, first: { title: "Song" } }),
-      stop: async () => undefined,
-      state: () => ({ playing: false, paused: false, volume: 0, loop: "off", position: 0, current: null, upcoming: [] }),
-    },
+    music,
     audit: {
       log: async (entry: unknown) => { audits.push(entry); },
       tail: async (_guildId: string, limit: number) => (options.auditEntries ?? []).slice(0, limit),
@@ -230,7 +246,7 @@ function server(options: {
     members: { fetch: ReturnType<typeof vi.fn> };
     channels: { fetch: ReturnType<typeof vi.fn> };
   };
-  return { app: instance.instance, audits, memberFetch: guildA.members.fetch, channelFetch: guildA.channels.fetch, cah, tambola, economy };
+  return { app: instance.instance, audits, memberFetch: guildA.members.fetch, channelFetch: guildA.channels.fetch, cah, tambola, economy, music };
 }
 
 const auth = { authorization: `Bearer ${TOKEN}` };
@@ -695,6 +711,99 @@ describe("ControlServer stock member routes", () => {
     });
     expect(response.statusCode).toBe(400);
     expect(response.json().error.code).toBe("validation_error");
+  });
+});
+
+describe("ControlServer music member routes", () => {
+  const voiceChannel = "333333333333333307";
+  const channels: TestChannel[] = [{ id: voiceChannel, name: "General Voice", type: ChannelType.GuildVoice }];
+
+  it("reports the connected channel name and active filter", async () => {
+    const musicState = {
+      playing: true,
+      paused: false,
+      volume: 60,
+      loop: "off",
+      position: 1_000,
+      current: null,
+      upcoming: [],
+      channelId: voiceChannel,
+      channelName: null,
+      filter: "nightcore",
+    };
+    const { app } = server({ channels, musicState });
+    const response = await app.inject({ method: "GET", url: "/v1/music/state", headers: auth });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      playing: true,
+      channelId: voiceChannel,
+      channelName: "General Voice",
+      filter: "nightcore",
+    });
+  });
+
+  it("reports no channel and the off filter when the player is idle", async () => {
+    const { app } = server();
+    const response = await app.inject({ method: "GET", url: "/v1/music/state", headers: auth });
+    expect(response.json()).toMatchObject({ channelId: null, channelName: null, filter: "off" });
+  });
+
+  it("joins the actor's current voice channel when no channel is supplied", async () => {
+    const { app, music } = server({
+      channels,
+      members: [{ id: MEMBER_USER, displayName: "Grace", administrator: false, voiceChannelId: voiceChannel }],
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/music/join",
+      headers: asUser(MEMBER_USER),
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ channelId: voiceChannel });
+    expect(music.join).toHaveBeenCalledWith(
+      expect.objectContaining({ id: MEMBER_USER, voice: { channelId: voiceChannel } }),
+      undefined,
+    );
+  });
+
+  it("queues for the actor's voice channel without a pasted channel ID", async () => {
+    const { app, music } = server({
+      channels,
+      members: [{ id: MEMBER_USER, displayName: "Grace", administrator: false, voiceChannelId: voiceChannel }],
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/music/play",
+      headers: asUser(MEMBER_USER),
+      payload: { query: "song" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(music.play).toHaveBeenCalledWith(
+      expect.objectContaining({ id: MEMBER_USER }),
+      "song",
+      undefined,
+      undefined,
+    );
+  });
+
+  it("still accepts an explicit voice channel alongside the actor", async () => {
+    const { app, music } = server({
+      channels,
+      members: [{ id: MEMBER_USER, displayName: "Grace", administrator: false, voiceChannelId: voiceChannel }],
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/music/join",
+      headers: asUser(MEMBER_USER),
+      payload: { voiceChannelId: voiceChannel },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(music.join).toHaveBeenCalledWith(expect.objectContaining({ id: MEMBER_USER }), voiceChannel);
   });
 });
 

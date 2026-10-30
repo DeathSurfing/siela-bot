@@ -132,6 +132,8 @@ export interface ApiErrorBody {
 
 export type MusicLoopMode = "off" | "track" | "queue";
 
+export type MusicFilterPreset = "off" | "bassboost" | "nightcore" | "vaporwave";
+
 export interface MusicTrackInfo {
   title: string;
   author: string;
@@ -149,4 +151,7 @@ export interface MusicQueueState {
   position: number;
   current: MusicTrackInfo | null;
   upcoming: MusicTrackInfo[];
+  channelId?: string | null;
+  channelName?: string | null;
+  filter?: MusicFilterPreset;
 }
