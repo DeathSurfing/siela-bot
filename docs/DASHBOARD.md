@@ -1,6 +1,6 @@
 # Siela admin dashboard
 
-The dashboard is a self-hosted control panel for the bot. It shows bot health, connected servers, feature flags, music playback, game tables, server settings, user settings, audit history, and registered commands. The selected server stays in the URL and in browser storage.
+The dashboard is a self-hosted control panel for the bot. It shows bot health, connected servers, feature flags, music playback, game tables, economy, leaderboard, stock trading, server settings, user settings, audit history, and registered commands. The selected server stays in the URL and in browser storage.
 
 ## Set up the dashboard
 
@@ -86,7 +86,9 @@ The interface stays flat. Rules and spacing group content; nested cards do not. 
 
 The Server settings view saves one section at a time. A save no longer re-renders the view, so unsaved edits in other sections survive. `Ctrl` or `Cmd` plus `S` saves every dirty section. A dot next to Save marks an unsaved section. User settings shows the signed-in Discord profile and a birthday form for the selected server. The avatar chip in the rail opens User settings from a mouse, keyboard, the collapsed rail, or the mobile drawer.
 
-The Cards Against Humanity, Tambola, and Casino tabs sit beside Music. CAH and Tambola are operator views: they show a redacted live table and the controls the host or an administrator needs, while hands, tickets, decks, and marks stay in Discord. Casino is a player view for the signed-in member. CAH and Tambola poll every five seconds only while the tab is visible, and a refresh replaces the live panel without resetting the host form, search, focus, or scroll position.
+The Cards Against Humanity, Tambola, Casino, Economy, Leaderboard, and Stocks tabs sit beside Music. CAH and Tambola are operator views: they show a redacted live table and the controls the host or an administrator needs, while hands, tickets, decks, and marks stay in Discord. Casino, Economy, Leaderboard, and Stocks are member views for the signed-in Discord user. CAH and Tambola poll every five seconds only while the tab is visible, and a refresh replaces the live panel without resetting the host form, search, focus, or scroll position.
+
+Discord ID fields that accept a channel, voice channel, role, or member also accept a name. Typing a name opens a suggestion list after a short pause. The list ranks an exact name first, then a name that starts with the text, then one that contains it. Choosing a suggestion writes the numeric ID into the field and shows the resolved name beside it. The field keeps the raw ID, so form submission and settings saves are unchanged. Role ID lists append the chosen role to the existing comma-separated list. Keyboard users get Up, Down, Enter, and Escape.
 
 The theme is monochrome, with a light and dark palette and a toggle in the rail. The selected palette persists in local storage and defaults to the system preference. Discord guild logos appear in the server selector; guilds without an icon show their initial.
 
@@ -96,15 +98,17 @@ Motion only marks state. Use transform and opacity, exact transition properties,
 
 Feature switches and server settings are open only to a signed-in Discord user who has the Administrator permission in the selected server. The dashboard checks that permission with the bot control API before every write and disables the controls for everyone else. A failed check returns 403 `administrator_required`.
 
+Economy, Leaderboard, Stocks, and the music join and filter controls are member actions. They read the caller from the signed-in Discord user, so they need a Discord sign-in, not the Administrator permission. A password-only session can read the music player but gets 403 `discord_account_required` from the member routes and cannot join as a member. The bot also reads the caller from `x-user-id`, so a request body cannot name another member.
+
 Feature switches apply immediately. The dashboard shows an Undo action after each change, and a failed write reverts the switch and shows the API message inline.
 
-The music tab needs a voice channel ID. A browser cannot report which Discord voice channel its operator is in, so paste the target channel's ID into the field above **Add to queue**. The dashboard stores it per server in browser storage. Right-click a voice channel in Discord and choose **Copy ID**; enable Developer Mode under Discord's advanced settings if that item is missing.
+The music tab shows the voice channel the bot is connected to and the active filter. **Join my voice channel** joins the voice channel of the signed-in Discord user, so no channel ID is needed. The channel ID field still accepts a pasted ID or a channel name, and **Join channel ID** uses it. **Add to queue** also uses the pasted ID when one is set and the member's current channel when it is empty. The four filter buttons switch between Off, Bass boost, Nightcore, and Vaporwave, and the active filter is marked. A password-only session can read the player and paste a channel ID, but it cannot use **Join my voice channel** because the bot needs a Discord member to find that member's voice state.
 
-Server settings save one section at a time. Boolean switches save their visible state, and role ID fields accept a comma-separated list.
+Server settings save one section at a time. Boolean switches save their visible state, and role ID fields accept a comma-separated list. The welcome channel, goodbye channel, voice hub, category, music channel, and role ID fields also resolve names to IDs, and choosing a role appends its ID to the list.
 
 Audit entries show the actor's Discord display name when the bot can resolve it. Hover the name or focus it to read the Discord ID. A non-Discord actor such as `dashboard`, `system`, or `mcp` keeps its name. When the bot cannot resolve a Discord ID, the dashboard labels the actor `Discord member` and keeps the ID in the title.
 
-## Game tabs
+## Member and game tabs
 
 The **Cards Against Humanity** tab follows the lobby, submission, judging, reveal, and finished states. It shows the game ID, channel, host, phase, points goal, players and scores, black card, submission count, and anonymized white-card slots at judging and reveal. It does not show hands, decks, discards, submission owners, the judge order, timers, or Discord message objects. Hosts can create a lobby from a text channel ID, start it, force a reveal, advance a round, and end it. Reveal and advance also work for the current judge. Ending also works for an administrator. The judge picks the winning slot in Discord; the dashboard deliberately has no pick route. The Discord link opens the lobby or game channel.
 
@@ -113,6 +117,16 @@ The **Tambola** tab follows the live table: status, host, channel, player count 
 The **Casino** tab is for the signed-in member, not an operator action. It shows the member's balance and two games: coinflip spends the bet and pays 2x on a 48% win; slots pays 5x for three of a kind and 1.6x for a pair, rounded down. The maximum bet is 10,000 SC, and a bet must be a positive whole number. Spend and payout use idempotency keys derived from a client request ID. The roll is an HMAC of that ID with a server-side secret, so a retry returns the same result, charges once, and a client cannot grind request IDs to predict a win. Only your own balance is read or changed. Blackjack is not in the dashboard.
 
 CAH and Tambola controls need a Discord sign-in, because the bot checks the acting member's host, judge, and Administrator permissions. A password-only session can read the CAH and Tambola tables but cannot use their controls. Casino needs a Discord sign-in because the balance and bets belong to a Discord user.
+
+### Economy and Leaderboard
+
+The **Economy** tab is self-service. It shows your balance, daily streak, total earned, total spent, and the ready state of the daily reward and work shift. **Claim daily** and **Work a shift** act on your own Discord account. A cooldown disables the button and prints the time it becomes ready again. A cooldown response from the bot carries the same time in its message. The view shows a feature notice when `economy-core` is off.
+
+The **Leaderboard** tab lists the top 25 accounts with rank, member name, and balance. Your own row is marked, and your rank and balance appear above the table. The bot resolves names from the guild member cache and fetches missing members when it can; a member it cannot resolve appears as a Discord ID. Birthdays and other member data are not part of this response.
+
+### Stocks
+
+The **Stocks** tab is also self-service. It shows the exchange index and its change. The market table lists price, change from the previous history point, and a small trend line. Your portfolio shows cash, holdings value, net worth, and unrealized profit or loss. The trade form buys or sells whole shares for your own account. Each trade costs a 1% fee rounded up to at least 1 SC. A trade returns the fresh market and portfolio, so the view updates without a page reload. The submit buttons disable while a trade is in flight. The stock service is not idempotent, so the dashboard does not retry a trade automatically.
 
 ## Discord sign-in
 
@@ -153,6 +167,7 @@ The browser uses these same-origin routes:
 | `GET` | `/api/status` | Read bot readiness and health. |
 | `GET` | `/api/guilds` | List servers the bot serves. |
 | `GET` | `/api/guilds/:guildId/permissions` | Report whether the signed-in user has the Administrator permission in that server. |
+| `GET` | `/api/guilds/:guildId/resolve?q=&kind=` | Resolve a channel, voice channel, role, or member name to an ID. `kind` is optional and is one of `channel`, `voice`, `role`, or `user`. Requires a session. |
 | `GET` | `/api/guilds/:guildId/features` | Read feature toggles. |
 | `PATCH` | `/api/guilds/:guildId/features/:featureId` | Change one feature toggle. Requires Administrator. |
 | `GET` | `/api/guilds/:guildId/audit?limit=50` | Read recent actions and actor display names. |
@@ -166,6 +181,11 @@ The browser uses these same-origin routes:
 | `GET` | `/api/guilds/:guildId/casino` | Read the signed-in member's balance and the maximum bet. Requires Discord sign-in. |
 | `POST` | `/api/guilds/:guildId/casino/coinflip` | Flip for the signed-in member. Requires Discord sign-in. |
 | `POST` | `/api/guilds/:guildId/casino/slots` | Spin for the signed-in member. Requires Discord sign-in. |
+| `GET` | `/api/guilds/:guildId/economy` | Read the signed-in member's balance, streak, totals, and cooldown state. Requires Discord sign-in. |
+| `POST` | `/api/guilds/:guildId/economy/:action` | Claim `daily` or `work` for the signed-in member. Requires Discord sign-in and a CSRF token. |
+| `GET` | `/api/guilds/:guildId/leaderboard` | Read the top 25 balances and the signed-in member's rank. Requires Discord sign-in. |
+| `GET` | `/api/guilds/:guildId/stocks` | Read the market and the signed-in member's portfolio. Requires Discord sign-in. |
+| `POST` | `/api/guilds/:guildId/stocks/:action` | Run `buy` or `sell` for the signed-in member. Requires Discord sign-in and a CSRF token. |
 | `GET` | `/api/guilds/:guildId/config` | Read settings for all supported sections. |
 | `PATCH` | `/api/guilds/:guildId/config/:section` | Update `prefix`, `welcome`, `autorole`, `tempvc`, or `music`. Requires Administrator. |
 | `GET` | `/api/guilds/:guildId/me/birthday` | Read the signed-in user's birthday for that server. |
@@ -174,7 +194,7 @@ The browser uses these same-origin routes:
 | `GET` | `/api/commands` | Read command registry metadata. |
 | `GET` | `/healthz` | Check the dashboard process. |
 
-All `/api` routes except login require a valid session. Mutations also require the `x-csrf-token` header. The music route accepts only `join`, `play`, `pause`, `resume`, `skip`, `stop`, `volume`, `seek`, `loop`, `shuffle`, `clear`, and `disconnect`. The CAH route accepts only `start`, `reveal`, `next`, and `end`. The Tambola route accepts only `pause`, `resume`, and `end`. The dashboard has no generic proxy route. HTML, JavaScript, and CSS static responses carry `cache-control: no-store` so a deploy is picked up on the next load; fonts and images stay cacheable for an hour.
+All `/api` routes except login require a valid session. Mutations also require the `x-csrf-token` header. The music route accepts only `join`, `play`, `pause`, `resume`, `skip`, `stop`, `volume`, `seek`, `loop`, `shuffle`, `clear`, `filters`, and `disconnect`. Join and play forward the signed-in Discord user so the bot can act on that member's voice state. The CAH route accepts only `start`, `reveal`, `next`, and `end`. The Tambola route accepts only `pause`, `resume`, and `end`. The economy route accepts only `daily` and `work`. The stock route accepts only `buy` and `sell`. The dashboard has no generic proxy route. HTML, JavaScript, and CSS static responses carry `cache-control: no-store` so a deploy is picked up on the next load; fonts and images stay cacheable for an hour.
 
 ## Session and request security
 
@@ -182,9 +202,11 @@ The `siela_dashboard` cookie contains the expiry, optional Discord identity, and
 
 The server sets a restrictive content security policy, denies framing, disables MIME sniffing, and sends a no-referrer policy. Static requests resolve inside `apps/dashboard/public`; traversal and symlink escapes are rejected. The container runs read-only, drops capabilities, and writes only to its `/tmp` tmpfs.
 
-The browser never receives `MCP_TOKEN`. `apps/dashboard/src/control-client.ts` is the single server-side adapter for bearer-authenticated requests. It sets `x-guild-id` on every guild-scoped control request, `x-user-id` on permission, birthday, and game requests, and `x-actor` to the signed-in Discord user on writes. Dashboard route parameters, methods, configuration sections, music actions, game actions, and casino games are allowlisted before they reach that client.
+The browser never receives `MCP_TOKEN`. `apps/dashboard/src/control-client.ts` is the single server-side adapter for bearer-authenticated requests. It sets `x-guild-id` on every guild-scoped control request, `x-user-id` on permission, birthday, game, economy, stock, and music join or play requests, and `x-actor` to the signed-in Discord user on writes. Dashboard route parameters, methods, configuration sections, music actions, game actions, casino games, economy actions, stock actions, and resolve kinds are allowlisted before they reach that client.
 
-The bot control API owns the permission check. `GET /v1/authorize` fetches the member from the selected guild and tests the Administrator flag. The dashboard treats a missing member, a non-Administrator member, and a failed check as no permission. Feature and settings writes return 403 `administrator_required`. Birthday routes read the caller from `x-user-id` and never accept a target user, so one member cannot read or change another member's birthday. CAH and Tambola controls also read the caller from `x-user-id`, then check the live game's host, judge, and Administrator rules. Casino routes read the caller from `x-user-id`, so a request body cannot name another member. Game state projections are redacted in the bot service before they reach the dashboard; the control API never sends hands, decks, tickets, marks, judge order, timers, or Discord message objects.
+The bot control API owns the permission check. `GET /v1/authorize` fetches the member from the selected guild and tests the Administrator flag. The dashboard treats a missing member, a non-Administrator member, and a failed check as no permission. Feature and settings writes return 403 `administrator_required`. Birthday routes read the caller from `x-user-id` and never accept a target user, so one member cannot read or change another member's birthday. CAH and Tambola controls also read the caller from `x-user-id`, then check the live game's host, judge, and Administrator rules. Casino, economy, stock, and music routes read the caller from `x-user-id`, so a request body cannot name another member. Game state projections are redacted in the bot service before they reach the dashboard; the control API never sends hands, decks, tickets, marks, judge order, timers, or Discord message objects.
+
+`GET /v1/resolve` reads the selected guild only. It searches cached guild channels, roles, and members, then asks Discord for members when the cache misses. It returns an ID, name, kind, display label, and an optional description that marks bots and the everyone role. It never returns message content or anything from another guild.
 
 ## Network boundary and guild scope
 
