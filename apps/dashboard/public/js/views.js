@@ -28,13 +28,13 @@ const editableFields = {
 };
 
 const hints = {
-  channelId: "Right-click a channel in Discord and copy its ID, or type a name and pick it.",
-  goodbyeChannelId: "Right-click a channel in Discord and copy its ID, or type a name and pick it.",
-  hubChannelId: "The voice channel members join to create their own room.",
-  categoryId: "The category new temporary rooms are placed in.",
-  musicChannelId: "Optional text channel for player prompts.",
-  roleIds: "Comma-separated role IDs. Pick a role by name to append it.",
-  djRoleIds: "Comma-separated role IDs that can control music. Pick a role by name to append it.",
+  channelId: "Type #channel-name or paste an ID.",
+  goodbyeChannelId: "Type #channel-name or paste an ID.",
+  hubChannelId: "The voice channel members join to create their own room. Type #voice-channel or paste an ID.",
+  categoryId: "The category new temporary rooms are placed in. Type #category-name or paste an ID.",
+  musicChannelId: "Optional text channel for player prompts. Type #channel-name or paste an ID.",
+  roleIds: "Type @role-name to append a role. Comma-separate IDs.",
+  djRoleIds: "Type @role-name to append a role. Comma-separate IDs.",
   message: "Placeholders: {mention}, {user}, {server}.",
   dmMessage: "Sent only when direct messages are enabled.",
   goodbyeMessage: "Placeholders: {user}, {server}.",
@@ -54,7 +54,7 @@ const resolveFieldKinds = {
 const labels = {
   prefix: "Prefix",
   enabled: "Enabled",
-  channelId: "Welcome channel ID",
+  channelId: "Welcome channel",
   message: "Welcome message",
   embed: "Use an embed",
   card: "Use a welcome card",
@@ -62,14 +62,14 @@ const labels = {
   dmEnabled: "Send a direct message",
   dmMessage: "Direct message",
   goodbyeEnabled: "Send a goodbye message",
-  goodbyeChannelId: "Goodbye channel ID",
+  goodbyeChannelId: "Goodbye channel",
   goodbyeMessage: "Goodbye message",
-  roleIds: "Role IDs",
+  roleIds: "Autorole roles",
   includeBots: "Include bots",
   minAccountAgeDays: "Minimum account age in days",
   delayMs: "Role assignment delay in milliseconds",
-  hubChannelId: "Hub channel ID",
-  categoryId: "Category ID",
+  hubChannelId: "Voice hub channel",
+  categoryId: "Voice category",
   nameTemplate: "Channel name template",
   defaultUserLimit: "Default user limit",
   defaultLocked: "Lock new channels by default",
@@ -77,9 +77,9 @@ const labels = {
   graceSeconds: "Empty-channel grace period in seconds",
   maxChannels: "Maximum active channels",
   maxPerUser: "Maximum channels per member",
-  djRoleIds: "DJ role IDs",
+  djRoleIds: "DJ roles",
   maxQueueSize: "Maximum queue size",
-  musicChannelId: "Music text channel ID",
+  musicChannelId: "Music text channel",
   aloneTimeoutSeconds: "Disconnect after alone for seconds",
 };
 
@@ -508,7 +508,7 @@ function renderCahHostForm() {
   return `<form class="settings-section" id="cah-host-form">
     <div class="settings-heading"><div><h2>Create a lobby</h2><p>The bot posts the lobby card in the channel. Members join, play hands, and judge rounds in Discord.</p></div><div class="settings-save"><button class="button button-primary" type="submit">Create lobby</button></div></div>
     <div class="settings-fields">
-      <label class="setting-field" for="cah-channel"><span><strong>Text channel ID</strong><small>Right-click a text channel in Discord, then Copy ID, or type its name and pick it.</small></span><input id="cah-channel" name="channelId" type="text" inputmode="numeric" autocomplete="off" required placeholder="123456789012345678" data-resolve-kind="channel"></label>
+      <label class="setting-field" for="cah-channel"><span><strong>Text channel</strong><small>Type #channel-name or paste an ID.</small></span><input id="cah-channel" name="channelId" type="text" autocomplete="off" required placeholder="#general or paste an ID" data-resolve-kind="channel"></label>
       <label class="setting-field" for="cah-points"><span><strong>Points to win</strong><small>1 to 50. Default 7.</small></span><input id="cah-points" name="pointsGoal" type="number" min="1" max="50" step="1" value="7" required></label>
       <label class="setting-field" for="cah-players"><span><strong>Maximum players</strong><small>3 to 10.</small></span><input id="cah-players" name="maxPlayers" type="number" min="3" max="10" step="1" value="10" required></label>
     </div>
@@ -808,11 +808,16 @@ function renderConfigField(field, value, disabled = false) {
   const resolveAttributes = resolveKind
     ? ` data-resolve-kind="${resolveKind}"${field === "roleIds" || field === "djRoleIds" ? " data-resolve-append" : ""}`
     : "";
+  const placeholder = resolveKind === "role"
+    ? (isList ? "@role-name, @another-role" : "@role-name")
+    : resolveKind
+      ? "#channel-name or paste an ID"
+      : isList ? "Comma-separated IDs" : "";
   const control = isList
-    ? `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="list" type="text" value="${escapeHtml(valueString)}" placeholder="Comma-separated IDs" autocomplete="off" inputmode="numeric"${resolveAttributes} ${off}>`
+    ? `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="list" type="text" value="${escapeHtml(valueString)}" placeholder="${escapeHtml(placeholder)}" autocomplete="off"${resolveAttributes} ${off}>`
     : longText
       ? `<textarea id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="text" rows="3" ${off}>${escapeHtml(valueString)}</textarea>`
-    : `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="${type}" type="${type}" value="${escapeHtml(valueString)}" ${type === "number" ? "step=1" : "autocomplete=off"}${resolveAttributes} ${off}>`;
+    : `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="${type}" type="${type}" value="${escapeHtml(valueString)}" placeholder="${escapeHtml(placeholder)}" ${type === "number" ? "step=1" : "autocomplete=off"}${resolveAttributes} ${off}>`;
   return `<label class="setting-field" for="setting-${escapeHtml(field)}"><span><strong>${escapeHtml(label)}</strong>${hint}</span>${control}</label>`;
 }
 

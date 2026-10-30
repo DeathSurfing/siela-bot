@@ -554,9 +554,9 @@ function setResolverActive(input, record, index) {
   active.scrollIntoView({ block: "nearest" });
 }
 
-async function fetchResolverSuggestions(input, record) {
+async function loadResolverResults(input, record) {
   const query = resolverQuery(input);
-  if (!query || RESOLVE_SNOWFLAKE.test(query) || !state.guildId) return;
+  if (!query || RESOLVE_SNOWFLAKE.test(query) || !state.guildId) return null;
   const sequence = ++resolverRequestSequence;
   record.sequence = sequence;
   let payload;
@@ -564,10 +564,16 @@ async function fetchResolverSuggestions(input, record) {
     payload = await api.resolve(state.guildId, query, input.dataset.resolveKind || undefined);
   } catch {
     if (record.sequence === sequence) record.results = [];
-    return;
+    return null;
   }
-  if (record.sequence !== sequence || !input.isConnected) return;
+  if (record.sequence !== sequence || !input.isConnected) return null;
   record.results = Array.isArray(payload?.results) ? payload.results : [];
+  return record.results;
+}
+
+async function fetchResolverSuggestions(input, record) {
+  const results = await loadResolverResults(input, record);
+  if (!results) return;
   if (document.activeElement !== input) return;
   renderResolverOptions(input, record);
 }
@@ -610,10 +616,25 @@ function selectResolverResult(input, result) {
 }
 
 function exactResolverResult(input, record) {
-  const query = resolverQuery(input).toLocaleLowerCase();
+  const query = resolverQuery(input).replace(/^[#@]/, "").trim().toLocaleLowerCase();
   if (!query) return null;
   const matches = record.results.filter((result) => String(result.name ?? "").toLocaleLowerCase() === query);
   return matches.length === 1 ? matches[0] : null;
+}
+
+async function resolveInputValue(input) {
+  if (!input.dataset.resolveKind || !state.guildId) return;
+  const query = resolverQuery(input);
+  if (!query || RESOLVE_SNOWFLAKE.test(query)) return;
+  const record = resolverRecord(input);
+  const results = await loadResolverResults(input, record);
+  if (!results?.length) {
+    closeResolverList(input);
+    return;
+  }
+  const match = exactResolverResult(input, record) ?? (results.length === 1 ? results[0] : null);
+  if (match) selectResolverResult(input, match);
+  else closeResolverList(input);
 }
 
 function singleResolverResult(results, query) {
@@ -650,6 +671,7 @@ document.addEventListener("focusout", (event) => {
   if (!(target instanceof HTMLInputElement) || !target.dataset.resolveReady) return;
   const next = event.relatedTarget;
   if (next instanceof Node && target.parentElement?.contains(next)) return;
+  void resolveInputValue(target);
   setTimeout(() => {
     if (document.activeElement !== target) closeResolverList(target);
   }, 120);
@@ -701,12 +723,14 @@ document.addEventListener("keydown", (event) => {
     setResolverActive(input, record, position < 0 ? options.length - 1 : position);
     return;
   }
-  if (event.key === "Enter" && open) {
-    const active = record.results[record.active] ?? exactResolverResult(input, record);
-    if (!active) return;
+  if (event.key === "Enter") {
+    const query = resolverQuery(input);
+    if (!query || RESOLVE_SNOWFLAKE.test(query)) return;
     event.preventDefault();
     event.stopPropagation();
-    selectResolverResult(input, active);
+    const active = open ? record.results[record.active] ?? exactResolverResult(input, record) : null;
+    if (active) selectResolverResult(input, active);
+    else void resolveInputValue(input);
   }
 });
 
