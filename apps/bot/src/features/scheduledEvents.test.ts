@@ -271,7 +271,10 @@ describe("ScheduledEventService.runNow", () => {
 
     await expect(instance.update(guildId, 7, { name: "Renamed", startAt: new Date(past.toISOString()) }, actorId)).resolves.toMatchObject({ name: "Renamed" });
     expect(updates[0]).not.toHaveProperty("startAt");
-    await expect(instance.update(guildId, 7, { startAt: past }, actorId)).rejects.toThrow("Start time must be in the future");
+    await expect(instance.update(guildId, 7, { startAt: new Date(past.getTime() + 1) }, actorId)).rejects.toThrow("Start time must be in the future");
+    const future = new Date("2026-01-02T13:00:00.000Z");
+    await expect(instance.update(guildId, 7, { startAt: future }, actorId)).resolves.toMatchObject({ startAt: future.toISOString() });
+    expect(updates.at(-1)).toMatchObject({ startAt: future });
   });
 
   it("ignores a scheduler tick while the same guild is already being processed", async () => {

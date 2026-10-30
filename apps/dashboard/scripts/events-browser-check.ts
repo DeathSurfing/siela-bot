@@ -218,6 +218,7 @@ try {
   await page.getByText("Running", { exact: true }).first().waitFor();
   assert.match(String(await page.evaluate(() => (window as unknown as Window & { __eventConfirmations: string[] }).__eventConfirmations[0])), /Run “Morning music revised” now/);
   assert.equal(calls.at(-1)?.action, "run");
+  const confirmations = await page.evaluate(() => (window as unknown as Window & { __eventConfirmations: string[] }).__eventConfirmations);
 
   const runningEvent = events.find((event) => event.lastStatus === "running");
   const runningRun = runs.find((run) => run.status === "running");
@@ -229,6 +230,11 @@ try {
   await page.reload();
   await page.getByRole("heading", { name: "Scheduled Events", exact: true }).waitFor();
   await page.getByText("Success", { exact: true }).first().waitFor();
+  await page.evaluate((messages) => {
+    const confirmations = [...messages];
+    window.confirm = (message) => { confirmations.push(message ?? ""); return true; };
+    Object.assign(window, { __eventConfirmations: confirmations });
+  }, confirmations);
 
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page.getByText("No scheduled events", { exact: true }).waitFor();

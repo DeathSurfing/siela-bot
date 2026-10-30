@@ -348,10 +348,11 @@ export class ScheduledEventService {
   ): Promise<ScheduledEventView> {
     const current = await this.eventFor(guildId, id);
     const now = new Date();
-    if (input.startAt !== undefined) this.validateStartAt(input.startAt, now);
+    const startAtChanged = input.startAt !== undefined && input.startAt.getTime() !== current.startAt.getTime();
+    if (startAtChanged && input.startAt !== undefined) this.validateStartAt(input.startAt, now);
     const repeat = input.repeat ?? scheduledRepeat(current.repeat);
-    const startAt = input.startAt ?? current.startAt;
-    const scheduleChanged = input.startAt !== undefined || input.repeat !== undefined ||
+    const startAt = startAtChanged ? input.startAt ?? current.startAt : current.startAt;
+    const scheduleChanged = startAtChanged || input.repeat !== undefined ||
       (input.enabled === true && !current.enabled);
     const nextRunAt = scheduleChanged
       ? scheduledStart(startAt, repeat, now)
@@ -364,7 +365,7 @@ export class ScheduledEventService {
         ...(input.sourceUrl !== undefined ? { sourceUrl: eventSource(input.sourceUrl) } : {}),
         ...(input.repeat !== undefined ? { repeat: input.repeat } : {}),
         ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
-        ...(input.startAt !== undefined ? { startAt: input.startAt } : {}),
+        ...(startAtChanged ? { startAt } : {}),
         ...(scheduleChanged ? { nextRunAt } : {}),
         updatedAt: now,
       })

@@ -114,7 +114,9 @@ The service accepts YouTube video links only. It normalizes `youtube.com/watch?v
 
 Choose **One time**, **Daily**, or **Weekly**. A one-time event disables itself and clears its next-run time after it succeeds, fails, or is skipped. A daily or weekly event advances from its prior scheduled time to the first interval after the run finishes. After a restart, each overdue event runs at most once; the scheduler advances repeating events past missed intervals instead of replaying each missed day or week.
 
-The event table shows the next run in local time, the repeat rule, enabled state, and last status. Recent runs show the event, start time, status, trigger, and error. Status uses both a label and a color. The built-in prayer phases stay read-only in this view as a separate sequence. Custom events do not replace or rewrite those phases.
+You can edit an event after its start time passes if you leave the time unchanged. To change the time, choose a future time or one within the last minute. The dashboard omits an unchanged `startAt` from the update request.
+
+The event table shows the next run in local time, the repeat rule, enabled state, and last status. A manual run returns after the bot records its `running` state. Refresh the view later to see whether playback succeeded or failed. Recent runs show the event, start time, status, trigger, and error. Status uses both a label and a color. The built-in prayer phases stay read-only in this view as a separate sequence. Custom events do not replace or rewrite those phases.
 
 The global `EVENT_SCHEDULE_ENABLED` setting controls automatic ticks. When it is off, operators can still create and edit schedules, and can run an event manually if the per-server `automation-scheduled-events` feature is on. Turning that feature off blocks manual runs and automatic scheduled events, but does not prevent operators from preparing the configuration.
 

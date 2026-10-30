@@ -1322,11 +1322,14 @@ async function saveScheduledEvent(form) {
     name: String(fields.get("name") ?? "").trim(),
     channelId: String(fields.get("channelId") ?? "").trim(),
     sourceUrl: String(fields.get("sourceUrl") ?? "").trim(),
-    startAt: startAt.toISOString(),
     repeat: String(fields.get("repeat") ?? "none"),
     enabled,
   };
   const eventId = state.editingEventId;
+  const currentEvent = eventId === null ? null : state.data?.events?.find((event) => event.id === eventId);
+  if (!currentEvent || new Date(currentEvent.startAt).getTime() !== startAt.getTime()) {
+    body.startAt = startAt.toISOString();
+  }
   const submit = form.querySelector('[type="submit"]');
   if (submit) submit.disabled = true;
   try {
