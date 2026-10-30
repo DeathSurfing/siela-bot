@@ -1028,7 +1028,7 @@ export class ControlServer {
   }
 
   private async validateScheduledChannel(guild: Guild, channelId: string): Promise<void> {
-    const channel = await guild.channels.fetch(channelId);
+    const channel = await guild.channels.fetch(channelId).catch(() => null);
     if (!channel || channel.guildId !== guild.id || channel.type !== ChannelType.GuildVoice) {
       throw new UserError("Choose a voice channel from this server.", "invalid_voice_channel");
     }
@@ -1041,10 +1041,14 @@ export class ControlServer {
       scheduledEvents.list(guildId),
       scheduledEvents.listRuns(guildId),
     ]);
+    const channels = this.options.client.guilds.cache.get(guildId)?.channels.cache;
     return {
       enabled,
       schedulerEnabled: scheduledEvents.schedulerEnabled,
-      events,
+      events: events.map((event) => ({
+        ...event,
+        channelName: channels?.get(event.channelId)?.name ?? null,
+      })),
       runs,
       builtIn: scheduledEvents.builtInPhases(),
     };

@@ -432,8 +432,9 @@ function renderScheduledEventRows(events, canManage, enabled) {
       ? `<button type="button" class="switch" role="switch" aria-checked="${event.enabled}" aria-label="Enabled. ${event.enabled ? "Disable" : "Enable"} ${name}" data-action="event-toggle" data-event-id="${event.id}"><span></span></button>`
       : `<span>${event.enabled ? "Enabled" : "Disabled"}</span>`;
     const source = `<a class="text-link" href="${escapeHtml(event.sourceUrl)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Open video for ${name}</a>`;
+    const channel = event.channelName ? `#${event.channelName}` : event.channelId;
     const next = event.enabled && event.nextRunAt ? fmtDate(event.nextRunAt) : event.enabled ? "Not scheduled" : "Disabled";
-    return `<tr><td><strong>${name}</strong></td><td data-label="Channel"><code>${escapeHtml(event.channelId)}</code></td><td data-label="Source">${source}</td><td data-label="Next run">${escapeHtml(next)}</td><td data-label="Repeat">${scheduledRepeatLabel(event.repeat)}</td><td data-label="Enabled">${toggle}</td><td data-label="Last status">${scheduledEventStatus(event.lastStatus)}</td><td data-label="Actions">${controls}</td></tr>`;
+    return `<tr><td><strong>${name}</strong></td><td data-label="Channel"><code>${escapeHtml(channel)}</code></td><td data-label="Source">${source}</td><td data-label="Next run">${escapeHtml(next)}</td><td data-label="Repeat">${scheduledRepeatLabel(event.repeat)}</td><td data-label="Enabled">${toggle}</td><td data-label="Last status">${scheduledEventStatus(event.lastStatus)}</td><td data-label="Actions">${controls}</td></tr>`;
   }).join("");
   return `<section class="table-panel event-table-panel"><div class="table-scroll"><table class="event-table"><thead><tr><th scope="col">Name</th><th scope="col">Channel</th><th scope="col">Source</th><th scope="col">Next run</th><th scope="col">Repeat</th><th scope="col">Enabled</th><th scope="col">Last status</th><th scope="col">Actions</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
@@ -779,7 +780,7 @@ function renderLeaderboard(data) {
   const meId = state.user?.id;
   const rows = entries.map((entry) => {
     const you = entry.userId === meId;
-    return `<tr class="${you ? "is-you" : ""}"><td class="numeric-cell" data-label="Rank">${fmtNumber(entry.rank)}</td><td><strong>${escapeHtml(entry.name ?? entry.userId)}</strong>${you ? `<span class="game-tag">You</span>` : ""}</td><td class="numeric-cell" data-label="Balance">${fmtNumber(entry.balance)} SC</td></tr>`;
+    return `<tr class="${you ? "is-you" : ""}"><td class="numeric-cell" data-label="Rank">${fmtNumber(entry.rank)}</td><td><strong>${escapeHtml(entry.name ?? entry.userId)}</strong>${you ? ` <span class="game-tag">You</span>` : ""}</td><td class="numeric-cell" data-label="Balance">${fmtNumber(entry.balance)} SC</td></tr>`;
   }).join("");
   return `${header}${meRow}<section class="table-panel"><div class="table-scroll"><table><thead><tr><th scope="col" class="numeric-cell">Rank</th><th scope="col">Member</th><th scope="col" class="numeric-cell">Balance</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
