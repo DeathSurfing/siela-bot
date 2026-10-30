@@ -346,6 +346,10 @@ function currentGuildName() {
   return state.guilds.find((guild) => guild.id === state.guildId)?.name ?? "the selected server";
 }
 
+function hasDiscordUser() {
+  return /^\d{17,20}$/.test(state.user?.id ?? "");
+}
+
 function discordLink(channelId, label = "Open in Discord") {
   if (!state.guildId || !channelId) return "";
   return `<a class="button button-secondary" href="https://discord.com/channels/${encodeURIComponent(state.guildId)}/${encodeURIComponent(channelId)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
@@ -374,7 +378,10 @@ function refreshButton() {
 
 function renderCah(data) {
   const enabled = data?.enabled !== false;
-  const notice = enabled ? "" : permissionNotice("Cards Against Humanity is turned off for this server. Enable it in Features to host a game.");
+  const notice = [
+    enabled ? "" : permissionNotice("Cards Against Humanity is turned off for this server. Enable it in Features to host a game."),
+    hasDiscordUser() ? "" : permissionNotice("Sign in with Discord to use CAH host controls. You can still watch the live table."),
+  ].join("");
   return `${pageHeader("Cards Against Humanity", `Live lobby and round state for ${currentGuildName()}.`, refreshButton())}${notice}<div data-live-panel="cah">${renderCahLive(data)}</div>`;
 }
 
@@ -382,9 +389,9 @@ function renderCahLive(data) {
   const enabled = data?.enabled !== false;
   const game = data?.game ?? null;
   if (!game) {
-    return enabled
-      ? emptyState("No CAH game is running", "Create a lobby here, or start one in Discord with /cah host. Players join and play their hands in Discord.") + renderCahHostForm()
-      : emptyState("Cards Against Humanity is off", "Enable the games-cah feature before hosting a lobby.");
+    if (!enabled) return emptyState("Cards Against Humanity is off", "Enable the games-cah feature before hosting a lobby.");
+    if (!hasDiscordUser()) return emptyState("No CAH game is running", "Sign in with Discord to host a lobby from here, or use /cah host in Discord.");
+    return emptyState("No CAH game is running", "Create a lobby here, or start one in Discord with /cah host. Players join and play their hands in Discord.") + renderCahHostForm();
   }
 
   const status = gameStatus(game);
@@ -439,7 +446,7 @@ function renderCahLive(data) {
   const scores = players.length
     ? `<section class="table-panel"><div class="section-heading"><h2>Scores</h2><span class="table-meta">Goal ${fmtNumber(game.pointsGoal)}</span></div><div class="table-scroll"><table><thead><tr><th scope="col">Player</th><th scope="col">Role</th><th scope="col" class="numeric-cell">Score</th></tr></thead><tbody>${scoreRows}</tbody></table></div></section>`
     : `<p class="game-note">No players yet.</p>`;
-  const restart = enabled && ["finished", "cancelled"].includes(game.status) ? renderCahHostForm() : "";
+  const restart = enabled && hasDiscordUser() && ["finished", "cancelled"].includes(game.status) ? renderCahHostForm() : "";
 
   return `<section class="game-layout">
     <div class="game-main">
@@ -476,7 +483,10 @@ function renderCahHostForm() {
 
 function renderTambola(data) {
   const enabled = data?.enabled !== false;
-  const notice = enabled ? "" : permissionNotice("Tambola is turned off for this server. Enable it in Features before starting a game.");
+  const notice = [
+    enabled ? "" : permissionNotice("Tambola is turned off for this server. Enable it in Features before starting a game."),
+    hasDiscordUser() ? "" : permissionNotice("Sign in with Discord to use Tambola host controls. You can still watch the live table."),
+  ].join("");
   return `${pageHeader("Tambola", `Live table for ${currentGuildName()}. Players join, buy tickets, and mark numbers in Discord.`, refreshButton())}${notice}<div data-live-panel="tambola">${renderTambolaLive(data)}</div>`;
 }
 
