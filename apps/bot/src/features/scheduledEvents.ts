@@ -468,24 +468,31 @@ export class ScheduledEventService {
 
     const db = this.database();
     const finishedAt = new Date();
-    const nextRunAt = event.repeat === "none"
-      ? null
-      : nextScheduledRun(event.nextRunAt ?? event.startAt, scheduledRepeat(event.repeat), finishedAt);
+    const current = await this.eventFor(event.guildId, event.id).catch(() => null);
     await db.update(scheduledVoiceEventRuns)
       .set({ status, finishedAt, error })
       .where(eq(scheduledVoiceEventRuns.id, runId));
-    await db
-      .update(scheduledVoiceEvents)
-      .set({
-        enabled: event.repeat === "none" ? false : event.enabled,
-        lastRunAt: startedAt,
-        lastStatus: status,
-        lastError: error,
-        runCount: sql`${scheduledVoiceEvents.runCount} + 1`,
-        nextRunAt,
-        updatedAt: finishedAt,
-      })
-      .where(and(eq(scheduledVoiceEvents.guildId, event.guildId), eq(scheduledVoiceEvents.id, event.id)));
+    if (current) {
+      const repeat = scheduledRepeat(current.repeat);
+      const scheduleChanged = current.startAt.getTime() !== event.startAt.getTime() ||
+        repeat !== scheduledRepeat(event.repeat) ||
+        (current.nextRunAt?.getTime() ?? null) !== (event.nextRunAt?.getTime() ?? null);
+      const nextRunAt = repeat === "none"
+        ? scheduleChanged ? current.nextRunAt : null
+        : nextScheduledRun(current.nextRunAt ?? current.startAt, repeat, finishedAt);
+      await db
+        .update(scheduledVoiceEvents)
+        .set({
+          enabled: repeat === "none" && !scheduleChanged ? false : current.enabled,
+          lastRunAt: startedAt,
+          lastStatus: status,
+          lastError: error,
+          runCount: sql`${scheduledVoiceEvents.runCount} + 1`,
+          nextRunAt,
+          updatedAt: finishedAt,
+        })
+        .where(and(eq(scheduledVoiceEvents.guildId, event.guildId), eq(scheduledVoiceEvents.id, event.id)));
+    }
 
     return {
       id: runId,

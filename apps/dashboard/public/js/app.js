@@ -1327,7 +1327,10 @@ async function saveScheduledEvent(form) {
   };
   const eventId = state.editingEventId;
   const currentEvent = eventId === null ? null : state.data?.events?.find((event) => event.id === eventId);
-  if (!currentEvent || new Date(currentEvent.startAt).getTime() !== startAt.getTime()) {
+  const sameMinute = currentEvent
+    ? Math.floor(new Date(currentEvent.startAt).getTime() / 60_000) === Math.floor(startAt.getTime() / 60_000)
+    : false;
+  if (!currentEvent || !sameMinute) {
     body.startAt = startAt.toISOString();
   }
   const submit = form.querySelector('[type="submit"]');

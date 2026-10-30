@@ -254,6 +254,48 @@ describe("ScheduledEventService.runNow", () => {
     instance.stop();
   });
 
+  it("preserves an enabled change made while playback is running", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T12:00:00.000Z"));
+    const row = event("daily", new Date("2026-01-01T12:00:00.000Z"));
+    const updates: Array<Record<string, unknown>> = [];
+    let release: () => void = () => undefined;
+    let entered: () => void = () => undefined;
+    const playbackStarted = new Promise<void>((resolve) => { entered = resolve; });
+    const playbackGate = new Promise<void>((resolve) => { release = resolve; });
+    class BackgroundService extends ScheduledEventService {
+      protected override async execute(): Promise<void> {
+        entered();
+        await playbackGate;
+      }
+    }
+    const db = {
+      select: () => ({ from: () => ({ where: () => ({ limit: async () => [row] }) }) }),
+      insert: () => ({
+        values: (values: Record<string, unknown>) => ({
+          returning: async () => [{ id: 19, ...values, finishedAt: null, error: null }],
+        }),
+      }),
+      update: () => ({
+        set: (values: Record<string, unknown>) => ({
+          where: async () => { updates.push(values); },
+        }),
+      }),
+    } as unknown as Database;
+    const instance = new BackgroundService(null, logger, false, "Fajr", undefined, undefined, undefined, null, null, async () => true, db);
+    instance.start({ id: guildId } as Guild);
+
+    await instance.startNow(guildId, 7, actorId);
+    await playbackStarted;
+    row.enabled = false;
+    release();
+    await vi.waitFor(() => {
+      const completion = updates.find((update) => update.lastStatus === "success");
+      expect(completion).toMatchObject({ enabled: false });
+    });
+    instance.stop();
+  });
+
   it("accepts an unchanged past start time but rejects a changed stale time", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-02T12:00:00.000Z"));
