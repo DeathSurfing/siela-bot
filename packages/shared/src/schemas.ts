@@ -147,6 +147,27 @@ export const auditQuerySchema = z
   })
   .strict();
 
+function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+export const birthdaySetSchema = z
+  .object({
+    month: z.number().int().min(1, "Month must be between 1 and 12").max(12, "Month must be between 1 and 12"),
+    day: z.number().int().min(1, "Day must be between 1 and 31").max(31, "Day must be between 1 and 31"),
+    year: z.number().int().min(1900, "Year must be between 1900 and the current year").nullable().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.year != null && value.year > new Date().getUTCFullYear()) {
+      ctx.addIssue({ code: "custom", path: ["year"], message: "Year must be between 1900 and the current year" });
+    }
+    const limit = value.month === 2 && value.year == null ? 29 : daysInMonth(value.year ?? 2000, value.month);
+    if (value.day > limit) {
+      ctx.addIssue({ code: "custom", path: ["day"], message: `Day must be between 1 and ${limit} for that month` });
+    }
+  });
+
 export const nodeIdSchema = z
   .string()
   .trim()

@@ -1115,6 +1115,8 @@ All IDs must be Discord snowflakes and are validated with a regex. All tools rej
 | POST | `/v1/music/:action` | pause/resume/skip/stop/volume/seek/loop/shuffle/remove/clear/move/jump/autoplay/filters/disconnect |
 | POST | `/v1/translate` | `translate_text`, `translate_message` |
 | POST | `/v1/messages` | `message_send` |
+| GET | `/v1/authorize` | Dashboard Administrator check |
+| GET/PUT/DELETE | `/v1/users/me/birthday` | Dashboard self-service birthday |
 | GET | `/v1/audit` | `audit_tail` |
 | DELETE | `/v1/users/:id/data` | `privacy_delete_user_data` |
 

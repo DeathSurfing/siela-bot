@@ -54,4 +54,8 @@ export const api = {
   config: (guildId) => request(`/api/guilds/${encodeURIComponent(guildId)}/config`),
   patchConfig: (guildId, section, body) => request(`/api/guilds/${encodeURIComponent(guildId)}/config/${encodeURIComponent(section)}`, { method: "PATCH", body }),
   commands: () => request("/api/commands"),
+  permissions: (guildId) => request(`/api/guilds/${encodeURIComponent(guildId)}/permissions`),
+  birthday: (guildId) => request(`/api/guilds/${encodeURIComponent(guildId)}/me/birthday`),
+  setBirthday: (guildId, body) => request(`/api/guilds/${encodeURIComponent(guildId)}/me/birthday`, { method: "PUT", body }),
+  clearBirthday: (guildId) => request(`/api/guilds/${encodeURIComponent(guildId)}/me/birthday`, { method: "DELETE" }),
 };

@@ -34,7 +34,7 @@ flowchart TD
 | [RUNBOOK.md](RUNBOOK.md) | Deployment, updates, backups, health checks, troubleshooting |
 | [MULTI-GUILD.md](MULTI-GUILD.md) | Server binding, per-guild state, guild-scoped control API, fleet routing |
 | [FEATURES.md](FEATURES.md) | Per-guild feature catalog, storage, enforcement, and control API |
-| [DASHBOARD.md](DASHBOARD.md) | Admin dashboard setup, browser API, security model, and operating notes |
+| [DASHBOARD.md](DASHBOARD.md) | Admin dashboard setup, Administrator gate, server and user settings, browser API, and security model |
 | [VOICE-FLEET.md](VOICE-FLEET.md) | N-bot voice fleet: router, workers, setup, routing contract |
 | [ECONOMY.md](ECONOMY.md) | Siela Coins, earning, spending, shop, premium, admin operations |
 | [ECONOMY_V2.md](ECONOMY_V2.md) | Earning and AI-gating rationale, exchange model, balance targets |

@@ -1,12 +1,13 @@
 import { styleMessage } from "../features/ui.js";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
-import type { Client, Guild } from "discord.js";
+import { PermissionsBitField, type Client, type Guild, type GuildMember } from "discord.js";
 import type { ZodType } from "zod";
 import {
   auditQuerySchema,
   autoroleSyncSchema,
   autoroleUpdateSchema,
+  birthdaySetSchema,
   countersQuerySchema,
   countersResetSchema,
   featureBulkUpdateSchema,
@@ -26,6 +27,7 @@ import {
   musicVolumeSchema,
   prefixSetSchema,
   privacyDeleteSchema,
+  snowflakeSchema,
   tempvcChannelUpdateSchema,
   tempvcSettingsUpdateSchema,
   tempvcUserActionSchema,
@@ -51,6 +53,9 @@ export interface ControlServerOptions {
 }
 
 type Handler = (request: FastifyRequest, reply: FastifyReply) => Promise<unknown>;
+
+const SNOWFLAKE = /^\d{17,20}$/;
+const AUDIT_ACTOR_FETCH_LIMIT = 10;
 
 export class ControlServer {
   private readonly app: FastifyInstance;
@@ -130,8 +135,16 @@ export class ControlServer {
     return typeof header === "string" && header ? header : "mcp";
   }
 
+  private userId(request: FastifyRequest): string {
+    const parsed = snowflakeSchema.safeParse(request.headers["x-user-id"]);
+    if (!parsed.success) {
+      throw new UserError("Provide a valid Discord user ID in the x-user-id header.", "invalid_user_id");
+    }
+    return parsed.data;
+  }
+
   private route(
-    method: "GET" | "POST" | "PATCH" | "DELETE",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     handler: Handler,
   ): void {
@@ -165,6 +178,20 @@ export class ControlServer {
       }),
     }));
     this.route("GET", "/v1/commands", async (request) => services.registry.metadata());
+    this.route("GET", "/v1/authorize", async (request) => {
+      const userId = this.userId(request);
+      const guild = this.guild(request);
+      let member: GuildMember | null = null;
+      try {
+        member = await guild.members.fetch(userId);
+      } catch {
+        member = null;
+      }
+      return {
+        administrator: member?.permissions.has(PermissionsBitField.Flags.Administrator) ?? false,
+        user: member ? { id: member.id, name: member.displayName } : null,
+      };
+    });
 
     this.route("GET", "/v1/features", async (request) => {
       const guildId = this.guildId(request);
@@ -549,7 +576,38 @@ export class ControlServer {
 
     this.route("GET", "/v1/audit", async (request) => {
       const query = this.parse(auditQuerySchema, request.query);
-      return services.audit.tail(this.guildId(request), query.limit);
+      const guild = this.options.client.guilds.cache.get(this.guildId(request));
+      const entries = await services.audit.tail(this.guildId(request), query.limit);
+      const missing = guild
+        ? [...new Set(entries.flatMap((entry) => {
+          const id = entry.actorId;
+          return id && SNOWFLAKE.test(id) && !guild.members.cache.get(id) ? [id] : [];
+        }))].slice(0, AUDIT_ACTOR_FETCH_LIMIT)
+        : [];
+      if (guild && missing.length) await guild.members.fetch({ user: missing }).catch(() => undefined);
+      return entries.map((entry) => ({
+        ...entry,
+        actorName: entry.actorId ? (guild?.members.cache.get(entry.actorId)?.displayName ?? entry.actorId) : null,
+      }));
+    });
+
+    this.route("GET", "/v1/users/me/birthday", async (request) => {
+      const row = await services.birthday.get(this.guildId(request), this.userId(request));
+      return row ?? { birthday: null };
+    });
+    this.route("PUT", "/v1/users/me/birthday", async (request) => {
+      const body = this.parse(birthdaySetSchema, request.body);
+      return services.birthday.set(
+        this.guildId(request),
+        this.userId(request),
+        body.month,
+        body.day,
+        body.year ?? null,
+      );
+    });
+    this.route("DELETE", "/v1/users/me/birthday", async (request) => {
+      await services.birthday.clear(this.guildId(request), this.userId(request));
+      return { ok: true };
     });
 
     this.route("DELETE", "/v1/users/:id/data", async (request) => {

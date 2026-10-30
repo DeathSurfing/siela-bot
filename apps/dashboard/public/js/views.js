@@ -5,10 +5,14 @@ const titles = {
   servers: "Servers",
   features: "Features",
   music: "Music",
-  settings: "Settings",
+  settings: "Server settings",
+  user: "User settings",
   audit: "Audit",
   commands: "Commands",
 };
+
+const MONTHS = Array.from({ length: 12 }, (_, index) =>
+  new Intl.DateTimeFormat(undefined, { month: "long" }).format(new Date(Date.UTC(2024, index, 1))));
 
 const editableFields = {
   prefix: ["prefix"],
@@ -149,6 +153,20 @@ function emptyState(title, detail, action = "") {
   return `<div class="empty-state"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(detail)}</p>${action}</div>`;
 }
 
+function permissionNotice(message) {
+  return `<div class="permission-notice" role="status">${icon("warning")}<p>${escapeHtml(message)}</p></div>`;
+}
+
+function actorMarkup(entry) {
+  const id = entry?.actorId ?? entry?.actor ?? null;
+  const name = entry?.actorName ?? id;
+  if (!name) return "Unknown";
+  const discordId = typeof id === "string" && /^\d{17,20}$/.test(id) ? id : null;
+  if (!discordId) return escapeHtml(name);
+  const text = name === id ? "Discord member" : name;
+  return `<span class="actor-name" tabindex="0" title="Discord ID ${escapeHtml(discordId)}" aria-label="${escapeHtml(`${text}, Discord ID ${discordId}`)}">${escapeHtml(text)}</span>`;
+}
+
 function inlineError(message, retryAction = "retry") {
   return `<div class="inline-error" role="alert"><div class="error-copy">${icon("warning")}<div><strong>Could not load this view</strong><p>${escapeHtml(message)}</p></div></div><button class="button button-secondary" type="button" data-action="${retryAction}">Retry</button></div>`;
 }
@@ -194,6 +212,7 @@ export function renderView(view) {
     case "features": return renderFeatures(data);
     case "music": return renderMusic(data);
     case "settings": return renderSettings(data);
+    case "user": return renderUserSettings(data);
     case "audit": return renderAudit(data);
     case "commands": return renderCommands(data);
     default: return emptyState("View not found", "Choose a view from the navigation rail.");
@@ -214,7 +233,7 @@ function renderOverview(data) {
   const auditPanel = data?.audit?.error
     ? `<div class="inline-error compact-error" role="alert"><div class="error-copy">${icon("warning")}<div><strong>Recent actions could not load</strong><p>${escapeHtml(data.audit.error)}</p></div></div><button class="button button-secondary" type="button" data-action="retry">Retry</button></div>`
     : audits.length
-      ? `<ol class="activity-list">${audits.map((entry) => `<li><div class="activity-detail"><strong>${escapeHtml(entry.action ?? entry.type ?? "Control action")}</strong><span>${escapeHtml(entry.actorId ?? entry.actor ?? "Unknown actor")}</span></div><time datetime="${escapeHtml(entry.createdAt ?? "")}">${escapeHtml(fmtDate(entry.createdAt))}</time></li>`).join("")}</ol>`
+      ? `<ol class="activity-list">${audits.map((entry) => `<li><div class="activity-detail"><strong>${escapeHtml(entry.action ?? entry.type ?? "Control action")}</strong><span>${actorMarkup(entry)}</span></div><time datetime="${escapeHtml(entry.createdAt ?? "")}">${escapeHtml(fmtDate(entry.createdAt))}</time></li>`).join("")}</ol>`
       : emptyState("No recent actions", state.guildId ? "Control changes for this server will appear here." : "Select a server to view its control history.");
   const overallClass = status ? (ready ? "ok" : "danger") : "unknown";
   const overallLabel = status ? (ready ? "Operational" : "Attention required") : "Status loading";
@@ -246,6 +265,7 @@ function renderServers(data) {
 
 function renderFeatures(data) {
   const features = list(data, "features");
+  const canManage = state.permissions.administrator;
   const enabled = features.filter((feature) => feature.enabled).length;
   const search = state.search.toLowerCase().trim();
   const visible = features.filter((feature) => [feature.label, feature.description, feature.category, feature.id].join(" ").toLowerCase().includes(search));
@@ -254,12 +274,13 @@ function renderFeatures(data) {
     const category = feature.category || "Other";
     groups.set(category, [...(groups.get(category) ?? []), feature]);
   }
-  const groupHtml = Array.from(groups, ([category, entries]) => `<section class="feature-group"><div class="group-heading"><h2>${escapeHtml(category)}</h2></div><div class="feature-list">${entries.map((feature) => renderFeature(feature, features)).join("")}</div></section>`).join("");
+  const groupHtml = Array.from(groups, ([category, entries]) => `<section class="feature-group"><div class="group-heading"><h2>${escapeHtml(category)}</h2></div><div class="feature-list">${entries.map((feature) => renderFeature(feature, features, canManage)).join("")}</div></section>`).join("");
   const countText = `${enabled} of ${features.length} enabled`;
-  return `${pageHeader("Features", "Control which bot capabilities are available in this server.", `<span class="enabled-count" data-feature-summary><strong class="tabular" data-enabled-count>${enabled}</strong><span>of <span data-total-count>${features.length}</span> enabled</span></span>`)}<div class="toolbar-row">${searchBox("Search features")}${state.search ? `<span class="result-count" role="status">${renderSearchResultsCount(visible.length, features.length)}</span>` : ""}</div>${features.length ? (visible.length ? `<div class="feature-categories">${groupHtml}</div>` : emptyState("No matching features", `No results for “${state.search}”. Clear the search to see all features.`)) : emptyState("Features are unavailable", "The control API has not returned a feature list for this server yet.", `<button class="button button-secondary" type="button" data-action="retry">Retry</button>`)}<p class="sr-only" role="status" data-feature-count-text>${escapeHtml(countText)}</p>`;
+  const banner = canManage ? "" : permissionNotice("Administrator permission required to change features.");
+  return `${pageHeader("Features", "Control which bot capabilities are available in this server.", `<span class="enabled-count" data-feature-summary><strong class="tabular" data-enabled-count>${enabled}</strong><span>of <span data-total-count>${features.length}</span> enabled</span></span>`)}${banner}<div class="toolbar-row">${searchBox("Search features")}${state.search ? `<span class="result-count" role="status">${renderSearchResultsCount(visible.length, features.length)}</span>` : ""}</div>${features.length ? (visible.length ? `<div class="feature-categories">${groupHtml}</div>` : emptyState("No matching features", `No results for “${state.search}”. Clear the search to see all features.`)) : emptyState("Features are unavailable", "The control API has not returned a feature list for this server yet.", `<button class="button button-secondary" type="button" data-action="retry">Retry</button>`)}<p class="sr-only" role="status" data-feature-count-text>${escapeHtml(countText)}</p>`;
 }
 
-function renderFeature(feature, features) {
+function renderFeature(feature, features, canManage) {
   const pending = state.pendingFeatures.has(feature.id);
   const error = state.featureErrors[feature.id];
   const unmet = (Array.isArray(feature.dependsOn) ? feature.dependsOn : []).filter((dependency) => {
@@ -272,7 +293,7 @@ function renderFeature(feature, features) {
   const commandHint = Array.isArray(feature.commands) && feature.commands.length
     ? ` title="Commands: ${escapeHtml(feature.commands.map((command) => `/${command}`).join(", "))}"`
     : "";
-  return `<article class="feature-row ${pending ? "is-pending" : ""}"${commandHint}><div class="feature-copy"><h3>${escapeHtml(feature.label ?? feature.id)}</h3><p>${escapeHtml(feature.description ?? "")}</p>${dependencies}${error ? `<p class="feature-error" role="alert">${escapeHtml(error)}</p>` : ""}</div><button type="button" class="switch" role="switch" aria-checked="${Boolean(feature.enabled)}" aria-label="${escapeHtml(feature.enabled ? `Disable ${feature.label}` : `Enable ${feature.label}`)}" aria-busy="${pending}" data-action="toggle-feature" data-feature-id="${escapeHtml(feature.id)}" ${pending ? "disabled" : ""}><span></span></button></article>`;
+  return `<article class="feature-row ${pending ? "is-pending" : ""}"${commandHint}><div class="feature-copy"><h3>${escapeHtml(feature.label ?? feature.id)}</h3><p>${escapeHtml(feature.description ?? "")}</p>${dependencies}${error ? `<p class="feature-error" role="alert">${escapeHtml(error)}</p>` : ""}</div><button type="button" class="switch" role="switch" aria-checked="${Boolean(feature.enabled)}" aria-label="${escapeHtml(feature.enabled ? `Disable ${feature.label}` : `Enable ${feature.label}`)}" aria-busy="${pending}" data-action="toggle-feature" data-feature-id="${escapeHtml(feature.id)}" ${pending || !canManage ? "disabled" : ""}><span></span></button></article>`;
 }
 
 function renderMusic(data) {
@@ -322,6 +343,7 @@ function getSectionValue(data, section) {
 }
 
 function renderSettings(data) {
+  const canManage = state.permissions.administrator;
   const sections = [
     ["prefix", "Command prefix", "How members call text commands."],
     ["welcome", "Welcome messages", "Member join and leave messages."],
@@ -329,35 +351,68 @@ function renderSettings(data) {
     ["tempvc", "Temporary voice", "Rooms created from a voice channel hub."],
     ["music", "Music defaults", "Queue and player defaults for this server."],
   ];
-  return `${pageHeader("Settings", "Changes save to the selected server when you submit each section.")}<div class="settings-list">${sections.map(([key, title, description]) => {
+  const banner = canManage ? "" : permissionNotice("Administrator permission required to change server settings.");
+  return `${pageHeader("Server settings", "Changes save to the selected server when you submit each section.")}${banner}<div class="settings-list">${sections.map(([key, title, description]) => {
     const value = getSectionValue(data, key);
     const fields = editableFields[key].filter((field) => Object.prototype.hasOwnProperty.call(value, field));
-    const fieldHtml = fields.length ? fields.map((field) => renderConfigField(field, value[field])).join("") : `<p class="settings-empty">This setting is not configured yet.</p>`;
+    const fieldHtml = fields.length ? fields.map((field) => renderConfigField(field, value[field], !canManage)).join("") : `<p class="settings-empty">This setting is not configured yet.</p>`;
     return `<form class="settings-section" data-config-section="${key}"><div class="settings-heading"><div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(description)}</p></div><div class="settings-save"><span class="settings-dirty" aria-hidden="true"></span><button class="button button-secondary" type="submit" data-save-section="${key}" disabled>Save</button></div></div><div class="settings-fields">${fieldHtml}</div><div class="settings-feedback" data-feedback="${key}" role="status" aria-live="polite"></div></form>`;
   }).join("")}</div>`;
 }
 
-function renderConfigField(field, value) {
+function renderConfigField(field, value, disabled = false) {
   const label = labels[field] ?? field.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`).replace(/^./, (letter) => letter.toUpperCase());
   const hint = hints[field] ? `<small>${escapeHtml(hints[field])}</small>` : "";
+  const off = disabled ? "disabled" : "";
   if (typeof value === "boolean") {
-    return `<div class="setting-field setting-switch-field"><div><strong>${escapeHtml(label)}</strong>${hint}</div><button type="button" class="switch" role="switch" aria-checked="${value}" aria-label="${escapeHtml(label)}" data-setting-toggle="${escapeHtml(field)}"><span></span></button></div>`;
+    return `<div class="setting-field setting-switch-field"><div><strong>${escapeHtml(label)}</strong>${hint}</div><button type="button" class="switch" role="switch" aria-checked="${value}" aria-label="${escapeHtml(label)}" data-setting-toggle="${escapeHtml(field)}" ${off}><span></span></button></div>`;
   }
   const isList = Array.isArray(value);
   const longText = field === "message" || field === "dmMessage" || field === "goodbyeMessage";
   const type = typeof value === "number" ? "number" : "text";
   const valueString = isList ? value.join(", ") : value == null ? "" : String(value);
   const control = isList
-    ? `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="list" type="text" value="${escapeHtml(valueString)}" placeholder="Comma-separated IDs" autocomplete="off" inputmode="numeric">`
+    ? `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="list" type="text" value="${escapeHtml(valueString)}" placeholder="Comma-separated IDs" autocomplete="off" inputmode="numeric" ${off}>`
     : longText
-      ? `<textarea id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="text" rows="3">${escapeHtml(valueString)}</textarea>`
-    : `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="${type}" type="${type}" value="${escapeHtml(valueString)}" ${type === "number" ? "step=1" : "autocomplete=off"}>`;
+      ? `<textarea id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="text" rows="3" ${off}>${escapeHtml(valueString)}</textarea>`
+    : `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="${type}" type="${type}" value="${escapeHtml(valueString)}" ${type === "number" ? "step=1" : "autocomplete=off"} ${off}>`;
   return `<label class="setting-field" for="setting-${escapeHtml(field)}"><span><strong>${escapeHtml(label)}</strong>${hint}</span>${control}</label>`;
+}
+
+function renderUserSettings(data) {
+  const user = state.user;
+  const name = user?.name || "Operator";
+  const discordUser = typeof user?.id === "string" && /^\d{17,20}$/.test(user.id);
+  const birthday = data?.birthday ?? null;
+  const avatar = user?.avatarUrl
+    ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
+    : "";
+  const profile = `<section class="profile-card" aria-label="Signed-in profile"><span class="profile-avatar" data-initial="${escapeHtml(initialOf(name))}">${avatar}</span><div class="profile-copy"><h2>${escapeHtml(name)}</h2><p>${discordUser ? `Discord ID ${escapeHtml(user.id)}` : "Dashboard operator"}</p></div></section>`;
+  if (!discordUser) {
+    return `${pageHeader("User settings", "Your profile and birthday for this server.")}${profile}${permissionNotice("Sign in with Discord to manage your birthday.")}`;
+  }
+  const month = birthday?.month ? String(birthday.month) : "";
+  const day = birthday?.day ? String(birthday.day) : "";
+  const year = birthday?.birthYear ? String(birthday.birthYear) : "";
+  const currentYear = new Date().getFullYear();
+  const monthOptions = MONTHS.map((label, index) => `<option value="${index + 1}" ${String(index + 1) === month ? "selected" : ""}>${escapeHtml(label)}</option>`).join("");
+  const clearDisabled = birthday ? "" : "disabled";
+  return `${pageHeader("User settings", "Your profile and birthday for this server.")}${profile}
+    <form id="birthday-form" class="settings-section" data-birthday-form>
+      <div class="settings-heading"><div><h2>Birthday</h2><p>The bot reads this to post a birthday message in the selected server.</p></div><div class="settings-save"><button class="button button-secondary" type="submit" data-birthday-save>Save</button></div></div>
+      <div class="settings-fields birthday-fields">
+        <label class="setting-field" for="birthday-month"><span><strong>Month</strong></span><select id="birthday-month" name="month" required><option value="" ${month ? "" : "selected"} disabled>Select a month</option>${monthOptions}</select></label>
+        <label class="setting-field" for="birthday-day"><span><strong>Day</strong></span><input id="birthday-day" name="day" type="number" min="1" max="31" step="1" value="${escapeHtml(day)}" required></label>
+        <label class="setting-field" for="birthday-year"><span><strong>Year</strong><small>Optional. Leave blank to hide your age.</small></span><input id="birthday-year" name="year" type="number" min="1900" max="${currentYear}" step="1" value="${escapeHtml(year)}"></label>
+      </div>
+      <div class="settings-feedback" data-feedback="birthday" role="status" aria-live="polite"></div>
+    </form>
+    <section class="settings-section birthday-clear"><div class="settings-heading"><div><h2>Clear birthday</h2><p>Remove your birthday from this server. The bot stops posting a message.</p></div><button class="button button-secondary danger-text" type="button" data-action="clear-birthday" ${clearDisabled}>Clear</button></div></section>`;
 }
 
 function renderAudit(data) {
   const entries = list(data, "entries");
-  const rows = entries.map((entry) => `<tr><td><strong>${escapeHtml(entry.action ?? entry.type ?? "Control action")}</strong></td><td data-label="Actor">${escapeHtml(entry.actorId ?? entry.actor ?? "Unknown")}</td><td data-label="Source"><span class="source-tag">${escapeHtml(entry.source ?? "system")}</span></td><td data-label="Target">${escapeHtml(entry.targetId ?? entry.target ?? "Not reported")}</td><td data-label="Time"><time datetime="${escapeHtml(entry.createdAt ?? "")}">${escapeHtml(fmtDate(entry.createdAt))}</time></td></tr>`).join("");
+  const rows = entries.map((entry) => `<tr><td><strong>${escapeHtml(entry.action ?? entry.type ?? "Control action")}</strong></td><td data-label="Actor">${actorMarkup(entry)}</td><td data-label="Source"><span class="source-tag">${escapeHtml(entry.source ?? "system")}</span></td><td data-label="Target">${escapeHtml(entry.targetId ?? entry.target ?? "Not reported")}</td><td data-label="Time"><time datetime="${escapeHtml(entry.createdAt ?? "")}">${escapeHtml(fmtDate(entry.createdAt))}</time></td></tr>`).join("");
   return `${pageHeader("Audit", `Recent control actions for ${state.guildId ? (state.guilds.find((guild) => guild.id === state.guildId)?.name ?? "the selected server") : "the selected server"}.`)}<section class="table-panel">${entries.length ? `<div class="table-scroll"><table><thead><tr><th scope="col">Action</th><th scope="col">Actor</th><th scope="col">Source</th><th scope="col">Target</th><th scope="col">Time</th></tr></thead><tbody>${rows}</tbody></table></div>` : emptyState("No audit entries", "Changes made through the dashboard will appear here.", `<button class="button button-secondary" type="button" data-action="retry">Refresh audit</button>`)}</section>`;
 }
 
