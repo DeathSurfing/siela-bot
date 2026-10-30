@@ -635,6 +635,16 @@ describe("ControlServer game tabs", () => {
     });
     expect(oversized.statusCode).toBe(400);
     expect(oversized.json().error.code).toBe("validation_error");
+
+    const spoofed = await app.inject({
+      method: "POST",
+      url: "/v1/casino/coinflip",
+      headers: asUser(MEMBER_USER),
+      payload: { bet: 50, side: "heads", requestId: "request-spoof", userId: ADMIN_USER },
+    });
+    expect(spoofed.statusCode).toBe(400);
+    expect(spoofed.json().error.code).toBe("validation_error");
+    expect(economy.spend).toHaveBeenCalledTimes(2);
   });
 
   it("refuses casino play when the economy feature is off", async () => {
