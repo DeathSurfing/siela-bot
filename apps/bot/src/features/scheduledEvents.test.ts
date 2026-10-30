@@ -308,13 +308,15 @@ describe("ScheduledEventService.runNow", () => {
       json: async () => ({ data: { timings: { Fajr: "23:59" } } }),
     })));
     const row = event("daily", new Date("2026-01-01T11:59:00.000Z"));
+    const otherRow = { ...event("daily", new Date("2026-01-01T12:00:00.000Z")), id: 8 };
+    let dueEvents: ScheduledVoiceEventRow[] = [row];
     const runs: Array<Record<string, unknown>> = [];
     const updates: Array<Record<string, unknown>> = [];
     let nextRunId = 1;
     const query = {
       where: () => query,
       orderBy: () => query,
-      limit: async () => [row],
+      limit: async () => dueEvents,
     };
     const db = {
       select: () => ({ from: () => query }),
@@ -327,9 +329,18 @@ describe("ScheduledEventService.runNow", () => {
       }) }),
       update: () => ({ set: (values: Record<string, unknown>) => ({ where: async () => {
         updates.push(values);
-        if (values.status) runs[0] = { ...runs[0], ...values };
-        if (values.lastStatus) row.lastStatus = String(values.lastStatus);
-        if (values.runCount) row.runCount += 1;
+        if (values.status === "success") {
+          const run = runs.find((entry) => entry.eventId === row.id);
+          if (run) Object.assign(run, values);
+        }
+        if (values.status === "skipped") {
+          const run = runs.find((entry) => entry.eventId === otherRow.id);
+          if (run) Object.assign(run, values);
+        }
+        if (values.lastStatus === "success") row.lastStatus = "success";
+        if (values.lastStatus === "skipped") otherRow.lastStatus = "skipped";
+        if (values.runCount && values.lastStatus === "success") row.runCount += 1;
+        if (values.runCount && values.lastStatus === "skipped") otherRow.runCount += 1;
       } }) }),
     } as unknown as Database;
     let release: () => void = () => undefined;
@@ -353,10 +364,16 @@ describe("ScheduledEventService.runNow", () => {
 
     expect(runs).toHaveLength(1);
     expect(row.runCount).toBe(0);
+    dueEvents = [otherRow];
+    await instance.triggerTick(guild);
+    expect(runs).toHaveLength(2);
+    expect(runs.find((run) => run.eventId === otherRow.id)).toMatchObject({ status: "skipped" });
+    expect(otherRow.runCount).toBe(1);
+    expect(row.runCount).toBe(0);
     release();
     await vi.waitFor(() => {
       expect(row.runCount).toBe(1);
-      expect(runs[0]).toMatchObject({ status: "success" });
+      expect(runs.find((run) => run.eventId === row.id)).toMatchObject({ status: "success" });
     });
     instance.stop();
   });
