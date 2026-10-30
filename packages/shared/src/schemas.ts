@@ -33,18 +33,20 @@ export const featureBulkUpdateSchema = z
   })
   .strict();
 
+const scheduledEventFields = {
+  name: z.string().trim().min(1).max(80),
+  channelId: snowflakeSchema,
+  sourceUrl: z.string().trim().min(1),
+  startAt: z.coerce.date(),
+  repeat: z.enum(["none", "daily", "weekly"]),
+  enabled: z.boolean(),
+};
+
 export const scheduledEventCreateSchema = z
-  .object({
-    name: z.string().trim().min(1).max(80),
-    channelId: snowflakeSchema,
-    sourceUrl: z.string().trim().min(1),
-    startAt: z.coerce.date(),
-    repeat: z.enum(["none", "daily", "weekly"]),
-    enabled: z.boolean().default(true),
-  })
+  .object({ ...scheduledEventFields, enabled: z.boolean().default(true) })
   .strict();
 
-export const scheduledEventUpdateSchema = scheduledEventCreateSchema.partial().strict();
+export const scheduledEventUpdateSchema = z.object(scheduledEventFields).partial().strict();
 
 export const welcomeUpdateSchema = z
   .object({
