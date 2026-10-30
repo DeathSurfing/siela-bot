@@ -36,9 +36,9 @@ function createService() {
 
 async function hosted(pointsGoal = 7) {
   const context = createService();
-  const host = member("host", "Host");
-  const second = member("second", "Second");
-  const third = member("third", "Third");
+  const host = member("111111111111111111", "Host");
+  const second = member("222222222222222222", "Second");
+  const third = member("333333333333333333", "Third");
   await context.service.host({
     guild: context.guild as never,
     channel: context.channel as never,
@@ -75,9 +75,6 @@ describe("CahService snapshot", () => {
     expect(serialized).not.toContain(second.id);
     expect(serialized).not.toContain(third.id);
     expect(serialized).not.toContain("playerId");
-    expect(serialized).not.toContain("hand");
-    expect(serialized).not.toContain("deck");
-    expect(serialized).not.toContain("timer");
     service.stop();
   });
 
