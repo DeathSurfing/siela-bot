@@ -56,6 +56,13 @@ function controlStub(overrides: Partial<ControlClient> = {}): ControlClient {
     getBirthday: vi.fn().mockResolvedValue({ birthday: null }),
     setBirthday: vi.fn().mockResolvedValue({ month: 1, day: 1, birthYear: null }),
     clearBirthday: vi.fn().mockResolvedValue({ ok: true }),
+    cahState: vi.fn().mockResolvedValue({ enabled: true, game: null }),
+    cahHost: vi.fn().mockResolvedValue({ enabled: true, game: null }),
+    cahAction: vi.fn().mockResolvedValue({ enabled: true, game: null }),
+    tambolaState: vi.fn().mockResolvedValue({ enabled: true, game: null }),
+    tambolaAction: vi.fn().mockResolvedValue({ enabled: true, game: null }),
+    casinoState: vi.fn().mockResolvedValue({ enabled: true, balance: 500, maxBet: 10_000 }),
+    casinoPlay: vi.fn().mockResolvedValue({ enabled: true, balance: 500, game: "coinflip", payout: 0 }),
     ...overrides,
   };
 }
@@ -80,8 +87,10 @@ describe("dashboard HTTP boundary", () => {
     expect(asset.statusCode).toBe(200);
     expect(asset.body).toContain("dashboard");
     expect(asset.headers["content-security-policy"]).toContain("default-src 'self'");
+    expect(asset.headers["cache-control"]).toBe("no-store");
     expect(font.statusCode).toBe(200);
     expect(font.headers["content-type"]).toBe("font/woff2");
+    expect(font.headers["cache-control"]).toBe("public, max-age=3600");
     await app.close();
   });
 
@@ -452,6 +461,149 @@ describe("dashboard HTTP boundary", () => {
     expect(action.statusCode).toBe(404);
     expect(control.getStatus).not.toHaveBeenCalled();
     expect(control.musicAction).not.toHaveBeenCalled();
+    await app.close();
+  });
+});
+
+describe("dashboard game routes", () => {
+  it("reads CAH and Tambola state for any signed-in session", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const cah = await app.inject({ method: "GET", url: "/api/guilds/123/cah", headers: sessionHeaders() });
+    const tambola = await app.inject({ method: "GET", url: "/api/guilds/123/tambola", headers: sessionHeaders() });
+
+    expect(cah.statusCode).toBe(200);
+    expect(cah.json()).toEqual({ enabled: true, game: null });
+    expect(tambola.statusCode).toBe(200);
+    expect(control.cahState).toHaveBeenCalledWith("123");
+    expect(control.tambolaState).toHaveBeenCalledWith("123");
+    await app.close();
+  });
+
+  it("requires a Discord identity and CSRF for game controls", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const body = { channelId: "333333333333333333", pointsGoal: 5, maxPlayers: 6 };
+    const operator = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/cah/host",
+      headers: sessionHeaders({ id: "operator", name: "Operator", avatarUrl: null }),
+      payload: body,
+    });
+    const noCsrf = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/cah/host",
+      headers: { cookie: sessionHeaders(owner).cookie },
+      payload: body,
+    });
+    const casino = await app.inject({
+      method: "GET",
+      url: "/api/guilds/123/casino",
+      headers: sessionHeaders({ id: "operator", name: "Operator", avatarUrl: null }),
+    });
+
+    expect(operator.statusCode).toBe(403);
+    expect(operator.json().error.code).toBe("discord_account_required");
+    expect(noCsrf.statusCode).toBe(403);
+    expect(noCsrf.json().error.code).toBe("csrf_mismatch");
+    expect(casino.statusCode).toBe(403);
+    expect(casino.json().error.code).toBe("discord_account_required");
+    expect(control.cahHost).not.toHaveBeenCalled();
+    expect(control.casinoState).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("forwards CAH host and round actions with the signed-in user", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders(owner);
+    const host = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/cah/host",
+      headers,
+      payload: { channelId: "333333333333333333", pointsGoal: 5, maxPlayers: 6 },
+    });
+    const reveal = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/cah/reveal",
+      headers,
+      payload: { gameId: "ABC123", roundIndex: 2 },
+    });
+    const unknown = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/cah/pick",
+      headers,
+      payload: { gameId: "ABC123" },
+    });
+
+    expect(host.statusCode).toBe(200);
+    expect(control.cahHost).toHaveBeenCalledWith(
+      "123",
+      { channelId: "333333333333333333", pointsGoal: 5, maxPlayers: 6 },
+      owner.id,
+    );
+    expect(reveal.statusCode).toBe(200);
+    expect(control.cahAction).toHaveBeenCalledWith("123", "reveal", { gameId: "ABC123", roundIndex: 2 }, owner.id);
+    expect(unknown.statusCode).toBe(404);
+    expect(control.cahAction).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+
+  it("forwards Tambola controls with the signed-in user", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/tambola/pause",
+      headers: sessionHeaders(owner),
+      payload: { gameId: "TMB123" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(control.tambolaAction).toHaveBeenCalledWith("123", "pause", { gameId: "TMB123" }, owner.id);
+    await app.close();
+  });
+
+  it("plays casino games for the session user and rejects an invalid bet", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders(owner);
+    const flip = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/casino/coinflip",
+      headers,
+      payload: { bet: 50, side: "heads", requestId: "request-1234" },
+    });
+    const slots = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/casino/slots",
+      headers,
+      payload: { bet: 25, requestId: "request-5678" },
+    });
+    const invalid = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/casino/slots",
+      headers,
+      payload: { bet: 0, requestId: "request-zero" },
+    });
+
+    expect(flip.statusCode).toBe(200);
+    expect(control.casinoPlay).toHaveBeenCalledWith(
+      "123",
+      "coinflip",
+      { bet: 50, side: "heads", requestId: "request-1234" },
+      owner.id,
+    );
+    expect(slots.statusCode).toBe(200);
+    expect(control.casinoPlay).toHaveBeenCalledWith(
+      "123",
+      "slots",
+      { bet: 25, requestId: "request-5678" },
+      owner.id,
+    );
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json().error.code).toBe("invalid_body");
+    expect(control.casinoPlay).toHaveBeenCalledTimes(2);
     await app.close();
   });
 });
