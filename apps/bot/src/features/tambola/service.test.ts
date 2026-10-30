@@ -396,7 +396,7 @@ describe("TambolaService", () => {
 
   it("leaves voice six seconds after a game ends", async () => {
     vi.useFakeTimers();
-    const { service, channel, guild } = createService();
+    const { service, channel, guild, music } = createService();
     try {
       const host = fakeMember("host", "Host");
       const player = fakeMember("player", "Player");
@@ -422,6 +422,7 @@ describe("TambolaService", () => {
       expect(voiceSpies.leave).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(6_000);
       expect(voiceSpies.leave).toHaveBeenCalled();
+      expect(music.unlockVoice).toHaveBeenCalledWith("guild");
     } finally {
       service.stop();
       vi.useRealTimers();

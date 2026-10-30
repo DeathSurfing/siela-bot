@@ -657,7 +657,7 @@ export class ControlServer {
       const userId = this.userId(request);
       const body = this.parse(casinoCoinflipSchema, request.body);
       await this.requireEconomy(guildId);
-      const result = await playCoinflip(services.economy, guildId, userId, body.bet, body.side, body.requestId);
+      const result = await playCoinflip(services.economy, guildId, userId, body.bet, body.side, body.requestId, this.options.token);
       return { enabled: true, maxBet: MAX_CASINO_BET, ...result };
     });
     this.route("POST", "/v1/casino/slots", async (request) => {
@@ -665,7 +665,7 @@ export class ControlServer {
       const userId = this.userId(request);
       const body = this.parse(casinoSlotsSchema, request.body);
       await this.requireEconomy(guildId);
-      const result = await playSlots(services.economy, guildId, userId, body.bet, body.requestId);
+      const result = await playSlots(services.economy, guildId, userId, body.bet, body.requestId, this.options.token);
       return { enabled: true, maxBet: MAX_CASINO_BET, ...result };
     });
 

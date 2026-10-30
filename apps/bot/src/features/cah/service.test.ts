@@ -98,8 +98,8 @@ describe("CahService snapshot", () => {
     service.stop();
   });
 
-  it("detaches a game that reaches the points goal and keeps a redacted result", async () => {
-    const { service, host, second, third } = await hosted(1);
+  it("detaches a game that reaches the points goal and can start a new one", async () => {
+    const { service, channel, guild, host, second, third } = await hosted(1);
     const game = service.get("guild")!.game;
     await service.start("guild", host as never);
     await service.submit("guild", second.id, game.players.get(second.id)!.hand[0]!);
@@ -111,6 +111,16 @@ describe("CahService snapshot", () => {
     expect(result.status).toBe("finished");
     expect(result.winnerName).toBe("Second");
     expect(result.players.find((player) => player.id === second.id)?.score).toBe(1);
+
+    await service.host({
+      guild: guild as never,
+      channel: channel as never,
+      host: host as never,
+      pointsGoal: 7,
+      maxPlayers: 5,
+    });
+    expect(service.snapshot("guild")?.status).toBe("lobby");
+    expect(service.lastResult("guild")).toBeNull();
     service.stop();
   });
 });

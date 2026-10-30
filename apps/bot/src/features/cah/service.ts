@@ -199,7 +199,6 @@ export class CahService {
     };
     this.byGuild.set(game.guildId, session);
     this.byId.set(game.id, session);
-    this.lastFinished.delete(game.guildId);
 
     try {
       session.cardMessage = await options.channel.send(
@@ -210,6 +209,7 @@ export class CahService {
       this.byId.delete(game.id);
       throw error;
     }
+    this.lastFinished.delete(game.guildId);
 
     session.lobbyTimer = setTimeout(() => {
       void this.cancel(session, "The lobby timed out.");

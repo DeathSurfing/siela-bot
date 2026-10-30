@@ -574,6 +574,10 @@ describe("ControlServer game tabs", () => {
     const state = await app.inject({ method: "GET", url: "/v1/tambola/state", headers: auth });
     expect(state.json()).toMatchObject({ enabled: true, game: { id: "TMB123" } });
 
+    const off = server({ tambolaEnabled: false });
+    const offState = await off.app.inject({ method: "GET", url: "/v1/tambola/state", headers: auth });
+    expect(offState.json()).toEqual({ enabled: false, game: null });
+
     for (const [action, spy] of [["pause", tambola.pause], ["resume", tambola.resume], ["end", tambola.end]] as const) {
       const admin = await app.inject({
         method: "POST",
