@@ -637,6 +637,13 @@ async function resolveInputValue(input) {
   else closeResolverList(input);
 }
 
+function unresolvedResolverInputs(form) {
+  return [...form.querySelectorAll("input[data-resolve-kind]")].filter((input) => {
+    const query = resolverQuery(input);
+    return Boolean(query) && !RESOLVE_SNOWFLAKE.test(query);
+  });
+}
+
 function singleResolverResult(results, query) {
   const term = query.toLocaleLowerCase();
   const exact = results.filter((result) => String(result.name ?? "").toLocaleLowerCase() === term);
@@ -1299,9 +1306,29 @@ async function clearBirthday(button) {
   }
 }
 
+const resolvingForms = new WeakSet();
+
 document.addEventListener("submit", async (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
+  if (!resolvingForms.has(form)) {
+    const pending = unresolvedResolverInputs(form);
+    if (pending.length) {
+      event.preventDefault();
+      resolvingForms.add(form);
+      await Promise.all(pending.map((input) => resolveInputValue(input)));
+      const unresolved = unresolvedResolverInputs(form);
+      if (unresolved.length) {
+        resolvingForms.delete(form);
+        unresolved[0].focus();
+        showToast("Pick the matching name from the list before saving.", { key: "resolver", tone: "error" });
+        return;
+      }
+      resolvingForms.delete(form);
+      form.requestSubmit(event.submitter instanceof HTMLElement ? event.submitter : undefined);
+      return;
+    }
+  }
   if (form.id === "birthday-form") {
     event.preventDefault();
     await saveBirthday(form);
