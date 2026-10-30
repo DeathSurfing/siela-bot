@@ -284,6 +284,15 @@ function server(options: {
       finishedAt: new Date().toISOString(),
       error: null,
     })),
+    startNow: vi.fn(async (_guildId: string, id: number, triggeredBy: string) => ({
+      id: 1,
+      eventName: scheduledEventRows.get(id)?.name ?? "Event",
+      status: "running" as const,
+      triggeredBy,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      error: null,
+    })),
   };
   const services = {
     features: featuresStub,
@@ -1335,6 +1344,7 @@ describe("ControlServer game tabs", () => {
     expect(scheduledEvents.update).not.toHaveBeenCalled();
     expect(scheduledEvents.remove).not.toHaveBeenCalled();
     expect(scheduledEvents.runNow).not.toHaveBeenCalled();
+    expect(scheduledEvents.startNow).not.toHaveBeenCalled();
   });
 
   it("validates voice-channel ownership and strict event bodies", async () => {
@@ -1383,6 +1393,36 @@ describe("ControlServer game tabs", () => {
     expect(response.statusCode).toBe(400);
     expect(response.json().error.code).toBe("feature_disabled");
     expect(scheduledEvents.runNow).not.toHaveBeenCalled();
+    expect(scheduledEvents.startNow).not.toHaveBeenCalled();
+  });
+
+  it("returns the manual-run response before deferred playback finishes", async () => {
+    const { app, scheduledEvents } = server({ members });
+    let releasePlayback: () => void = () => undefined;
+    let playbackFinished = false;
+    const playback = new Promise<void>((resolve) => { releasePlayback = resolve; });
+    scheduledEvents.startNow.mockImplementation(async (_guildId: string, _id: number, triggeredBy: string) => {
+      void playback.then(() => { playbackFinished = true; });
+      return {
+        id: 19,
+        eventName: "Morning music",
+        status: "running",
+        triggeredBy,
+        startedAt: new Date().toISOString(),
+        finishedAt: null,
+        error: null,
+      };
+    });
+
+    const response = await app.inject({ method: "POST", url: "/v1/events/1/run", headers: asUser(ADMIN_USER) });
+
+    expect(response.statusCode).toBe(200);
+    expect(scheduledEvents.startNow).toHaveBeenCalledWith(GUILD_A, 1, ADMIN_USER);
+    expect(scheduledEvents.runNow).not.toHaveBeenCalled();
+    expect(playbackFinished).toBe(false);
+    releasePlayback();
+    await playback;
+    expect(playbackFinished).toBe(true);
   });
 
   it("audits event creation, edits, manual runs, and deletion", async () => {
@@ -1411,7 +1451,7 @@ describe("ControlServer game tabs", () => {
     expect(deleted.statusCode).toBe(200);
     expect(scheduledEvents.create).toHaveBeenCalledWith(GUILD_A, expect.objectContaining({ enabled: true }), ADMIN_USER);
     expect(scheduledEvents.update).toHaveBeenCalledWith(GUILD_A, 1, { enabled: false }, ADMIN_USER);
-    expect(scheduledEvents.runNow).toHaveBeenCalledWith(GUILD_A, 1, ADMIN_USER);
+    expect(scheduledEvents.startNow).toHaveBeenCalledWith(GUILD_A, 1, ADMIN_USER);
     expect(audits.map((entry) => (entry as { action: string }).action)).toEqual([
       "scheduled_event.create",
       "scheduled_event.update",

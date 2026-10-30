@@ -38,7 +38,7 @@ interface RunRow {
   status: "running" | "success" | "failed" | "skipped";
   triggeredBy: string;
   startedAt: string;
-  finishedAt: string;
+  finishedAt: string | null;
   error: string | null;
 }
 
@@ -118,13 +118,8 @@ const control: ControlClient = {
     if (event) {
       const now = new Date().toISOString();
       event.lastRunAt = now;
-      event.lastStatus = "success";
-      event.runCount += 1;
-      if (event.repeat === "none") {
-        event.enabled = false;
-        event.nextRunAt = null;
-      }
-      runs.unshift({ id: nextRunId++, eventName: event.name, status: "success", triggeredBy: actor, startedAt: now, finishedAt: now, error: null });
+      event.lastStatus = "running";
+      runs.unshift({ id: nextRunId++, eventName: event.name, status: "running", triggeredBy: actor, startedAt: now, finishedAt: null, error: null });
     }
     return eventState();
   },
@@ -199,6 +194,15 @@ try {
   await page.locator("#scheduled-event-name").fill("Morning music revised");
   await page.locator("#scheduled-event-form button[type=submit]").click();
   await page.getByText("Morning music revised", { exact: true }).waitFor();
+  assert.equal(calls.at(-1)?.body?.startAt, undefined, "editing an unchanged start time omits it from the PATCH body");
+
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  const changedStart = new Date(Date.now() + 2 * 60 * 60_000);
+  const changedLocalStart = new Date(changedStart.getTime() - changedStart.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+  await page.locator("#scheduled-event-start").fill(changedLocalStart);
+  await page.locator("#scheduled-event-form button[type=submit]").click();
+  await page.getByText("Morning music revised", { exact: true }).waitFor();
+  assert.equal(calls.at(-1)?.body?.startAt, new Date(changedLocalStart).toISOString(), "a changed start time is sent as ISO");
 
   await page.getByRole("switch", { name: "Disable Morning music revised" }).click();
   await page.waitForFunction(() => document.querySelector('[data-action="event-toggle"]')?.getAttribute("aria-checked") === "false");
@@ -211,9 +215,20 @@ try {
     Object.assign(window, { __eventConfirmations: confirmations });
   });
   await page.getByRole("button", { name: "Run now", exact: true }).click();
-  await page.getByText("Success", { exact: true }).first().waitFor();
+  await page.getByText("Running", { exact: true }).first().waitFor();
   assert.match(String(await page.evaluate(() => (window as unknown as Window & { __eventConfirmations: string[] }).__eventConfirmations[0])), /Run “Morning music revised” now/);
   assert.equal(calls.at(-1)?.action, "run");
+
+  const runningEvent = events.find((event) => event.lastStatus === "running");
+  const runningRun = runs.find((run) => run.status === "running");
+  assert.ok(runningEvent && runningRun, "manual run returns while its status is running");
+  runningEvent.lastStatus = "success";
+  runningEvent.runCount += 1;
+  runningRun.status = "success";
+  runningRun.finishedAt = new Date().toISOString();
+  await page.reload();
+  await page.getByRole("heading", { name: "Scheduled Events", exact: true }).waitFor();
+  await page.getByText("Success", { exact: true }).first().waitFor();
 
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page.getByText("No scheduled events", { exact: true }).waitFor();

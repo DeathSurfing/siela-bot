@@ -60,7 +60,10 @@ describe("ScheduledEventService.runNow", () => {
   const actorId = "222222222222222222";
   const logger = { info: () => undefined, warn: () => undefined, error: () => undefined, debug: () => undefined } as unknown as Logger;
 
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
 
   function event(repeat: string, nextRunAt: Date | null): ScheduledVoiceEventRow {
     const startAt = new Date("2026-01-01T12:00:00.000Z");
@@ -196,6 +199,81 @@ describe("ScheduledEventService.runNow", () => {
     instance.stop();
   });
 
+  it("returns a running view while manual playback completes in the background", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T12:00:00.000Z"));
+    const fake = fakeDatabase(event("daily", new Date("2026-01-01T12:00:00.000Z")));
+    let release: () => void = () => undefined;
+    let entered: () => void = () => undefined;
+    const playbackStarted = new Promise<void>((resolve) => { entered = resolve; });
+    const playbackGate = new Promise<void>((resolve) => { release = resolve; });
+    class BackgroundService extends ScheduledEventService {
+      protected override async execute(): Promise<void> {
+        entered();
+        await playbackGate;
+      }
+    }
+    const instance = new BackgroundService(null, logger, false, "Fajr", undefined, undefined, undefined, null, null, async () => true, fake.db);
+    instance.start({ id: guildId } as Guild);
+
+    const run = await instance.startNow(guildId, 7, actorId);
+    expect(run).toMatchObject({ status: "running", triggeredBy: actorId, eventName: "Morning music", finishedAt: null });
+    await playbackStarted;
+    expect(fake.updates[0]).toMatchObject({ lastStatus: "running", lastError: null });
+    await expect(instance.startNow(guildId, 7, actorId)).rejects.toThrow("A voice event is already running");
+
+    release();
+    await vi.waitFor(() => expect(fake.updates.at(-1)).toMatchObject({ lastStatus: "success", runCount: expect.anything() }));
+    expect(fake.updates.find((update) => update.status === "success")).toMatchObject({ status: "success" });
+    instance.stop();
+  });
+
+  it("releases the background-run guard after playback fails", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T12:00:00.000Z"));
+    const fake = fakeDatabase(event("daily", new Date("2026-01-01T12:00:00.000Z")));
+    let release: () => void = () => undefined;
+    let entered: () => void = () => undefined;
+    const playbackStarted = new Promise<void>((resolve) => { entered = resolve; });
+    const playbackGate = new Promise<void>((resolve) => { release = resolve; });
+    class FailingBackgroundService extends ScheduledEventService {
+      protected override async execute(): Promise<void> {
+        entered();
+        await playbackGate;
+        throw new Error("stream failed");
+      }
+    }
+    const instance = new FailingBackgroundService(null, logger, false, "Fajr", undefined, undefined, undefined, null, null, async () => true, fake.db);
+    instance.start({ id: guildId } as Guild);
+
+    expect((await instance.startNow(guildId, 7, actorId)).status).toBe("running");
+    await playbackStarted;
+    release();
+    await vi.waitFor(() => expect(fake.updates.at(-1)).toMatchObject({ lastStatus: "failed", lastError: "stream failed" }));
+    await expect(instance.startNow(guildId, 7, actorId)).resolves.toMatchObject({ status: "running" });
+    instance.stop();
+  });
+
+  it("accepts an unchanged past start time but rejects a changed stale time", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-02T12:00:00.000Z"));
+    const past = new Date("2026-01-01T12:00:00.000Z");
+    const row = { ...event("daily", past), startAt: past };
+    const updates: Array<Record<string, unknown>> = [];
+    const db = {
+      select: () => ({ from: () => ({ where: () => ({ limit: async () => [row] }) }) }),
+      update: () => ({ set: (values: Record<string, unknown>) => ({ where: () => ({ returning: async () => {
+        updates.push(values);
+        return [{ ...row, ...values }];
+      } }) }) }),
+    } as unknown as Database;
+    const instance = new ScheduledEventService(null, logger, false, "Fajr", undefined, undefined, undefined, null, null, undefined, db);
+
+    await expect(instance.update(guildId, 7, { name: "Renamed", startAt: new Date(past.toISOString()) }, actorId)).resolves.toMatchObject({ name: "Renamed" });
+    expect(updates[0]).not.toHaveProperty("startAt");
+    await expect(instance.update(guildId, 7, { startAt: past }, actorId)).rejects.toThrow("Start time must be in the future");
+  });
+
   it("ignores a scheduler tick while the same guild is already being processed", async () => {
     let release: () => void = () => undefined;
     let entered: () => void = () => undefined;
@@ -216,6 +294,67 @@ describe("ScheduledEventService.runNow", () => {
     expect(isEnabled).toHaveBeenCalledTimes(1);
     release();
     await first;
+    instance.stop();
+  });
+
+  it("does not record a skipped run for a due event whose playback is already running", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T12:00:00.000Z"));
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ data: { timings: { Fajr: "23:59" } } }),
+    })));
+    const row = event("daily", new Date("2026-01-01T11:59:00.000Z"));
+    const runs: Array<Record<string, unknown>> = [];
+    const updates: Array<Record<string, unknown>> = [];
+    let nextRunId = 1;
+    const query = {
+      where: () => query,
+      orderBy: () => query,
+      limit: async () => [row],
+    };
+    const db = {
+      select: () => ({ from: () => query }),
+      insert: () => ({ values: (values: Record<string, unknown>) => ({
+        returning: async () => {
+          const run = { id: nextRunId++, ...values };
+          runs.push(run);
+          return [run];
+        },
+      }) }),
+      update: () => ({ set: (values: Record<string, unknown>) => ({ where: async () => {
+        updates.push(values);
+        if (values.status) runs[0] = { ...runs[0], ...values };
+        if (values.lastStatus) row.lastStatus = String(values.lastStatus);
+        if (values.runCount) row.runCount += 1;
+      } }) }),
+    } as unknown as Database;
+    let release: () => void = () => undefined;
+    let entered: () => void = () => undefined;
+    const playbackStarted = new Promise<void>((resolve) => { entered = resolve; });
+    const playbackGate = new Promise<void>((resolve) => { release = resolve; });
+    class DeferredSchedulerService extends ScheduledEventService {
+      protected override async execute(): Promise<void> {
+        entered();
+        await playbackGate;
+      }
+      triggerTick(guild: Guild): Promise<void> {
+        return this.tickGuild(guild);
+      }
+    }
+    const instance = new DeferredSchedulerService(null, logger, true, "Fajr", undefined, undefined, undefined, null, null, async () => true, db);
+    const guild = { id: guildId } as Guild;
+    instance.start(guild);
+    await playbackStarted;
+    await instance.triggerTick(guild);
+
+    expect(runs).toHaveLength(1);
+    expect(row.runCount).toBe(0);
+    release();
+    await vi.waitFor(() => {
+      expect(row.runCount).toBe(1);
+      expect(runs[0]).toMatchObject({ status: "success" });
+    });
     instance.stop();
   });
 });
