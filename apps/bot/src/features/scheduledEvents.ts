@@ -13,7 +13,15 @@ import {
   type AudioPlayer,
   type VoiceConnection,
 } from "@discordjs/voice";
+import { and, asc, desc, eq, lte, sql } from "drizzle-orm";
 import { ChannelType, type Guild, type VoiceChannel } from "discord.js";
+import {
+  scheduledVoiceEventRuns,
+  scheduledVoiceEvents,
+  type Database,
+  type ScheduledVoiceEventRow,
+} from "@siela/db";
+import { NotFoundError, ServiceUnavailableError, UserError } from "../lib/errors.js";
 import type { Logger } from "../lib/logger.js";
 import type { MusicService } from "./music.js";
 
@@ -54,6 +62,132 @@ const PHASES: Phase[] = [
 ];
 const TICK_MS = 15_000;
 const RUN_WINDOW_MS = 60_000;
+const MAX_SCHEDULED_EVENTS_PER_TICK = 5;
+export type ScheduledEventRepeat = "none" | "daily" | "weekly";
+export type ScheduledEventStatus = "running" | "success" | "failed" | "skipped";
+
+export interface ScheduledEventInput {
+  name: string;
+  channelId: string;
+  sourceUrl: string;
+  startAt: Date;
+  repeat: ScheduledEventRepeat;
+  enabled: boolean;
+}
+
+export interface ScheduledEventView {
+  id: number;
+  name: string;
+  channelId: string;
+  sourceUrl: string;
+  repeat: ScheduledEventRepeat;
+  enabled: boolean;
+  startAt: string;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastStatus: ScheduledEventStatus | null;
+  lastError: string | null;
+  runCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScheduledEventRunView {
+  id: number;
+  eventName: string;
+  status: ScheduledEventStatus;
+  triggeredBy: string;
+  startedAt: string;
+  finishedAt: string | null;
+  error: string | null;
+}
+
+const YOUTUBE_HOSTS = new Set([
+  "youtube.com",
+  "www.youtube.com",
+  "m.youtube.com",
+  "music.youtube.com",
+  "youtu.be",
+]);
+const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+
+export function normalizeYouTubeUrl(raw: string): string {
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    throw new Error("Enter a valid YouTube video URL.");
+  }
+
+  if (!(["http:", "https:"].includes(url.protocol)) || url.username || url.password || url.port || !YOUTUBE_HOSTS.has(url.hostname.toLowerCase())) {
+    throw new Error("Only YouTube video URLs are supported.");
+  }
+
+  const host = url.hostname.toLowerCase();
+  let videoId: string | null = null;
+  if (host === "youtu.be") {
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (parts.length === 1) videoId = parts[0] ?? null;
+  } else if (url.pathname === "/watch") {
+    const ids = url.searchParams.getAll("v");
+    if (ids.length === 1) videoId = ids[0] ?? null;
+  } else {
+    const match = url.pathname.match(/^\/(?:shorts|live|embed)\/([^/]+)$/);
+    videoId = match?.[1] ?? null;
+  }
+
+  if (!videoId || !VIDEO_ID.test(videoId)) throw new Error("Enter a YouTube video URL with a valid video ID.");
+  return `https://www.youtube.com/watch?v=${videoId}`;
+}
+
+export function nextScheduledRun(from: Date, repeat: ScheduledEventRepeat, now: Date): Date | null {
+  if (repeat === "none") return null;
+  const intervalMs = repeat === "daily" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+  const elapsed = now.getTime() - from.getTime();
+  const intervals = Math.max(0, Math.floor(elapsed / intervalMs) + 1);
+  return new Date(from.getTime() + intervals * intervalMs);
+}
+
+function scheduledStart(startAt: Date, repeat: ScheduledEventRepeat, now: Date): Date | null {
+  return repeat === "none" ? startAt : nextScheduledRun(startAt, repeat, now);
+}
+
+function eventSource(raw: string): string {
+  try {
+    return normalizeYouTubeUrl(raw);
+  } catch (error) {
+    throw new UserError(error instanceof Error ? error.message : String(error), "invalid_source_url");
+  }
+}
+
+function scheduledRepeat(value: string): ScheduledEventRepeat {
+  if (value === "none" || value === "daily" || value === "weekly") return value;
+  throw new Error(`Unknown scheduled event repeat: ${value}`);
+}
+
+function scheduledStatus(value: string): ScheduledEventStatus {
+  if (value === "running" || value === "success" || value === "failed" || value === "skipped") return value;
+  throw new Error(`Unknown scheduled event status: ${value}`);
+}
+
+function eventView(row: ScheduledVoiceEventRow): ScheduledEventView {
+  return {
+    id: row.id,
+    name: row.name,
+    channelId: row.channelId,
+    sourceUrl: row.sourceUrl,
+    repeat: scheduledRepeat(row.repeat),
+    enabled: row.enabled,
+    startAt: row.startAt.toISOString(),
+    nextRunAt: row.nextRunAt?.toISOString() ?? null,
+    lastRunAt: row.lastRunAt?.toISOString() ?? null,
+    lastStatus: row.lastStatus === null ? null : scheduledStatus(row.lastStatus),
+    lastError: row.lastError,
+    runCount: row.runCount,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
 
 function delhiDate(date = new Date()): string {
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -92,10 +226,21 @@ interface Playback {
   ffmpeg: ChildProcess | null;
 }
 
+interface ScheduledEventRunContext {
+  guild: Guild;
+  event: ScheduledVoiceEventRow;
+  runId: number;
+  startedAt: Date;
+  triggeredBy: string;
+}
+
 export class ScheduledEventService {
   private readonly guilds = new Map<string, Guild>();
   private readonly states = new Map<string, GuildState>();
   private readonly playbacks = new Map<string, Playback>();
+  private readonly runningGuilds = new Set<string>();
+  private readonly runningEvents = new Set<number>();
+  private readonly tickingGuilds = new Set<string>();
   private timer: NodeJS.Timeout | null = null;
 
   constructor(
@@ -109,7 +254,279 @@ export class ScheduledEventService {
     private readonly routerUrl: string | null = null,
     private readonly routerToken: string | null = null,
     private readonly isEnabled?: (guildId: string) => Promise<boolean>,
+    private readonly db: Database | null = null,
   ) {}
+
+  get schedulerEnabled(): boolean {
+    return this.enabled;
+  }
+
+  builtInPhases(): Array<{ key: string; channelName: string; source: string; youtube: boolean; offsetMs: number }> {
+    return PHASES.map((phase) => ({
+      key: phase.key,
+      channelName: phase.channelName,
+      source: phase.audioName ?? phase.youtubeUrl ?? "",
+      youtube: Boolean(phase.youtubeUrl),
+      offsetMs: phase.offsetMs,
+    }));
+  }
+
+  private database(): Database {
+    if (!this.db) throw new ServiceUnavailableError("Scheduled event storage is not ready.");
+    return this.db;
+  }
+
+  private async eventFor(guildId: string, id: number): Promise<ScheduledVoiceEventRow> {
+    const [event] = await this.database()
+      .select()
+      .from(scheduledVoiceEvents)
+      .where(and(eq(scheduledVoiceEvents.guildId, guildId), eq(scheduledVoiceEvents.id, id)))
+      .limit(1);
+    if (!event) throw new NotFoundError("Scheduled event was not found.");
+    return event;
+  }
+
+  async list(guildId: string): Promise<ScheduledEventView[]> {
+    const events = await this.database()
+      .select()
+      .from(scheduledVoiceEvents)
+      .where(eq(scheduledVoiceEvents.guildId, guildId))
+      .orderBy(asc(scheduledVoiceEvents.nextRunAt), desc(scheduledVoiceEvents.createdAt));
+    return events.map(eventView);
+  }
+
+  async listRuns(guildId: string, limit = 10): Promise<ScheduledEventRunView[]> {
+    const runs = await this.database()
+      .select({
+        id: scheduledVoiceEventRuns.id,
+        eventName: scheduledVoiceEvents.name,
+        status: scheduledVoiceEventRuns.status,
+        triggeredBy: scheduledVoiceEventRuns.triggeredBy,
+        startedAt: scheduledVoiceEventRuns.startedAt,
+        finishedAt: scheduledVoiceEventRuns.finishedAt,
+        error: scheduledVoiceEventRuns.error,
+      })
+      .from(scheduledVoiceEventRuns)
+      .innerJoin(scheduledVoiceEvents, eq(scheduledVoiceEventRuns.eventId, scheduledVoiceEvents.id))
+      .where(eq(scheduledVoiceEventRuns.guildId, guildId))
+      .orderBy(desc(scheduledVoiceEventRuns.startedAt))
+      .limit(limit);
+    return runs.map((run) => ({
+      ...run,
+      status: scheduledStatus(run.status),
+      startedAt: run.startedAt.toISOString(),
+      finishedAt: run.finishedAt?.toISOString() ?? null,
+    }));
+  }
+
+  async create(guildId: string, input: ScheduledEventInput, actorId: string): Promise<ScheduledEventView> {
+    const now = new Date();
+    this.validateStartAt(input.startAt, now);
+    const [event] = await this.database()
+      .insert(scheduledVoiceEvents)
+      .values({
+        guildId,
+        name: input.name.trim(),
+        channelId: input.channelId,
+        sourceUrl: eventSource(input.sourceUrl),
+        repeat: input.repeat,
+        enabled: input.enabled,
+        startAt: input.startAt,
+        nextRunAt: scheduledStart(input.startAt, input.repeat, now),
+        createdBy: actorId,
+      })
+      .returning();
+    if (!event) throw new Error("Scheduled event could not be created.");
+    return eventView(event);
+  }
+
+  async update(
+    guildId: string,
+    id: number,
+    input: Partial<ScheduledEventInput>,
+    _actorId: string,
+  ): Promise<ScheduledEventView> {
+    const current = await this.eventFor(guildId, id);
+    const now = new Date();
+    const startAtChanged = input.startAt !== undefined && input.startAt.getTime() !== current.startAt.getTime();
+    if (startAtChanged && input.startAt !== undefined) this.validateStartAt(input.startAt, now);
+    const repeat = input.repeat ?? scheduledRepeat(current.repeat);
+    const startAt = startAtChanged ? input.startAt ?? current.startAt : current.startAt;
+    const scheduleChanged = startAtChanged || input.repeat !== undefined ||
+      (input.enabled === true && !current.enabled);
+    const nextRunAt = scheduleChanged
+      ? scheduledStart(startAt, repeat, now)
+      : current.nextRunAt;
+    const [event] = await this.database()
+      .update(scheduledVoiceEvents)
+      .set({
+        ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+        ...(input.channelId !== undefined ? { channelId: input.channelId } : {}),
+        ...(input.sourceUrl !== undefined ? { sourceUrl: eventSource(input.sourceUrl) } : {}),
+        ...(input.repeat !== undefined ? { repeat: input.repeat } : {}),
+        ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+        ...(startAtChanged ? { startAt } : {}),
+        ...(scheduleChanged ? { nextRunAt } : {}),
+        updatedAt: now,
+      })
+      .where(and(eq(scheduledVoiceEvents.guildId, guildId), eq(scheduledVoiceEvents.id, id)))
+      .returning();
+    if (!event) throw new NotFoundError("Scheduled event was not found.");
+    return eventView(event);
+  }
+
+  async remove(guildId: string, id: number): Promise<ScheduledEventView> {
+    const event = await this.eventFor(guildId, id);
+    await this.database()
+      .delete(scheduledVoiceEvents)
+      .where(and(eq(scheduledVoiceEvents.guildId, guildId), eq(scheduledVoiceEvents.id, id)));
+    return eventView(event);
+  }
+
+  async startNow(guildId: string, id: number, triggeredBy: string): Promise<ScheduledEventRunView> {
+    const context = await this.beginRun(guildId, id, triggeredBy);
+    void this.completeRun(context)
+      .catch((error) => this.logger.warn({ err: error, guildId, eventId: id }, "scheduled event run completion failed"))
+      .finally(() => this.releaseRun(guildId, id));
+    return this.runningRunView(context);
+  }
+
+  async runNow(guildId: string, id: number, triggeredBy: string): Promise<ScheduledEventRunView> {
+    const context = await this.beginRun(guildId, id, triggeredBy);
+    try {
+      return await this.completeRun(context);
+    } finally {
+      this.releaseRun(guildId, id);
+    }
+  }
+
+  private async beginRun(guildId: string, id: number, triggeredBy: string): Promise<ScheduledEventRunContext> {
+    if (this.runningGuilds.has(guildId) || this.isVoiceBusy?.(guildId)) {
+      throw new UserError("A voice event is already running in this server.", "voice_busy");
+    }
+    const guild = this.guilds.get(guildId);
+    if (!guild) throw new ServiceUnavailableError("The bot is not connected to this server.");
+    this.runningGuilds.add(guildId);
+    this.runningEvents.add(id);
+    try {
+      if (this.isEnabled && !(await this.isEnabled(guildId))) {
+        throw new UserError("Scheduled events are turned off on this server.", "feature_disabled");
+      }
+      const event = await this.eventFor(guildId, id);
+      return await this.persistRunStart(guild, event, triggeredBy);
+    } catch (error) {
+      this.releaseRun(guildId, id);
+      throw error;
+    }
+  }
+
+  private async persistRunStart(
+    guild: Guild,
+    event: ScheduledVoiceEventRow,
+    triggeredBy: string,
+  ): Promise<ScheduledEventRunContext> {
+    const db = this.database();
+    const startedAt = new Date();
+    const [run] = await db
+      .insert(scheduledVoiceEventRuns)
+      .values({ eventId: event.id, guildId: event.guildId, startedAt, status: "running", triggeredBy })
+      .returning();
+    if (!run) throw new Error("Scheduled event run could not be recorded.");
+    await db
+      .update(scheduledVoiceEvents)
+      .set({ lastRunAt: startedAt, lastStatus: "running", lastError: null, updatedAt: startedAt })
+      .where(and(eq(scheduledVoiceEvents.guildId, event.guildId), eq(scheduledVoiceEvents.id, event.id)));
+    return { guild, event, runId: run.id, startedAt, triggeredBy };
+  }
+
+  private runningRunView(context: ScheduledEventRunContext): ScheduledEventRunView {
+    return {
+      id: context.runId,
+      eventName: context.event.name,
+      status: "running",
+      triggeredBy: context.triggeredBy,
+      startedAt: context.startedAt.toISOString(),
+      finishedAt: null,
+      error: null,
+    };
+  }
+
+  private async completeRun(context: ScheduledEventRunContext, skippedReason?: string): Promise<ScheduledEventRunView> {
+    const { event, guild, runId, startedAt, triggeredBy } = context;
+    let status: Exclude<ScheduledEventStatus, "running"> = skippedReason ? "skipped" : "success";
+    let error: string | null = skippedReason ?? null;
+    if (!skippedReason) {
+      try {
+        await this.execute(guild, event);
+      } catch (failure) {
+        status = "failed";
+        error = (failure instanceof Error ? failure.message : String(failure)).slice(0, 500);
+      } finally {
+        this.stopPlayback(guild.id);
+      }
+    }
+
+    const db = this.database();
+    const finishedAt = new Date();
+    const current = await this.eventFor(event.guildId, event.id).catch(() => null);
+    await db.update(scheduledVoiceEventRuns)
+      .set({ status, finishedAt, error })
+      .where(eq(scheduledVoiceEventRuns.id, runId));
+    if (current) {
+      const repeat = scheduledRepeat(current.repeat);
+      const scheduleChanged = current.startAt.getTime() !== event.startAt.getTime() ||
+        repeat !== scheduledRepeat(event.repeat) ||
+        (current.nextRunAt?.getTime() ?? null) !== (event.nextRunAt?.getTime() ?? null);
+      const nextRunAt = repeat === "none"
+        ? scheduleChanged ? current.nextRunAt : null
+        : nextScheduledRun(current.nextRunAt ?? current.startAt, repeat, finishedAt);
+      await db
+        .update(scheduledVoiceEvents)
+        .set({
+          enabled: repeat === "none" && !scheduleChanged ? false : current.enabled,
+          lastRunAt: startedAt,
+          lastStatus: status,
+          lastError: error,
+          runCount: sql`${scheduledVoiceEvents.runCount} + 1`,
+          nextRunAt,
+          updatedAt: finishedAt,
+        })
+        .where(and(eq(scheduledVoiceEvents.guildId, event.guildId), eq(scheduledVoiceEvents.id, event.id)));
+    }
+
+    return {
+      id: runId,
+      eventName: event.name,
+      status,
+      triggeredBy,
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      error,
+    };
+  }
+
+  private releaseRun(guildId: string, eventId: number): void {
+    this.runningEvents.delete(eventId);
+    this.runningGuilds.delete(guildId);
+  }
+
+  private validateStartAt(startAt: Date, now: Date): void {
+    if (Number.isNaN(startAt.getTime()) || startAt.getTime() < now.getTime() - 60_000) {
+      throw new UserError("Start time must be in the future or within the last minute.", "invalid_start_at");
+    }
+  }
+
+  protected async execute(guild: Guild, event: ScheduledVoiceEventRow): Promise<void> {
+    this.stopPlayback(guild.id);
+    await this.music?.stop(guild.id).catch(() => undefined);
+    await this.music?.disconnect(guild.id).catch(() => undefined);
+    if (await this.preemptSession(guild.id, event.name)) this.music?.clearFleetNodes(guild.id);
+    const channel = await guild.channels.fetch(event.channelId);
+    if (!channel || channel.type !== ChannelType.GuildVoice) {
+      throw new Error("The selected channel is not a voice channel in this server.");
+    }
+    await this.playYouTubeAudio(guild, channel, normalizeYouTubeUrl(event.sourceUrl));
+  }
 
   private stateFor(guildId: string): GuildState {
     let state = this.states.get(guildId);
@@ -157,11 +574,11 @@ export class ScheduledEventService {
   }
 
   start(guild: Guild): void {
+    this.guilds.set(guild.id, guild);
     if (!this.enabled) {
       this.logger.info("scheduled voice events are disabled");
       return;
     }
-    this.guilds.set(guild.id, guild);
     if (this.timer) return;
     this.timer = setInterval(() => {
       void this.tick().catch((error) => this.logger.warn({ err: error }, "scheduled event tick failed"));
@@ -210,7 +627,17 @@ export class ScheduledEventService {
     }
   }
 
-  private async tickGuild(guild: Guild): Promise<void> {
+  protected async tickGuild(guild: Guild): Promise<void> {
+    if (this.tickingGuilds.has(guild.id)) return;
+    this.tickingGuilds.add(guild.id);
+    try {
+      await this.tickGuildOnce(guild);
+    } finally {
+      this.tickingGuilds.delete(guild.id);
+    }
+  }
+
+  private async tickGuildOnce(guild: Guild): Promise<void> {
     if (this.isEnabled && !(await this.isEnabled(guild.id))) return;
     const state = this.stateFor(guild.id);
     const today = delhiDate();
@@ -225,18 +652,51 @@ export class ScheduledEventService {
         );
       } catch (error) {
         this.logger.warn({ err: error, guildId: guild.id, date: today }, "could not load Delhi prayer time");
-        return;
+        state.prayerStart = null;
       }
     }
 
     const now = Date.now();
-    for (const phase of PHASES) {
-      const target = state.prayerStart.getTime() + phase.offsetMs;
-      if (now < target || now > target + RUN_WINDOW_MS) continue;
-      const runKey = `${today}:${phase.key}`;
-      if (state.ran.has(runKey)) continue;
-      state.ran.add(runKey);
-      void this.runPhase(guild, phase).catch((error) => this.logger.warn({ err: error, guildId: guild.id, phase: phase.key }, "scheduled phase failed"));
+    if (state.prayerStart) {
+      for (const phase of PHASES) {
+        const target = state.prayerStart.getTime() + phase.offsetMs;
+        if (now < target || now > target + RUN_WINDOW_MS) continue;
+        const runKey = `${today}:${phase.key}`;
+        if (state.ran.has(runKey)) continue;
+        state.ran.add(runKey);
+        void this.runPhase(guild, phase).catch((error) => this.logger.warn({ err: error, guildId: guild.id, phase: phase.key }, "scheduled phase failed"));
+      }
+    }
+
+    await this.tickScheduledEvents(guild, new Date(now));
+  }
+
+  private async tickScheduledEvents(guild: Guild, now: Date): Promise<void> {
+    if (!this.db) return;
+    const events = await this.database()
+      .select()
+      .from(scheduledVoiceEvents)
+      .where(and(
+        eq(scheduledVoiceEvents.guildId, guild.id),
+        eq(scheduledVoiceEvents.enabled, true),
+        lte(scheduledVoiceEvents.nextRunAt, now),
+      ))
+      .orderBy(asc(scheduledVoiceEvents.nextRunAt))
+      .limit(MAX_SCHEDULED_EVENTS_PER_TICK);
+
+    for (const event of events) {
+      if (this.runningEvents.has(event.id)) continue;
+      if (this.runningGuilds.has(guild.id) || this.isVoiceBusy?.(guild.id)) {
+        const context = await this.persistRunStart(guild, event, "scheduler");
+        await this.completeRun(context, "Skipped because another voice session is active.");
+        continue;
+      }
+      void this.beginRun(guild.id, event.id, "scheduler")
+        .then((context) => this.completeRun(context)
+          .catch((error) => this.logger.warn({ err: error, guildId: guild.id, eventId: event.id }, "scheduled event run failed"))
+          .finally(() => this.releaseRun(guild.id, event.id)))
+        .catch((error) => this.logger.warn({ err: error, guildId: guild.id, eventId: event.id }, "scheduled event run could not start"));
+      break;
     }
   }
 
@@ -385,15 +845,39 @@ export class ScheduledEventService {
     });
     resource.volume?.setVolume(0.9);
 
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, 20 * 60 * 1000);
-      timer.unref?.();
-      const done = (): void => {
+    await new Promise<void>((resolve, reject) => {
+      let timer: NodeJS.Timeout;
+      const cleanup = (): void => {
         clearTimeout(timer);
+        player.off(AudioPlayerStatus.Idle, done);
+        player.off("error", fail);
+        ytdlp.off("error", fail);
+        ffmpeg.off("error", fail);
+        ytdlp.off("close", ytdlpClosed);
+        ffmpeg.off("close", ffmpegClosed);
+      };
+      const done = (): void => {
+        cleanup();
         resolve();
       };
+      const fail = (error: Error): void => {
+        cleanup();
+        reject(error);
+      };
+      const ytdlpClosed = (code: number | null): void => {
+        if (code !== 0) fail(new Error(`yt-dlp exited with code ${code ?? "unknown"}.`));
+      };
+      const ffmpegClosed = (code: number | null): void => {
+        if (code !== 0) fail(new Error(`ffmpeg exited with code ${code ?? "unknown"}.`));
+      };
+      timer = setTimeout(done, 20 * 60 * 1000);
+      timer.unref?.();
       player.once(AudioPlayerStatus.Idle, done);
-      player.once("error", done);
+      player.once("error", fail);
+      ytdlp.once("error", fail);
+      ffmpeg.once("error", fail);
+      ytdlp.once("close", ytdlpClosed);
+      ffmpeg.once("close", ffmpegClosed);
       player.play(resource);
     });
   }
@@ -427,10 +911,11 @@ export class ScheduledEventService {
   }
 
   private async runPhase(guild: Guild, phase: Phase): Promise<void> {
-    if (this.isVoiceBusy?.(guild.id) || this.music?.isVoiceLocked(guild.id)) {
-      this.logger.info({ guildId: guild.id, phase: phase.key }, "scheduled event skipped because Tambola is using voice");
+    if (this.runningGuilds.has(guild.id) || this.isVoiceBusy?.(guild.id) || this.music?.isVoiceLocked(guild.id)) {
+      this.logger.info({ guildId: guild.id, phase: phase.key }, "scheduled event skipped because voice is busy");
       return;
     }
+    this.runningGuilds.add(guild.id);
 
     try {
       this.stopPlayback(guild.id);
@@ -455,6 +940,7 @@ export class ScheduledEventService {
       this.logger.info({ guildId: guild.id, phase: phase.key, channelId: channel.id }, "scheduled voice event completed");
     } finally {
       this.stopPlayback(guild.id);
+      this.runningGuilds.delete(guild.id);
     }
   }
 

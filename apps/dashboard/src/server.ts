@@ -21,6 +21,8 @@ import {
   type EconomyAction,
   type MusicAction,
   type StockAction,
+  type ScheduledEventPayload,
+  type ScheduledEventUpdatePayload,
   type TambolaAction,
   createControlClient,
 } from "./control-client.js";
@@ -51,6 +53,16 @@ const bodySchema = z.record(z.string(), z.unknown());
 const idPattern = /^[A-Za-z0-9_-]{1,100}$/;
 const guildPattern = /^\d{1,20}$/;
 const snowflakePattern = /^\d{17,20}$/;
+const scheduledEventFields = {
+  name: z.string().trim().min(1).max(80),
+  channelId: z.string().regex(snowflakePattern, "Channel ID must be a Discord snowflake."),
+  sourceUrl: z.string().trim().min(1).max(2048),
+  startAt: z.coerce.date(),
+  repeat: z.enum(["none", "daily", "weekly"]),
+  enabled: z.boolean(),
+};
+const scheduledEventCreateSchema = z.object({ ...scheduledEventFields, enabled: z.boolean().default(true) }).strict();
+const scheduledEventUpdateSchema = z.object(scheduledEventFields).partial().strict();
 const cahHostSchema = z
   .object({
     channelId: z.string().regex(snowflakePattern, "Channel ID must be a Discord snowflake."),
@@ -160,6 +172,15 @@ function getIdentifier(value: string, label: string, reply: FastifyReply): strin
     return null;
   }
   return value;
+}
+
+function getScheduledEventId(value: string, reply: FastifyReply): number | null {
+  const id = Number(value);
+  if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(id)) {
+    apiError(reply, 400, "invalid_event_id", "Scheduled event ID is invalid.");
+    return null;
+  }
+  return id;
 }
 
 function toBirthday(value: unknown): { month: number; day: number; birthYear: number | null } | null {
@@ -471,6 +492,49 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
       return control.musicAction(guildId, action, body.data, ["join", "play"].includes(action) ? userId : undefined);
     },
   );
+  get("/api/guilds/:guildId/events", (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    return guildId ? control.getScheduledEvents(guildId) : Promise.resolve(undefined);
+  });
+  post("/api/guilds/:guildId/events", async (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    const body = scheduledEventCreateSchema.safeParse(request.body);
+    if (!body.success) return apiError(reply, 400, "invalid_body", body.error.issues.map((issue) => issue.message).join("; "));
+    if (!guildId) return undefined;
+    const user = await requireAdministrator(request, reply, guildId);
+    if (!user) return undefined;
+    const payload: ScheduledEventPayload = { ...body.data, startAt: body.data.startAt.toISOString() };
+    return control.createScheduledEvent(guildId, payload, user.id);
+  });
+  mutation("PATCH", "/api/guilds/:guildId/events/:eventId", async (request, reply) => {
+    const params = request.params as { guildId: string; eventId: string };
+    const guildId = getGuildId(params.guildId, reply);
+    const eventId = getScheduledEventId(params.eventId, reply);
+    const body = scheduledEventUpdateSchema.safeParse(request.body);
+    if (!body.success) return apiError(reply, 400, "invalid_body", body.error.issues.map((issue) => issue.message).join("; "));
+    if (!guildId || eventId === null) return undefined;
+    const user = await requireAdministrator(request, reply, guildId);
+    if (!user) return undefined;
+    const { startAt, ...fields } = body.data;
+    const payload: ScheduledEventUpdatePayload = { ...fields, ...(startAt ? { startAt: startAt.toISOString() } : {}) };
+    return control.updateScheduledEvent(guildId, eventId, payload, user.id);
+  });
+  mutation("DELETE", "/api/guilds/:guildId/events/:eventId", async (request, reply) => {
+    const params = request.params as { guildId: string; eventId: string };
+    const guildId = getGuildId(params.guildId, reply);
+    const eventId = getScheduledEventId(params.eventId, reply);
+    if (!guildId || eventId === null) return undefined;
+    const user = await requireAdministrator(request, reply, guildId);
+    return user ? control.deleteScheduledEvent(guildId, eventId, user.id) : undefined;
+  });
+  post("/api/guilds/:guildId/events/:eventId/run", async (request, reply) => {
+    const params = request.params as { guildId: string; eventId: string };
+    const guildId = getGuildId(params.guildId, reply);
+    const eventId = getScheduledEventId(params.eventId, reply);
+    if (!guildId || eventId === null) return undefined;
+    const user = await requireAdministrator(request, reply, guildId);
+    return user ? control.runScheduledEvent(guildId, eventId, user.id) : undefined;
+  });
   get("/api/guilds/:guildId/config", (request, reply) => {
     const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
     return guildId ? control.getConfig(guildId) : Promise.resolve(undefined);

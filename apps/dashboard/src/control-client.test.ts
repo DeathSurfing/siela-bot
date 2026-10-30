@@ -110,3 +110,40 @@ describe("control API game routes", () => {
     expect(calls[6]?.init.body).toBe(JSON.stringify({ bet: 50, side: "heads", requestId: "request-1234" }));
   });
 });
+
+describe("control API scheduled event routes", () => {
+  it("scopes event reads and forwards the signed-in operator for every mutation", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const fetcher = vi.fn(async (input: URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init: init ?? {} });
+      return Response.json({ events: [] });
+    });
+    const client = createControlClient("http://bot-control:3001", "secret-control-token", fetcher);
+    const actor = "456789012345678901";
+    const body = {
+      name: "Morning music",
+      channelId: "333333333333333333",
+      sourceUrl: "https://www.youtube.com/watch?v=abcdefghijk",
+      startAt: "2026-12-01T08:00:00.000Z",
+      repeat: "daily" as const,
+      enabled: true,
+    };
+
+    await client.getScheduledEvents("123");
+    await client.createScheduledEvent("123", body, actor);
+    await client.updateScheduledEvent("123", 7, { enabled: false }, actor);
+    await client.deleteScheduledEvent("123", 7, actor);
+    await client.runScheduledEvent("123", 7, actor);
+
+    expect(calls.map(({ url, init }) => [url, init.method])).toEqual([
+      ["http://bot-control:3001/v1/events", "GET"],
+      ["http://bot-control:3001/v1/events", "POST"],
+      ["http://bot-control:3001/v1/events/7", "PATCH"],
+      ["http://bot-control:3001/v1/events/7", "DELETE"],
+      ["http://bot-control:3001/v1/events/7/run", "POST"],
+    ]);
+    expect(calls[1]?.init.headers).toMatchObject({ "x-guild-id": "123", "x-user-id": actor, "x-actor": actor });
+    expect(calls[1]?.init.body).toBe(JSON.stringify(body));
+    expect(calls.slice(2).every(({ init }) => (init.headers as Record<string, string>)["x-user-id"] === actor)).toBe(true);
+  });
+});

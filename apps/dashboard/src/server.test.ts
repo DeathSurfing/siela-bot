@@ -50,6 +50,11 @@ function controlStub(overrides: Partial<ControlClient> = {}): ControlClient {
     getAudit: vi.fn().mockResolvedValue({ entries: [] }),
     getMusic: vi.fn().mockResolvedValue({ queue: [] }),
     musicAction: vi.fn().mockResolvedValue({ ok: true }),
+    getScheduledEvents: vi.fn().mockResolvedValue({ enabled: true, schedulerEnabled: true, events: [], runs: [], builtIn: [] }),
+    createScheduledEvent: vi.fn().mockResolvedValue({ ok: true }),
+    updateScheduledEvent: vi.fn().mockResolvedValue({ ok: true }),
+    deleteScheduledEvent: vi.fn().mockResolvedValue({ ok: true }),
+    runScheduledEvent: vi.fn().mockResolvedValue({ ok: true }),
     getConfig: vi.fn().mockResolvedValue({}),
     patchConfig: vi.fn().mockResolvedValue({}),
     getCommands: vi.fn().mockResolvedValue({ commands: [] }),
@@ -796,6 +801,115 @@ describe("dashboard music member routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(control.musicAction).toHaveBeenCalledWith("123", "join", {}, undefined);
+    await app.close();
+  });
+});
+
+describe("dashboard scheduled event routes", () => {
+  const eventBody = {
+    name: "Morning music",
+    channelId: "333333333333333333",
+    sourceUrl: "https://youtu.be/abcdefghijk",
+    startAt: "2026-12-01T08:00:00.000Z",
+    repeat: "daily",
+    enabled: true,
+  };
+
+  it("reads events for signed-in sessions and requires an authenticated session", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const state = await app.inject({ method: "GET", url: "/api/guilds/123/events", headers: sessionHeaders(owner) });
+    const anonymous = await app.inject({ method: "GET", url: "/api/guilds/123/events" });
+
+    expect(state.statusCode).toBe(200);
+    expect(state.json()).toMatchObject({ enabled: true, events: [], runs: [] });
+    expect(control.getScheduledEvents).toHaveBeenCalledWith("123");
+    expect(anonymous.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("validates event bodies and requires Administrator permission", async () => {
+    const control = controlStub({ authorize: vi.fn().mockResolvedValue({ administrator: false, user: null }) });
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders(owner);
+    const invalid = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/events",
+      headers,
+      payload: { ...eventBody, extra: "not accepted" },
+    });
+    const denied = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/events",
+      headers,
+      payload: eventBody,
+    });
+    const deniedUpdate = await app.inject({ method: "PATCH", url: "/api/guilds/123/events/1", headers, payload: { enabled: false } });
+    const deniedDelete = await app.inject({ method: "DELETE", url: "/api/guilds/123/events/1", headers });
+    const deniedRun = await app.inject({ method: "POST", url: "/api/guilds/123/events/1/run", headers });
+
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json().error.code).toBe("invalid_body");
+    for (const response of [denied, deniedUpdate, deniedDelete, deniedRun]) {
+      expect(response.statusCode).toBe(403);
+      expect(response.json().error.code).toBe("administrator_required");
+    }
+    expect(control.createScheduledEvent).not.toHaveBeenCalled();
+    expect(control.updateScheduledEvent).not.toHaveBeenCalled();
+    expect(control.deleteScheduledEvent).not.toHaveBeenCalled();
+    expect(control.runScheduledEvent).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("requires CSRF on create, update, delete, and run", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const signedIn = sessionHeaders(owner);
+    const headers = { cookie: signedIn.cookie };
+    const responses = await Promise.all([
+      app.inject({ method: "POST", url: "/api/guilds/123/events", headers, payload: eventBody }),
+      app.inject({ method: "PATCH", url: "/api/guilds/123/events/1", headers, payload: { enabled: false } }),
+      app.inject({ method: "DELETE", url: "/api/guilds/123/events/1", headers }),
+      app.inject({ method: "POST", url: "/api/guilds/123/events/1/run", headers }),
+    ]);
+
+    expect(responses.map((response) => [response.statusCode, response.json().error.code])).toEqual(
+      Array.from({ length: 4 }, () => [403, "csrf_mismatch"]),
+    );
+    expect(control.createScheduledEvent).not.toHaveBeenCalled();
+    expect(control.updateScheduledEvent).not.toHaveBeenCalled();
+    expect(control.deleteScheduledEvent).not.toHaveBeenCalled();
+    expect(control.runScheduledEvent).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("forwards validated event mutations and the session user as actor", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders(owner);
+    const startAt = "2026-12-02T08:00:00.000Z";
+    const created = await app.inject({ method: "POST", url: "/api/guilds/123/events", headers, payload: eventBody });
+    const updated = await app.inject({
+      method: "PATCH",
+      url: "/api/guilds/123/events/5",
+      headers,
+      payload: { startAt, enabled: false },
+    });
+    const renamed = await app.inject({
+      method: "PATCH",
+      url: "/api/guilds/123/events/5",
+      headers,
+      payload: { name: "Renamed" },
+    });
+    const deleted = await app.inject({ method: "DELETE", url: "/api/guilds/123/events/5", headers });
+    const ran = await app.inject({ method: "POST", url: "/api/guilds/123/events/5/run", headers });
+
+    expect([created.statusCode, updated.statusCode, renamed.statusCode, deleted.statusCode, ran.statusCode]).toEqual([200, 200, 200, 200, 200]);
+    expect(control.createScheduledEvent).toHaveBeenCalledWith("123", expect.objectContaining({ startAt: new Date(eventBody.startAt).toISOString() }), owner.id);
+    expect(control.updateScheduledEvent).toHaveBeenNthCalledWith(1, "123", 5, { startAt: new Date(startAt).toISOString(), enabled: false }, owner.id);
+    expect(control.updateScheduledEvent).toHaveBeenNthCalledWith(2, "123", 5, { name: "Renamed" }, owner.id);
+    expect(control.deleteScheduledEvent).toHaveBeenCalledWith("123", 5, owner.id);
+    expect(control.runScheduledEvent).toHaveBeenCalledWith("123", 5, owner.id);
     await app.close();
   });
 });

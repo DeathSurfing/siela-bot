@@ -12,6 +12,7 @@ export const state = {
   status: null,
   data: null,
   permissions: { administrator: false },
+  editingEventId: null,
   loading: false,
   error: null,
   featureErrors: {},

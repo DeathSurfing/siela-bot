@@ -114,7 +114,7 @@ Admins (`Manage Guild`, owner, `BOT_OWNER_ID`, `ADMIN_ROLE_IDS`) bypass cost and
 | Tambola auto-mark | Per-player purchase; covers all of that player's tickets | Lobby-only purchase |
 | Tambola extra tickets | Purchase additional tickets for one game | Per-ticket cost |
 
-Free features: music filters, Temp VC, confessions, family actions, and scheduled events (scheduled events are not manually triggered).
+Free features: music filters, Temp VC, confessions, family actions, and scheduled events with administrator run controls.
 
 ### Denial UX
 

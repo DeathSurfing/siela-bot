@@ -656,6 +656,63 @@ export const relicTrades = pgTable(
   ],
 );
 
+export const scheduledVoiceEvents = pgTable(
+  "scheduled_voice_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    name: varchar("name", { length: 80 }).notNull(),
+    channelId: text("channel_id").notNull(),
+    sourceUrl: text("source_url").notNull(),
+    repeat: varchar("repeat", { length: 10 }).notNull().default("none"),
+    enabled: boolean("enabled").notNull().default(true),
+    startAt: timestamp("start_at", { withTimezone: true }).notNull(),
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    lastStatus: varchar("last_status", { length: 16 }),
+    lastError: text("last_error"),
+    runCount: integer("run_count").notNull().default(0),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("scheduled_voice_events_guild_next_run_idx").on(t.guildId, t.nextRunAt),
+    check("scheduled_voice_events_repeat_ck", sql`${t.repeat} IN ('none', 'daily', 'weekly')`),
+    check(
+      "scheduled_voice_events_last_status_ck",
+      sql`${t.lastStatus} IS NULL OR ${t.lastStatus} IN ('running', 'success', 'failed', 'skipped')`,
+    ),
+  ],
+);
+
+export const scheduledVoiceEventRuns = pgTable(
+  "scheduled_voice_event_runs",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    eventId: bigint("event_id", { mode: "number" })
+      .notNull()
+      .references(() => scheduledVoiceEvents.id, { onDelete: "cascade" }),
+    guildId: text("guild_id")
+      .notNull()
+      .references(() => guildSettings.guildId, { onDelete: "cascade" }),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    status: varchar("status", { length: 16 }).notNull(),
+    triggeredBy: text("triggered_by").notNull(),
+    error: text("error"),
+  },
+  (t) => [
+    index("scheduled_voice_event_runs_event_started_idx").on(t.eventId, t.startedAt),
+    check("scheduled_voice_event_runs_status_ck", sql`${t.status} IN ('running', 'success', 'failed', 'skipped')`),
+  ],
+);
+
+export type ScheduledVoiceEventRow = typeof scheduledVoiceEvents.$inferSelect;
+export type ScheduledVoiceEventRunRow = typeof scheduledVoiceEventRuns.$inferSelect;
+
 export type RelicSettingsRow = typeof relicSettings.$inferSelect;
 export type RelicCardRow = typeof relicCards.$inferSelect;
 export type RelicAuctionRow = typeof relicAuctions.$inferSelect;

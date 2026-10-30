@@ -1,6 +1,6 @@
 # Siela admin dashboard
 
-The dashboard is a self-hosted control panel for the bot. It shows bot health, connected servers, feature flags, music playback, game tables, economy, leaderboard, stock trading, server settings, user settings, audit history, and registered commands. The selected server stays in the URL and in browser storage.
+The dashboard is a self-hosted control panel for the bot. It shows bot health, connected servers, feature flags, music playback, scheduled voice events, game tables, economy, leaderboard, stock trading, server settings, user settings, audit history, and registered commands. The selected server stays in the URL and in browser storage.
 
 ## Set up the dashboard
 
@@ -86,7 +86,7 @@ The interface stays flat. Rules and spacing group content; nested cards do not. 
 
 The Server settings view saves one section at a time. A save no longer re-renders the view, so unsaved edits in other sections survive. `Ctrl` or `Cmd` plus `S` saves every dirty section. A dot next to Save marks an unsaved section. User settings shows the signed-in Discord profile and a birthday form for the selected server. The profile chip in the rail is the only entry to User settings, from a mouse, keyboard, the collapsed rail, or the mobile drawer, and it has no separate rail entry or keyboard shortcut.
 
-The Cards Against Humanity, Tambola, Casino, Economy, Leaderboard, and Stocks tabs sit beside Music. CAH and Tambola are operator views: they show a redacted live table and the controls the host or an administrator needs, while hands, tickets, decks, and marks stay in Discord. Casino, Economy, Leaderboard, and Stocks are member views for the signed-in Discord user. CAH and Tambola poll every five seconds only while the tab is visible, and a refresh replaces the live panel without resetting the host form, search, focus, or scroll position.
+The Scheduled Events, Cards Against Humanity, Tambola, Casino, Economy, Leaderboard, and Stocks tabs sit beside Music. Scheduled Events manages operator-created voice playback. CAH and Tambola are operator views: they show a redacted live table and the controls the host or an administrator needs, while hands, tickets, decks, and marks stay in Discord. Casino, Economy, Leaderboard, and Stocks are member views for the signed-in Discord user. CAH and Tambola poll every five seconds only while the tab is visible, and a refresh replaces the live panel without resetting the host form, search, focus, or scroll position.
 
 Discord ID fields that accept a channel, voice channel, role, or member also accept a name. Typing a name opens a suggestion list after a short pause. The list ranks an exact name first, then a name that starts with the text, then one that contains it. A `#channel` or `@role` fragment is understood, so `#gene` finds `#general` and `@mod` finds the matching role. Press Enter or leave the field to resolve without picking from the list: the single exact match, or the only result, is written automatically. Pressing Enter for a name does not submit the surrounding form, and submitting a form resolves any remaining name first. Choosing a suggestion writes the numeric ID into the field and shows the resolved name beside it. The field keeps the raw ID, so form submission and settings saves are unchanged. Role ID lists append the chosen role to the existing comma-separated list. Keyboard users get Up, Down, Enter, and Escape, and every resolver input accepts text on phones.
 
@@ -96,13 +96,33 @@ Motion only marks state. Use transform and opacity, exact transition properties,
 
 ## Operating notes
 
-Feature switches and server settings are open only to a signed-in Discord user who has the Administrator permission in the selected server. The dashboard checks that permission with the bot control API before every write and disables the controls for everyone else. A failed check returns 403 `administrator_required`.
+Feature switches, server settings, and scheduled event changes are open only to a signed-in Discord user who has the Administrator permission in the selected server. The dashboard checks that permission with the bot control API before every write and disables or hides the controls for everyone else. A failed check returns 403 `administrator_required`.
 
 Economy, Leaderboard, Stocks, and the music join and filter controls are member actions. They read the caller from the signed-in Discord user, so they need a Discord sign-in, not the Administrator permission. A password-only session can read the music player but gets 403 `discord_account_required` from the member routes and cannot join as a member. The bot also reads the caller from `x-user-id`, so a request body cannot name another member.
 
 Feature switches apply immediately. The dashboard shows an Undo action after each change, and a failed write reverts the switch and shows the API message inline.
 
 The music tab shows a now-playing card with artwork when the track has it, a fallback glyph when it does not, the title, artist, a live, paused, or idle status, the connected `#channel`, and a fixed `80% volume` chip. The progress row and transport keep seek, shuffle, previous-less play or pause, skip, and loop. The four filter chips switch between Off, Bass boost, Nightcore, and Vaporwave, and the active filter is marked with `aria-pressed`. **Join my voice channel** joins the voice channel of the signed-in Discord user, so no channel is needed. The optional channel field accepts `#name`, a name, or a pasted ID and resolves it before joining; **Join channel** uses that field, and **Disconnect** leaves. **Add to queue** uses the same channel field when one is set and the member's current channel when it is empty. A password-only session can read the player and name a channel, but it cannot use **Join my voice channel** because the bot needs a Discord member to find that member's voice state. Playback volume is fixed at 80 percent and no dashboard control can change it.
+
+### Scheduled Events
+
+The **Scheduled Events** view lets an Administrator create, edit, enable, run, and delete voice events. Each event stores a name, a voice channel, a YouTube video link, a start time, a repeat rule, and its latest run status. The channel field resolves a name such as `#general` to the channel ID before saving.
+
+Only a signed-in Discord user with the Administrator permission in the selected server can change events. The dashboard checks the live permission through the bot control API, and every mutation also requires a CSRF token. The bot control API checks the live guild member again before it writes. Reads require a signed-in session but do not require Administrator permission.
+
+The service accepts YouTube video links only. It normalizes `youtube.com/watch?v=`, `youtu.be`, Shorts, Live, and embed links to a canonical watch URL. Playlist-only links, malformed video IDs, and other hosts are rejected.
+
+Choose **One time**, **Daily**, or **Weekly**. A one-time event disables itself and clears its next-run time after it succeeds, fails, or is skipped. A daily or weekly event advances from its prior scheduled time to the first interval after the run finishes. After a restart, each overdue event runs at most once; the scheduler advances repeating events past missed intervals instead of replaying each missed day or week.
+
+You can edit an event after its start time passes if you leave the time unchanged. To change the time, choose a future time or one within the last minute. The dashboard omits an unchanged `startAt` from the update request.
+
+The event table shows the next run in local time, the repeat rule, enabled state, and last status. A manual run returns after the bot records its `running` state. Refresh the view later to see whether playback succeeded or failed. Recent runs show the event, start time, status, trigger, and error. Status uses both a label and a color. The built-in prayer phases stay read-only in this view as a separate sequence. Custom events do not replace or rewrite those phases.
+
+The global `EVENT_SCHEDULE_ENABLED` setting controls automatic ticks. When it is off, operators can still create and edit schedules, and can run an event manually if the per-server `automation-scheduled-events` feature is on. Turning that feature off blocks manual runs and automatic scheduled events, but does not prevent operators from preparing the configuration.
+
+Run the headless dashboard flow with `bun run --cwd apps/dashboard test:events-browser`. Install Playwright Chromium and its required host libraries first.
+
+The bot control API exposes `GET /v1/events`, `POST /v1/events`, `PATCH /v1/events/:id`, `DELETE /v1/events/:id`, and `POST /v1/events/:id/run`. Every request needs the control bearer token and an explicit `x-guild-id`. Mutations also need the caller's `x-user-id`; the bot fetches that member from the selected guild and checks the Administrator permission. The control API returns refreshed event state after each mutation.
 
 Server settings save one section at a time. Boolean switches save their visible state, and role ID fields accept a comma-separated list. The welcome channel, goodbye channel, voice hub, category, music channel, and role ID fields also resolve names to IDs: type `#channel-name` for a channel or `@role-name` for a role, and choosing a role appends its ID to the list. The music section no longer exposes a default volume, because playback is fixed at 80 percent; a previously stored value is kept but unused.
 
@@ -173,6 +193,11 @@ The browser uses these same-origin routes:
 | `GET` | `/api/guilds/:guildId/audit?limit=50` | Read recent actions and actor display names. |
 | `GET` | `/api/guilds/:guildId/music` | Read player and queue state. |
 | `POST` | `/api/guilds/:guildId/music/:action` | Run a whitelisted music action. |
+| `GET` | `/api/guilds/:guildId/events` | Read scheduled events, run history, feature state, and built-in phases. |
+| `POST` | `/api/guilds/:guildId/events` | Create an event. Requires Administrator and CSRF. |
+| `PATCH` | `/api/guilds/:guildId/events/:eventId` | Update an event. Requires Administrator and CSRF. |
+| `DELETE` | `/api/guilds/:guildId/events/:eventId` | Delete an event and its run history. Requires Administrator and CSRF. |
+| `POST` | `/api/guilds/:guildId/events/:eventId/run` | Run an event now. Requires Administrator, CSRF, and the `automation-scheduled-events` feature. |
 | `GET` | `/api/guilds/:guildId/cah` | Read the redacted CAH lobby or round. |
 | `POST` | `/api/guilds/:guildId/cah/host` | Create a CAH lobby from a text channel. Requires Discord sign-in. |
 | `POST` | `/api/guilds/:guildId/cah/:action` | Run `start`, `reveal`, `next`, or `end`. Requires Discord sign-in. |
@@ -202,7 +227,7 @@ The `siela_dashboard` cookie contains the expiry, optional Discord identity, and
 
 The server sets a restrictive content security policy, denies framing, disables MIME sniffing, and sends a no-referrer policy. Images may come from the Discord CDN and from the artwork hosts the bot stores, `i.ytimg.com`, `img.youtube.com`, and `*.sndcdn.com`. Static requests resolve inside `apps/dashboard/public`; traversal and symlink escapes are rejected. The container runs read-only, drops capabilities, and writes only to its `/tmp` tmpfs.
 
-The browser never receives `MCP_TOKEN`. `apps/dashboard/src/control-client.ts` is the single server-side adapter for bearer-authenticated requests. It sets `x-guild-id` on every guild-scoped control request, `x-user-id` on permission, birthday, game, economy, stock, and music join or play requests, and `x-actor` to the signed-in Discord user on writes. Dashboard route parameters, methods, configuration sections, music actions, game actions, casino games, economy actions, stock actions, and resolve kinds are allowlisted before they reach that client.
+The browser never receives `MCP_TOKEN`. `apps/dashboard/src/control-client.ts` is the single server-side adapter for bearer-authenticated requests. It sets `x-guild-id` on every guild-scoped control request, `x-user-id` on permission, birthday, game, economy, stock, music join or play, and scheduled event mutation requests, and `x-actor` to the signed-in Discord user on writes. Dashboard route parameters, methods, configuration sections, music actions, scheduled event bodies, game actions, casino games, economy actions, stock actions, and resolve kinds are allowlisted before they reach that client.
 
 The bot control API owns the permission check. `GET /v1/authorize` fetches the member from the selected guild and tests the Administrator flag. The dashboard treats a missing member, a non-Administrator member, and a failed check as no permission. Feature and settings writes return 403 `administrator_required`. Birthday routes read the caller from `x-user-id` and never accept a target user, so one member cannot read or change another member's birthday. CAH and Tambola controls also read the caller from `x-user-id`, then check the live game's host, judge, and Administrator rules. Casino, economy, stock, and music routes read the caller from `x-user-id`, so a request body cannot name another member. Game state projections are redacted in the bot service before they reach the dashboard; the control API never sends hands, decks, tickets, marks, judge order, timers, or Discord message objects.
 

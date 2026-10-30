@@ -208,6 +208,7 @@ export class SielaBot {
       this.config.ROUTER_URL ?? null,
       this.config.MCP_TOKEN,
       (guildId) => features.isEnabled(guildId, "automation-scheduled-events"),
+      this.dbHandle.db,
     );
     const activity = new ActivityService(
       this.dbHandle.db,
