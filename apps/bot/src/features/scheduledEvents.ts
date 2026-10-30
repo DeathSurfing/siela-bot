@@ -816,7 +816,7 @@ export class ScheduledEventService {
       const ffmpegClosed = (code: number | null): void => {
         if (code !== 0) fail(new Error(`ffmpeg exited with code ${code ?? "unknown"}.`));
       };
-      timer = setTimeout(() => fail(new Error("YouTube playback timed out.")), 20 * 60 * 1000);
+      timer = setTimeout(done, 20 * 60 * 1000);
       timer.unref?.();
       player.once(AudioPlayerStatus.Idle, done);
       player.once("error", fail);

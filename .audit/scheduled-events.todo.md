@@ -11,6 +11,7 @@
 - [x] Unit 3: Add token-protected control routes, administrator and channel checks, feature gating, and audit records.
 - [x] Follow-up: Serialize concurrent scheduler ticks for one guild so an overlapping tick cannot record a duplicate skipped run from stale due-event data.
 - [x] Follow-up: Keep the create-only `enabled` default out of partial update schemas.
+- [x] Follow-up: Preserve the existing 20-minute YouTube playback cap while recording actual process and player errors as failures.
 - [ ] Unit 4: Add dashboard client, routes, navigation, form, event list, history, built-in phases, and the leaderboard spacing fix.
 - [ ] Unit 5: Add service, control, dashboard, and browser coverage; update docs; run all requested checks.
 - [ ] Before every commit, run deslop and inspect the staged diff.
