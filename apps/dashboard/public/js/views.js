@@ -308,9 +308,10 @@ function renderFeature(feature, features, canManage) {
 
 function artworkMarkup(url, className) {
   const src = typeof url === "string" ? url.trim() : "";
-  return src
-    ? `<img class="${className}" src="${escapeHtml(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
-    : `<span class="${className} artwork-fallback" aria-hidden="true">${icon("music")}</span>`;
+  const art = src
+    ? `<img src="${escapeHtml(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
+    : icon("music");
+  return `<span class="${className}">${art}</span>`;
 }
 
 function renderMusic(data) {
@@ -366,7 +367,7 @@ function renderMusic(data) {
         </div>
         <div class="connect-row" role="group" aria-label="Voice connection">
           <button type="button" class="button button-primary" data-action="music" data-music-action="join" data-voice-self="true">Join my voice channel</button>
-          <div class="connect-field"><label class="sr-only" for="voice-channel">or pick a channel</label><input id="voice-channel" name="voiceChannelId" type="text" placeholder="#general or paste an ID" autocomplete="off" value="${escapeHtml(state.voiceChannelId ?? "")}" data-resolve-kind="voice"></div>
+          <div class="connect-field"><label class="connect-label" for="voice-channel">or pick a channel</label><input id="voice-channel" name="voiceChannelId" type="text" placeholder="#general or paste an ID" autocomplete="off" value="${escapeHtml(state.voiceChannelId ?? "")}" data-resolve-kind="voice"></div>
           <button type="button" class="button button-secondary" data-action="music" data-music-action="join">Join channel</button>
           <button type="button" class="button button-quiet" data-action="music" data-music-action="disconnect">Disconnect</button>
         </div>

@@ -344,8 +344,9 @@ kbd { min-width: 17px; padding: 1px 4px; border: 1px solid var(--line); border-r
 .filter-strip .table-meta { margin-right: 4px; }
 .filter-chip { min-height: 30px; padding: 0 11px; border: 1px solid var(--line); border-radius: var(--radius-pill); color: var(--muted); background: transparent; cursor: pointer; font-size: 0.73rem; font-weight: 540; transition: color var(--duration-press), background-color var(--duration-press), border-color var(--duration-press); }
 .filter-chip[aria-pressed="true"] { border-color: var(--accent); color: var(--on-accent); background: var(--accent); }
-.connect-row { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
-.connect-field { min-width: 0; flex: 1 1 200px; display: grid; }
+.connect-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 7px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.connect-field { min-width: 0; flex: 1 1 200px; display: grid; gap: 3px; }
+.connect-label { color: var(--quiet); font-size: 0.66rem; }
 .play-form { display: grid; gap: 6px; margin-top: 16px; }
 .play-form > label, .setting-field strong { color: var(--muted); font-size: 0.72rem; font-weight: 550; }
 .input-action { display: flex; gap: 7px; }

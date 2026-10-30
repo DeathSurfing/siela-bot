@@ -94,6 +94,9 @@ describe("dashboard HTTP boundary", () => {
     expect(asset.statusCode).toBe(200);
     expect(asset.body).toContain("dashboard");
     expect(asset.headers["content-security-policy"]).toContain("default-src 'self'");
+    expect(asset.headers["content-security-policy"]).toContain("https://i.ytimg.com");
+    expect(asset.headers["content-security-policy"]).toContain("https://img.youtube.com");
+    expect(asset.headers["content-security-policy"]).toContain("https://*.sndcdn.com");
     expect(asset.headers["cache-control"]).toBe("no-store");
     expect(index.headers["cache-control"]).toBe("no-store");
     expect(font.statusCode).toBe(200);
@@ -505,6 +508,20 @@ describe("dashboard resolver proxy", () => {
     await app.close();
   });
 
+  it("forwards a #channel or @role fragment with its kind", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders({ id: "operator", name: "Operator", avatarUrl: null });
+    const channel = await app.inject({ method: "GET", url: "/api/guilds/123/resolve?q=%23gene&kind=channel", headers });
+    const role = await app.inject({ method: "GET", url: "/api/guilds/123/resolve?q=%40mod&kind=role", headers });
+
+    expect(channel.statusCode).toBe(200);
+    expect(role.statusCode).toBe(200);
+    expect(control.resolve).toHaveBeenCalledWith("123", "#gene", "channel");
+    expect(control.resolve).toHaveBeenCalledWith("123", "@mod", "role");
+    await app.close();
+  });
+
   it("requires a session", async () => {
     const control = controlStub();
     const app = createDashboardServer({ config, publicDir, control });
@@ -749,6 +766,21 @@ describe("dashboard music member routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(control.musicAction).toHaveBeenCalledWith("123", "filters", { preset: "nightcore" }, undefined);
+    await app.close();
+  });
+
+  it("rejects the removed volume action while filters stay available", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders(owner);
+    const volume = await app.inject({ method: "POST", url: "/api/guilds/123/music/volume", headers, payload: { volume: 40 } });
+    const filters = await app.inject({ method: "POST", url: "/api/guilds/123/music/filters", headers, payload: { preset: "off" } });
+
+    expect(volume.statusCode).toBe(404);
+    expect(volume.json().error.code).toBe("unknown_music_action");
+    expect(filters.statusCode).toBe(200);
+    expect(control.musicAction).toHaveBeenCalledTimes(1);
+    expect(control.musicAction).toHaveBeenCalledWith("123", "filters", { preset: "off" }, undefined);
     await app.close();
   });
 
