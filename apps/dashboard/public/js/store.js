@@ -17,6 +17,9 @@ export const state = {
   featureErrors: {},
   pendingFeatures: new Set(),
   search: "",
+  casinoResult: null,
+  casinoPending: null,
+  casinoBusy: false,
 };
 
 export function updateState(patch) {

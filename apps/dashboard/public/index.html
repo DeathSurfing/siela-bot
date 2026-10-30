@@ -36,16 +36,19 @@
           <a href="#/servers" data-view="servers"><img src="/icons/server-dns.svg" alt=""><span>Servers</span></a>
           <a href="#/features" data-view="features"><img src="/icons/toggle-on.svg" alt=""><span>Features</span></a>
           <a href="#/music" data-view="music"><img src="/icons/music.svg" alt=""><span>Music</span></a>
+          <a href="#/cah" data-view="cah"><img src="/icons/cards.svg" alt=""><span>Cards Against Humanity</span></a>
+          <a href="#/tambola" data-view="tambola"><img src="/icons/ticket.svg" alt=""><span>Tambola</span></a>
+          <a href="#/casino" data-view="casino"><img src="/icons/dice.svg" alt=""><span>Casino</span></a>
           <a href="#/settings" data-view="settings"><img src="/icons/settings.svg" alt=""><span>Server settings</span></a>
           <a href="#/user" data-view="user"><img src="/icons/user.svg" alt=""><span>User settings</span></a>
           <a href="#/audit" data-view="audit"><img src="/icons/time.svg" alt=""><span>Audit</span></a>
           <a href="#/commands" data-view="commands"><img src="/icons/mac-command.svg" alt=""><span>Commands</span></a>
         </nav>
         <div class="rail-bottom">
-          <div class="rail-user" id="session-user" hidden>
+          <a class="rail-user" id="session-user" href="#/user" aria-label="Open user settings" title="Open user settings" hidden>
             <span class="rail-user-avatar" id="session-avatar" data-initial="O" aria-hidden="true"></span>
             <span class="rail-user-name" id="session-name">Operator</span>
-          </div>
+          </a>
           <button class="icon-button help-button" type="button" data-action="help" aria-label="Keyboard shortcuts"><img src="/icons/help.svg" alt=""><span class="help-label">Shortcuts</span></button>
           <button class="icon-button" type="button" data-action="toggle-theme" aria-label="Switch to light theme"><img id="theme-icon" src="/icons/sun.svg" alt=""><span class="help-label">Theme</span></button>
           <button class="icon-button" type="button" data-action="logout" aria-label="Sign out"><img src="/icons/logout.svg" alt=""><span class="help-label">Sign out</span></button>
@@ -74,6 +77,9 @@
         <div><dt><kbd>G</kbd> then <kbd>S</kbd></dt><dd>Servers</dd></div>
         <div><dt><kbd>G</kbd> then <kbd>F</kbd></dt><dd>Features</dd></div>
         <div><dt><kbd>G</kbd> then <kbd>M</kbd></dt><dd>Music</dd></div>
+        <div><dt><kbd>G</kbd> then <kbd>H</kbd></dt><dd>Cards Against Humanity</dd></div>
+        <div><dt><kbd>G</kbd> then <kbd>B</kbd></dt><dd>Tambola</dd></div>
+        <div><dt><kbd>G</kbd> then <kbd>D</kbd></dt><dd>Casino</dd></div>
         <div><dt><kbd>G</kbd> then <kbd>T</kbd></dt><dd>Server settings</dd></div>
         <div><dt><kbd>G</kbd> then <kbd>U</kbd></dt><dd>User settings</dd></div>
         <div><dt><kbd>G</kbd> then <kbd>A</kbd></dt><dd>Audit</dd></div>
