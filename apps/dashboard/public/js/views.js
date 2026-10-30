@@ -2,7 +2,6 @@ import { state } from "./store.js";
 
 const titles = {
   overview: "Overview",
-  servers: "Servers",
   features: "Features",
   music: "Music",
   cah: "Cards Against Humanity",
@@ -213,7 +212,7 @@ export function renderLogin(error = "", oauth = false, password = false) {
 export function renderView(view) {
   if (state.loading) return skeletonBlock();
   if (state.error) return `${pageHeader(titles[view], "A live view of your bot.")}${inlineError(state.error)}`;
-  if (!["overview", "servers"].includes(view) && !state.guildId) {
+  if (view !== "overview" && !state.guildId) {
     const detail = state.guilds.length
       ? "Select a server from the header to load this view."
       : "Invite the bot to a Discord server, then refresh the server list.";
@@ -223,7 +222,6 @@ export function renderView(view) {
   const data = state.data;
   switch (view) {
     case "overview": return renderOverview(data);
-    case "servers": return renderServers(data);
     case "features": return renderFeatures(data);
     case "music": return renderMusic(data);
     case "cah": return renderCah(data);
@@ -273,15 +271,6 @@ function renderOverview(data) {
       <section class="section-block"><h2>Service health</h2><div class="health-list">${systemRows.map(([label, value]) => `<div class="health-row"><span class="health-name">${escapeHtml(label)}</span><span class="health-value status-inline status-${statusClass(value)}"><i class="status-dot"></i>${escapeHtml(statusLabel(value))}</span></div>`).join("")}</div></section>
       <section class="section-block"><div class="section-heading"><h2>Recent actions</h2><a class="text-link" href="${auditHref}" data-view="audit">Audit</a></div>${auditPanel}</section>
     </div>`;
-}
-
-function renderServers(data) {
-  const guilds = list(data, "guilds");
-  const rows = guilds.map((guild) => {
-    const iconImage = guild.iconUrl ? `<img class="guild-avatar" src="${escapeHtml(guild.iconUrl)}" alt="" width="32" height="32" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : `<span class="guild-avatar guild-avatar-fallback">${escapeHtml(initialOf(guild.name))}</span>`;
-    return `<tr><td><div class="guild-cell">${iconImage}<span class="guild-copy"><a class="guild-name" href="#/g/${encodeURIComponent(guild.id)}/overview" data-server="${escapeHtml(guild.id)}">${escapeHtml(guild.name ?? "Unnamed server")}</a><button class="copy-id" type="button" data-copy="${escapeHtml(guild.id)}" aria-label="Copy server ID ${escapeHtml(guild.id)}"><small>${escapeHtml(guild.id)}</small><span class="copy-hint" aria-hidden="true">Copy</span></button></span></div></td><td class="numeric-cell" data-label="Members">${fmtNumber(guild.memberCount)}</td><td data-label="Owner"><span class="owner-id">${escapeHtml(guild.ownerId ?? "Not reported")}</span></td><td data-label="Connection"><span class="status-inline status-${guild.available ? "ok" : "danger"}"><i class="status-dot"></i>${guild.available ? "Available" : "Unavailable"}</span></td></tr>`;
-  }).join("");
-  return `${pageHeader("Servers", `${fmtNumber(guilds.length)} Discord ${guilds.length === 1 ? "server" : "servers"} connected to this bot.`)}<section class="table-panel">${guilds.length ? `<div class="table-scroll"><table><thead><tr><th scope="col">Server</th><th scope="col" class="numeric-cell">Members</th><th scope="col">Owner</th><th scope="col">Connection</th></tr></thead><tbody>${rows}</tbody></table></div>` : emptyState("No servers connected", "Invite the bot to a Discord server, then refresh this view.", `<button class="button button-secondary" type="button" data-action="retry">Refresh servers</button>`)}</section>`;
 }
 
 function renderFeatures(data) {

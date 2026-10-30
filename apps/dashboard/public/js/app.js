@@ -91,8 +91,8 @@ function updateUserChip() {
   chip.hidden = !user;
   if (!user) return;
   const name = user.name || "Operator";
-  chip.title = `Open user settings for ${name}`;
-  chip.setAttribute("aria-label", `Open user settings for ${name}`);
+  chip.title = `Open your profile and settings, ${name}`;
+  chip.setAttribute("aria-label", `Open your profile and settings, ${name}`);
   const nameNode = document.querySelector("#session-name");
   if (nameNode) nameNode.textContent = name;
   const avatar = document.querySelector("#session-avatar");
@@ -302,9 +302,6 @@ async function loadData(route = currentRoute) {
       if (sequence !== loadSequence) return;
       state.status = status;
       state.data = { status, audit };
-    } else if (route.view === "servers") {
-      state.data = { guilds: state.guilds };
-      statusRequest = api.status();
     } else if (!route.guildId) {
       state.data = null;
       statusRequest = api.status();
@@ -1358,7 +1355,7 @@ document.addEventListener("click", async (event) => {
     try { await api.logout(); } catch { /* The server clears expired sessions on the next sign-in. */ }
     showLogin("", state.oauth);
   } else if (action?.dataset.action === "retry") {
-    if (currentRoute.view === "servers" || state.guilds.length === 0) {
+    if (state.guilds.length === 0) {
       try { await refreshGuilds(); } catch { /* The view displays its own retry state. */ }
     }
     await loadData(currentRoute);

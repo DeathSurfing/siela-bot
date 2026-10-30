@@ -1,8 +1,7 @@
-export const VIEWS = ["overview", "servers", "features", "music", "cah", "tambola", "casino", "economy", "leaderboard", "stocks", "settings", "user", "audit", "commands"];
+export const VIEWS = ["overview", "features", "music", "cah", "tambola", "casino", "economy", "leaderboard", "stocks", "settings", "user", "audit", "commands"];
 
 const SHORTCUTS = {
   o: "overview",
-  s: "servers",
   f: "features",
   m: "music",
   h: "cah",
@@ -12,7 +11,6 @@ const SHORTCUTS = {
   l: "leaderboard",
   k: "stocks",
   t: "settings",
-  u: "user",
   a: "audit",
   c: "commands",
 };
