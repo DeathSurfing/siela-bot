@@ -820,10 +820,8 @@ export class ControlServer {
         name: guild.members.cache.get(row.userId)?.displayName ?? row.userId,
         balance: row.balance,
       }));
-      const [balance, rank] = await Promise.all([
-        services.economy.getBalance(guildId, userId),
-        services.economy.getRank(guildId, userId),
-      ]);
+      const balance = await services.economy.getBalance(guildId, userId);
+      const rank = await services.economy.getRank(guildId, userId);
       return { enabled: true, entries, me: { rank, balance: balance.balance } };
     });
 
