@@ -63,7 +63,7 @@ const control: ControlClient = {
   getStatus: async () => ({ ready: true, version: "browser-check" }),
   getGuilds: async () => ({ guilds: [{ id: guildId, name: "Browser Guild", iconUrl: null, memberCount: 4, available: true }] }),
   resolve: async (_guildId: string, query: string, kind?: string) => ({
-    results: query.toLowerCase() === "general" && kind === "voice"
+    results: query.replace(/^[#@]/, "").toLowerCase() === "general" && kind === "voice"
       ? [{ id: voiceChannelId, name: "general", label: "#general", kind: "voice" }]
       : [],
   }),
@@ -178,7 +178,7 @@ try {
   await page.goto(`${origin}/#/g/${guildId}/events`);
   await page.getByLabel("Dashboard password").fill("browser-check-password");
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("heading", { name: "Scheduled Events" }).waitFor();
+  await page.getByRole("heading", { name: "Scheduled Events", exact: true }).waitFor();
   await page.getByLabel("Name", { exact: true }).waitFor();
 
   const startAt = new Date(Date.now() + 60 * 60_000);
@@ -211,7 +211,7 @@ try {
     Object.assign(window, { __eventConfirmations: confirmations });
   });
   await page.getByRole("button", { name: "Run now", exact: true }).click();
-  await page.getByText("Success", { exact: true }).waitFor();
+  await page.getByText("Success", { exact: true }).first().waitFor();
   assert.match(String(await page.evaluate(() => (window as unknown as Window & { __eventConfirmations: string[] }).__eventConfirmations[0])), /Run “Morning music revised” now/);
   assert.equal(calls.at(-1)?.action, "run");
 
@@ -222,7 +222,7 @@ try {
 
   administrator = false;
   await page.reload();
-  await page.getByRole("heading", { name: "Scheduled Events" }).waitFor();
+  await page.getByRole("heading", { name: "Scheduled Events", exact: true }).waitFor();
   assert.equal(await page.locator("#scheduled-event-form").count(), 0);
   assert.equal(await page.locator("[data-action^='event-']").count(), 0, "non-administrators do not see event controls");
 
