@@ -43,7 +43,7 @@ function findRequest(predicate: (requestId: string) => boolean): string {
 describe("casino", () => {
   it("uses a 48 percent coinflip win chance", () => {
     const wins = Array.from({ length: 2_000 }, (_, index) =>
-      rollCoinflip(SECRET, "guild", "user", "heads", `request-${index}`).win,
+      rollCoinflip(SECRET, "guild", "user", "heads", `request-${index}`, 1).win,
     ).filter(Boolean).length;
     expect(wins / 2_000).toBeGreaterThan(COINFLIP_WIN_CHANCE - 0.05);
     expect(wins / 2_000).toBeLessThan(COINFLIP_WIN_CHANCE + 0.05);
@@ -51,7 +51,7 @@ describe("casino", () => {
 
   it("charges once and replays the same coinflip outcome for a repeated request", async () => {
     const { economy, charges, awards } = economyWith(5_000);
-    const requestId = findRequest((id) => rollCoinflip(SECRET, "guild", "user", "heads", id).win);
+    const requestId = findRequest((id) => rollCoinflip(SECRET, "guild", "user", "heads", id, 100).win);
 
     const first = await playCoinflip(economy, "guild", "user", 100, "heads", requestId, SECRET);
     const second = await playCoinflip(economy, "guild", "user", 100, "heads", requestId, SECRET);
@@ -67,7 +67,7 @@ describe("casino", () => {
 
   it("charges a reused request id again when the bet changes", async () => {
     const { economy, charges } = economyWith(100_000);
-    const requestId = findRequest((id) => rollCoinflip(SECRET, "guild", "user", "heads", id).win);
+    const requestId = findRequest((id) => rollCoinflip(SECRET, "guild", "user", "heads", id, 1).win);
 
     await playCoinflip(economy, "guild", "user", 1, "heads", requestId, SECRET);
     await playCoinflip(economy, "guild", "user", 10_000, "heads", requestId, SECRET);
@@ -76,9 +76,19 @@ describe("casino", () => {
     expect(charges.size).toBe(2);
   });
 
+  it("does not reuse a probe roll when the same request id is replayed at a larger bet", () => {
+    const requestId = findRequest(
+      (id) => rollCoinflip(SECRET, "guild", "user", "heads", id, 1).win
+        && !rollCoinflip(SECRET, "guild", "user", "heads", id, MAX_CASINO_BET).win,
+    );
+
+    expect(rollCoinflip(SECRET, "guild", "user", "heads", requestId, 1).win).toBe(true);
+    expect(rollCoinflip(SECRET, "guild", "user", "heads", requestId, MAX_CASINO_BET).win).toBe(false);
+  });
+
   it("takes a losing coinflip bet without a payout", async () => {
     const { economy, awards, balance } = economyWith(1_000);
-    const requestId = findRequest((id) => !rollCoinflip(SECRET, "guild", "user", "heads", id).win);
+    const requestId = findRequest((id) => !rollCoinflip(SECRET, "guild", "user", "heads", id, 250).win);
 
     const result = await playCoinflip(economy, "guild", "user", 250, "heads", requestId, SECRET);
 
@@ -89,7 +99,7 @@ describe("casino", () => {
 
   it("pays five times the bet for three of a kind", async () => {
     const { economy } = economyWith(10_000);
-    const requestId = findRequest((id) => rollSlots(SECRET, "guild", "user", id).multiplier === 5);
+    const requestId = findRequest((id) => rollSlots(SECRET, "guild", "user", id, 200).multiplier === 5);
 
     const result = await playSlots(economy, "guild", "user", 200, requestId, SECRET);
 
@@ -100,7 +110,7 @@ describe("casino", () => {
 
   it("pays 1.6 times the bet for a pair and floors the payout", async () => {
     const { economy } = economyWith(1_000);
-    const requestId = findRequest((id) => rollSlots(SECRET, "guild", "user", id).multiplier === 1.6);
+    const requestId = findRequest((id) => rollSlots(SECRET, "guild", "user", id, 5).multiplier === 1.6);
 
     const result = await playSlots(economy, "guild", "user", 5, requestId, SECRET);
 

@@ -41,9 +41,19 @@ interface Roll {
   digest: Buffer;
 }
 
-function roll(secret: string, guildId: string, userId: string, game: CasinoGame, requestId: string): Roll {
+function roll(
+  secret: string,
+  guildId: string,
+  userId: string,
+  game: CasinoGame,
+  requestId: string,
+  bet: number,
+  side?: CoinSide,
+): Roll {
   return {
-    digest: createHmac("sha256", secret).update(`${guildId}:${userId}:${game}:${requestId}`).digest(),
+    digest: createHmac("sha256", secret)
+      .update(`${guildId}:${userId}:${game}:${requestId}:${bet}:${side ?? "slots"}`)
+      .digest(),
   };
 }
 
@@ -51,13 +61,26 @@ function fraction(digest: Buffer, offset: number): number {
   return digest.readUInt32BE(offset) / 0x1_0000_0000;
 }
 
-export function rollCoinflip(secret: string, guildId: string, userId: string, side: CoinSide, requestId: string): Pick<CoinflipOutcome, "result" | "win"> {
-  const win = fraction(roll(secret, guildId, userId, "coinflip", requestId).digest, 0) < COINFLIP_WIN_CHANCE;
+export function rollCoinflip(
+  secret: string,
+  guildId: string,
+  userId: string,
+  side: CoinSide,
+  requestId: string,
+  bet: number,
+): Pick<CoinflipOutcome, "result" | "win"> {
+  const win = fraction(roll(secret, guildId, userId, "coinflip", requestId, bet, side).digest, 0) < COINFLIP_WIN_CHANCE;
   return { win, result: win ? side : side === "heads" ? "tails" : "heads" };
 }
 
-export function rollSlots(secret: string, guildId: string, userId: string, requestId: string): Pick<SlotsOutcome, "reels" | "multiplier"> {
-  const { digest } = roll(secret, guildId, userId, "slots", requestId);
+export function rollSlots(
+  secret: string,
+  guildId: string,
+  userId: string,
+  requestId: string,
+  bet: number,
+): Pick<SlotsOutcome, "reels" | "multiplier"> {
+  const { digest } = roll(secret, guildId, userId, "slots", requestId, bet);
   const reels = [0, 4, 8].map((offset) => CASINO_SYMBOLS[Math.floor(fraction(digest, offset) * CASINO_SYMBOLS.length)]!);
   const [first, second, third] = reels;
   const multiplier = first === second && second === third ? 5 : first === second || second === third || first === third ? 1.6 : 0;
@@ -96,7 +119,7 @@ export async function playCoinflip(
   } catch (error) {
     throw paymentError(error);
   }
-  const outcome = rollCoinflip(secret, guildId, userId, side, requestId);
+  const outcome = rollCoinflip(secret, guildId, userId, side, requestId, bet);
   const payout = outcome.win ? bet * 2 : 0;
   if (payout > 0) await economy.award(guildId, userId, payout, "coinflip_win", key.payout);
   const { balance } = await economy.getBalance(guildId, userId);
@@ -118,7 +141,7 @@ export async function playSlots(
   } catch (error) {
     throw paymentError(error);
   }
-  const outcome = rollSlots(secret, guildId, userId, requestId);
+  const outcome = rollSlots(secret, guildId, userId, requestId, bet);
   const payout = Math.floor(bet * outcome.multiplier);
   if (payout > 0) await economy.award(guildId, userId, payout, "slots_win", key.payout);
   const { balance } = await economy.getBalance(guildId, userId);
