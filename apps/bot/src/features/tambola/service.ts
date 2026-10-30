@@ -74,6 +74,41 @@ interface TambolaSession {
   lastTicketRefreshAt: number;
 }
 
+export interface TambolaSnapshotPlayer {
+  id: string;
+  displayName: string;
+}
+
+export interface TambolaSnapshotClaim {
+  pattern: ClaimPattern;
+  label: string;
+  userId: string;
+  displayName: string;
+  atCall: number;
+}
+
+export interface TambolaSnapshot {
+  id: string;
+  channelId: string;
+  hostId: string;
+  hostName: string;
+  status: TambolaGame["status"];
+  maxPlayers: number;
+  playerCount: number;
+  players: TambolaSnapshotPlayer[];
+  calledCount: number;
+  lastCall: number | null;
+  remainingCalls: number;
+  claims: TambolaSnapshotClaim[];
+  autoMark: boolean;
+  intervalSeconds: number;
+  voiceChannelId: string | null;
+  voiceConnected: boolean;
+  voiceNote: string | null;
+  winnerId: string | null;
+  winnerName: string | null;
+}
+
 type OutgoingMessage = Pick<
   ReplyPayload,
   "content" | "embeds" | "components" | "files" | "allowedMentions"
@@ -129,6 +164,41 @@ export class TambolaService {
     const session = this.get(guildId);
     if (!session) throw new UserError("No Tambola game is running in this server.");
     return session;
+  }
+
+  /** Redacted view for dashboards. Tickets and marked numbers stay out. */
+  snapshot(guildId: string): TambolaSnapshot | null {
+    const session = this.get(guildId);
+    if (!session) return null;
+    const game = session.game;
+    const lastCall = game.called.at(-1) ?? null;
+    return {
+      id: game.id,
+      channelId: game.channelId,
+      hostId: game.hostId,
+      hostName: game.players.get(game.hostId)?.displayName ?? game.hostId,
+      status: game.status,
+      maxPlayers: game.maxPlayers,
+      playerCount: game.playerCount,
+      players: [...game.players.values()].map((player) => ({ id: player.userId, displayName: player.displayName })),
+      calledCount: game.called.length,
+      lastCall,
+      remainingCalls: game.remainingCalls,
+      claims: [...game.claims.entries()].map(([pattern, claim]) => ({
+        pattern,
+        label: CLAIM_LABELS[pattern],
+        userId: claim.userId,
+        displayName: game.players.get(claim.userId)?.displayName ?? claim.userId,
+        atCall: claim.atCall,
+      })),
+      autoMark: game.autoMark,
+      intervalSeconds: game.intervalSeconds,
+      voiceChannelId: session.voiceChannelId,
+      voiceConnected: session.voice?.connected === true,
+      voiceNote: session.voiceNote,
+      winnerId: game.winnerId,
+      winnerName: game.winnerId ? game.players.get(game.winnerId)?.displayName ?? game.winnerId : null,
+    };
   }
 
   async host(options: {
@@ -320,7 +390,7 @@ export class TambolaService {
 
   async pause(guildId: string, member: GuildMember): Promise<void> {
     const session = this.require(guildId);
-    if (member.id !== session.game.hostId) throw new UserError("Only the host can pause the game.");
+    this.assertControl(session, member);
     if (session.game.status !== "active") throw new UserError("The game is not running.");
     session.game.pause();
     this.clearTimers(session, "call");
@@ -330,7 +400,7 @@ export class TambolaService {
 
   async resume(guildId: string, member: GuildMember): Promise<void> {
     const session = this.require(guildId);
-    if (member.id !== session.game.hostId) throw new UserError("Only the host can resume the game.");
+    this.assertControl(session, member);
     if (session.game.status !== "paused") throw new UserError("The game is not paused.");
     session.game.resume();
     await this.updateCard(session);
