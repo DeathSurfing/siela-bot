@@ -407,7 +407,7 @@ function renderCahLive(data) {
     ? `<p class="game-note">The judge picks the winning slot in Discord. Slots are anonymized here.</p>`
     : "";
 
-  const canStart = enabled && game.status === "lobby" && isHost;
+  const canStart = enabled && game.status === "lobby" && isHost && players.length >= 3;
   const canReveal = enabled && game.status === "active" && game.phase === "submit" && (isHost || isJudge);
   const canNext = enabled && game.status === "active" && game.phase === "reveal" && (isHost || isJudge);
   const canEnd = !["finished", "cancelled"].includes(game.status) && (isHost || isAdmin);
@@ -426,11 +426,13 @@ function renderCahLive(data) {
   }
   const hint = game.status === "lobby" && !isHost
     ? "Only the host can start this lobby. Players join in Discord."
-    : game.status === "active" && game.phase === "judge"
-      ? "Waiting for the judge in Discord."
-      : game.status === "active" && game.phase === "submit" && !isHost && !isJudge
-        ? "Only the host or judge can force a reveal."
-        : "";
+    : game.status === "lobby" && players.length < 3
+      ? "At least 3 players are needed to start."
+      : game.status === "active" && game.phase === "judge"
+        ? "Waiting for the judge in Discord."
+        : game.status === "active" && game.phase === "submit" && !isHost && !isJudge
+          ? "Only the host or judge can force a reveal."
+          : "";
   const controlBlock = `<div class="game-controls">${controls.join("")}${discordLink(game.channelId)}</div>${hint ? `<p class="game-note">${escapeHtml(hint)}</p>` : ""}`;
 
   const scoreRows = players.map((player) => `<tr><td><strong>${escapeHtml(player.displayName)}</strong></td><td data-label="Role">${player.host ? `<span class="game-tag">Host</span>` : ""}${player.judge ? `<span class="game-tag">Judge</span>` : ""}</td><td class="numeric-cell" data-label="Score">${fmtNumber(player.score)}</td></tr>`).join("");

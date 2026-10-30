@@ -382,9 +382,11 @@ function renderGamePanel(force = false) {
 
 async function pollGameView(force = false) {
   if (document.hidden || !["cah", "tambola"].includes(state.view) || !state.guildId) return;
+  const view = state.view;
+  const guildId = state.guildId;
   try {
     const data = await fetchGameState();
-    if (document.hidden || !["cah", "tambola"].includes(state.view)) return;
+    if (document.hidden || state.view !== view || state.guildId !== guildId) return;
     const changed = JSON.stringify(data) !== JSON.stringify(state.data);
     state.data = data;
     if (changed || force) renderGamePanel(force);
@@ -665,12 +667,14 @@ async function runMusicAction(action, body = {}) {
 async function runCahAction(action, button) {
   if (!state.guildId) return;
   if (action === "end" && !window.confirm("End this CAH game for everyone?")) return;
+  const guildId = state.guildId;
   const body = { gameId: button.dataset.gameId ?? "" };
   const roundIndex = button.dataset.roundIndex;
   if (roundIndex !== undefined) body.roundIndex = Number(roundIndex);
   button.disabled = true;
   try {
-    const data = await api.cahAction(state.guildId, action, body);
+    const data = await api.cahAction(guildId, action, body);
+    if (state.view !== "cah" || state.guildId !== guildId) return;
     state.data = data;
     renderMain();
     announce(`CAH ${action} sent.`);
@@ -686,9 +690,11 @@ async function runCahAction(action, button) {
 async function runTambolaAction(action, button) {
   if (!state.guildId) return;
   if (action === "end" && !window.confirm("End this Tambola game for everyone?")) return;
+  const guildId = state.guildId;
   button.disabled = true;
   try {
-    const data = await api.tambolaAction(state.guildId, action, { gameId: button.dataset.gameId ?? "" });
+    const data = await api.tambolaAction(guildId, action, { gameId: button.dataset.gameId ?? "" });
+    if (state.view !== "tambola" || state.guildId !== guildId) return;
     state.data = data;
     renderMain();
     announce(`Tambola ${action} sent.`);
@@ -703,6 +709,7 @@ async function runTambolaAction(action, button) {
 
 async function createCahLobby(form) {
   if (!state.guildId) return;
+  const guildId = state.guildId;
   const data = new FormData(form);
   const channelId = String(data.get("channelId") ?? "").trim();
   const pointsGoal = Number(data.get("pointsGoal"));
@@ -726,7 +733,8 @@ async function createCahLobby(form) {
   }
   setInlineFeedback("cah-host", "Creating the lobby…");
   try {
-    const result = await api.cahHost(state.guildId, { channelId, pointsGoal, maxPlayers });
+    const result = await api.cahHost(guildId, { channelId, pointsGoal, maxPlayers });
+    if (state.view !== "cah" || state.guildId !== guildId) return;
     state.data = result;
     renderMain();
     announce("CAH lobby created.");
@@ -747,6 +755,7 @@ function newRequestId() {
 
 async function playCasino(game, form) {
   if (!state.guildId || state.casinoBusy) return;
+  const guildId = state.guildId;
   const data = new FormData(form);
   const bet = Number(data.get("bet"));
   const maxBet = Number(state.data?.maxBet) || 10_000;
@@ -769,7 +778,8 @@ async function playCasino(game, form) {
   setInlineFeedback("casino", game === "coinflip" ? "Flipping…" : "Spinning…");
   try {
     const body = game === "coinflip" ? { bet, side, requestId } : { bet, requestId };
-    const result = await api.casinoPlay(state.guildId, game, body);
+    const result = await api.casinoPlay(guildId, game, body);
+    if (state.view !== "casino" || state.guildId !== guildId) return;
     state.casinoResult = result;
     state.casinoPending = null;
     state.casinoBusy = false;
