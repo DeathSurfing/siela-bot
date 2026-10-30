@@ -588,6 +588,10 @@ td code { overflow-wrap: anywhere; }
   .metric:first-child { border-top: 0; }
   .metric + .metric { padding-left: 0; border-left: 0; }
   .metric-value { font-size: 1.25rem; }
+  .game-main .metric-row { grid-template-columns: 1fr; border-bottom: 0; }
+  .game-main .metric { padding: 11px 0; border-top: 1px solid var(--line); }
+  .game-main .metric:first-child { border-top: 0; }
+  .game-main .metric + .metric { padding-left: 0; border-left: 0; }
   .status-fact { flex: 1 1 40%; }
   .transport { gap: 6px; }
   .player-progress { grid-template-columns: 34px minmax(0, 1fr) 34px; }
