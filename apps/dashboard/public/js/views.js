@@ -2,12 +2,14 @@ import { state } from "./store.js";
 
 const titles = {
   overview: "Overview",
-  servers: "Servers",
   features: "Features",
   music: "Music",
   cah: "Cards Against Humanity",
   tambola: "Tambola",
   casino: "Casino",
+  economy: "Economy",
+  leaderboard: "Leaderboard",
+  stocks: "Stocks",
   settings: "Server settings",
   user: "User settings",
   audit: "Audit",
@@ -22,27 +24,37 @@ const editableFields = {
   welcome: ["enabled", "channelId", "message", "embed", "card", "pingUser", "dmEnabled", "dmMessage", "goodbyeEnabled", "goodbyeChannelId", "goodbyeMessage"],
   autorole: ["enabled", "roleIds", "includeBots", "minAccountAgeDays", "delayMs"],
   tempvc: ["enabled", "hubChannelId", "categoryId", "nameTemplate", "defaultUserLimit", "defaultLocked", "autoDelete", "graceSeconds", "maxChannels", "maxPerUser"],
-  music: ["djRoleIds", "defaultVolume", "maxQueueSize", "musicChannelId", "aloneTimeoutSeconds"],
+  music: ["djRoleIds", "maxQueueSize", "musicChannelId", "aloneTimeoutSeconds"],
 };
 
 const hints = {
-  channelId: "Right-click a channel in Discord and copy its ID.",
-  goodbyeChannelId: "Right-click a channel in Discord and copy its ID.",
-  hubChannelId: "The voice channel members join to create their own room.",
-  categoryId: "The category new temporary rooms are placed in.",
-  musicChannelId: "Optional text channel for player prompts.",
-  roleIds: "Comma-separated role IDs.",
-  djRoleIds: "Comma-separated role IDs that can control music.",
+  channelId: "Type #channel-name or paste an ID.",
+  goodbyeChannelId: "Type #channel-name or paste an ID.",
+  hubChannelId: "The voice channel members join to create their own room. Type #voice-channel or paste an ID.",
+  categoryId: "The category new temporary rooms are placed in. Type #category-name or paste an ID.",
+  musicChannelId: "Optional text channel for player prompts. Type #channel-name or paste an ID.",
+  roleIds: "Type @role-name to append a role. Comma-separate IDs.",
+  djRoleIds: "Type @role-name to append a role. Comma-separate IDs.",
   message: "Placeholders: {mention}, {user}, {server}.",
   dmMessage: "Sent only when direct messages are enabled.",
   goodbyeMessage: "Placeholders: {user}, {server}.",
   nameTemplate: "Use {user} for the owner's name.",
 };
 
+const resolveFieldKinds = {
+  channelId: "channel",
+  goodbyeChannelId: "channel",
+  hubChannelId: "voice",
+  categoryId: "channel",
+  musicChannelId: "channel",
+  roleIds: "role",
+  djRoleIds: "role",
+};
+
 const labels = {
   prefix: "Prefix",
   enabled: "Enabled",
-  channelId: "Welcome channel ID",
+  channelId: "Welcome channel",
   message: "Welcome message",
   embed: "Use an embed",
   card: "Use a welcome card",
@@ -50,14 +62,14 @@ const labels = {
   dmEnabled: "Send a direct message",
   dmMessage: "Direct message",
   goodbyeEnabled: "Send a goodbye message",
-  goodbyeChannelId: "Goodbye channel ID",
+  goodbyeChannelId: "Goodbye channel",
   goodbyeMessage: "Goodbye message",
-  roleIds: "Role IDs",
+  roleIds: "Autorole roles",
   includeBots: "Include bots",
   minAccountAgeDays: "Minimum account age in days",
   delayMs: "Role assignment delay in milliseconds",
-  hubChannelId: "Hub channel ID",
-  categoryId: "Category ID",
+  hubChannelId: "Voice hub channel",
+  categoryId: "Voice category",
   nameTemplate: "Channel name template",
   defaultUserLimit: "Default user limit",
   defaultLocked: "Lock new channels by default",
@@ -65,10 +77,9 @@ const labels = {
   graceSeconds: "Empty-channel grace period in seconds",
   maxChannels: "Maximum active channels",
   maxPerUser: "Maximum channels per member",
-  djRoleIds: "DJ role IDs",
-  defaultVolume: "Default volume",
+  djRoleIds: "DJ roles",
   maxQueueSize: "Maximum queue size",
-  musicChannelId: "Music text channel ID",
+  musicChannelId: "Music text channel",
   aloneTimeoutSeconds: "Disconnect after alone for seconds",
 };
 
@@ -201,7 +212,7 @@ export function renderLogin(error = "", oauth = false, password = false) {
 export function renderView(view) {
   if (state.loading) return skeletonBlock();
   if (state.error) return `${pageHeader(titles[view], "A live view of your bot.")}${inlineError(state.error)}`;
-  if (!["overview", "servers"].includes(view) && !state.guildId) {
+  if (view !== "overview" && !state.guildId) {
     const detail = state.guilds.length
       ? "Select a server from the header to load this view."
       : "Invite the bot to a Discord server, then refresh the server list.";
@@ -211,12 +222,14 @@ export function renderView(view) {
   const data = state.data;
   switch (view) {
     case "overview": return renderOverview(data);
-    case "servers": return renderServers(data);
     case "features": return renderFeatures(data);
     case "music": return renderMusic(data);
     case "cah": return renderCah(data);
     case "tambola": return renderTambola(data);
     case "casino": return renderCasino(data);
+    case "economy": return renderEconomy(data);
+    case "leaderboard": return renderLeaderboard(data);
+    case "stocks": return renderStocks(data);
     case "settings": return renderSettings(data);
     case "user": return renderUserSettings(data);
     case "audit": return renderAudit(data);
@@ -260,15 +273,6 @@ function renderOverview(data) {
     </div>`;
 }
 
-function renderServers(data) {
-  const guilds = list(data, "guilds");
-  const rows = guilds.map((guild) => {
-    const iconImage = guild.iconUrl ? `<img class="guild-avatar" src="${escapeHtml(guild.iconUrl)}" alt="" width="32" height="32" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : `<span class="guild-avatar guild-avatar-fallback">${escapeHtml(initialOf(guild.name))}</span>`;
-    return `<tr><td><div class="guild-cell">${iconImage}<span class="guild-copy"><a class="guild-name" href="#/g/${encodeURIComponent(guild.id)}/overview" data-server="${escapeHtml(guild.id)}">${escapeHtml(guild.name ?? "Unnamed server")}</a><button class="copy-id" type="button" data-copy="${escapeHtml(guild.id)}" aria-label="Copy server ID ${escapeHtml(guild.id)}"><small>${escapeHtml(guild.id)}</small><span class="copy-hint" aria-hidden="true">Copy</span></button></span></div></td><td class="numeric-cell" data-label="Members">${fmtNumber(guild.memberCount)}</td><td data-label="Owner"><span class="owner-id">${escapeHtml(guild.ownerId ?? "Not reported")}</span></td><td data-label="Connection"><span class="status-inline status-${guild.available ? "ok" : "danger"}"><i class="status-dot"></i>${guild.available ? "Available" : "Unavailable"}</span></td></tr>`;
-  }).join("");
-  return `${pageHeader("Servers", `${fmtNumber(guilds.length)} Discord ${guilds.length === 1 ? "server" : "servers"} connected to this bot.`)}<section class="table-panel">${guilds.length ? `<div class="table-scroll"><table><thead><tr><th scope="col">Server</th><th scope="col" class="numeric-cell">Members</th><th scope="col">Owner</th><th scope="col">Connection</th></tr></thead><tbody>${rows}</tbody></table></div>` : emptyState("No servers connected", "Invite the bot to a Discord server, then refresh this view.", `<button class="button button-secondary" type="button" data-action="retry">Refresh servers</button>`)}</section>`;
-}
-
 function renderFeatures(data) {
   const features = list(data, "features");
   const canManage = state.permissions.administrator;
@@ -302,6 +306,14 @@ function renderFeature(feature, features, canManage) {
   return `<article class="feature-row ${pending ? "is-pending" : ""}"${commandHint}><div class="feature-copy"><h3>${escapeHtml(feature.label ?? feature.id)}</h3><p>${escapeHtml(feature.description ?? "")}</p>${dependencies}${error ? `<p class="feature-error" role="alert">${escapeHtml(error)}</p>` : ""}</div><button type="button" class="switch" role="switch" aria-checked="${Boolean(feature.enabled)}" aria-label="${escapeHtml(feature.enabled ? `Disable ${feature.label}` : `Enable ${feature.label}`)}" aria-busy="${pending}" data-action="toggle-feature" data-feature-id="${escapeHtml(feature.id)}" ${pending || !canManage ? "disabled" : ""}><span></span></button></article>`;
 }
 
+function artworkMarkup(url, className) {
+  const src = typeof url === "string" ? url.trim() : "";
+  const art = src
+    ? `<img src="${escapeHtml(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
+    : icon("music");
+  return `<span class="${className}">${art}</span>`;
+}
+
 function renderMusic(data) {
   const current = data?.current;
   const queue = list(data, "upcoming");
@@ -309,24 +321,39 @@ function renderMusic(data) {
   const paused = data?.paused === true;
   const title = current?.title ?? current?.name ?? "Nothing is playing";
   const artist = current?.artist ?? current?.author ?? "The player is idle";
-  const volume = Math.max(0, Math.min(150, Number(data?.volume ?? 50)));
   const duration = Number(current?.length) || 0;
   const position = Math.max(0, Math.min(duration, Number(data?.position) || 0));
   const durationLabel = current?.isStream ? "LIVE" : fmtTrackTime(duration);
   const positionLabel = current?.isStream ? "LIVE" : fmtTrackTime(position);
   const loop = ["off", "track", "queue"].includes(data?.loop) ? data.loop : "off";
   const loopNext = { off: "track", track: "queue", queue: "off" }[loop];
-  const queueHtml = queue.length ? queue.map((track, index) => `<li><span class="queue-index tabular">${String(index + 1).padStart(2, "0")}</span><span class="queue-track"><strong>${escapeHtml(track.title ?? track.name ?? "Untitled track")}</strong><small>${escapeHtml(track.artist ?? track.author ?? "Unknown artist")}</small></span><span class="queue-length tabular">${escapeHtml(track.isStream ? "LIVE" : fmtTrackTime(track.length))}</span></li>`).join("") : `<li class="queue-empty">Queue is clear. Add a track to get started.</li>`;
+  const queueHtml = queue.length
+    ? queue.map((track, index) => `<li><span class="queue-index tabular">${String(index + 1).padStart(2, "0")}</span>${artworkMarkup(track.artworkUrl, "queue-art")}<span class="queue-track"><strong>${escapeHtml(track.title ?? track.name ?? "Untitled track")}</strong><small>${escapeHtml(track.artist ?? track.author ?? "Unknown artist")}</small></span><span class="queue-length tabular">${escapeHtml(track.isStream ? "LIVE" : fmtTrackTime(track.length))}</span></li>`).join("")
+    : `<li class="queue-empty">Queue is clear. Add a track to get started.</li>`;
   const currentGuildName = state.guilds.find((guild) => guild.id === state.guildId)?.name ?? "the selected server";
   const playAction = paused ? "resume" : playing ? "pause" : "play";
   const playLabel = paused ? "Resume playback" : playing ? "Pause playback" : "Choose a track to play";
   const seekDisabled = !current || current.isStream || duration <= 0;
+  const connected = Boolean(data?.channelName || data?.channelId);
+  const channelLabel = data?.channelName ? `#${data.channelName}` : data?.channelId ? String(data.channelId) : "Not connected";
+  const statusText = paused ? "Paused" : playing ? "Live" : "Idle";
+  const statusTone = paused ? "warn" : playing ? "ok" : "unknown";
+  const activeFilter = ["off", "bassboost", "nightcore", "vaporwave"].includes(data?.filter) ? data.filter : "off";
+  const filters = [["off", "Off"], ["bassboost", "Bass boost"], ["nightcore", "Nightcore"], ["vaporwave", "Vaporwave"]];
+  const voiceNotice = hasDiscordUser() ? "" : permissionNotice("Sign in with Discord to join your own voice channel. You can still type a channel name.");
 
-  return `${pageHeader("Music", `Playback and queue for ${currentGuildName}.`)}
+  return `${pageHeader("Music", `Playback and queue for ${currentGuildName}.`)}${voiceNotice}
     <div class="music-layout">
-      <section class="player">
-        <div class="player-topline"><span class="table-meta">Now playing</span><span class="status-inline status-${paused ? "warn" : playing ? "ok" : "unknown"}"><i class="status-dot"></i>${paused ? "Paused" : playing ? "Playing" : "Idle"}</span></div>
-        <div class="track-info"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(artist)}</p></div>
+      <section class="player" aria-label="Music player">
+        <div class="now-playing">
+          ${artworkMarkup(current?.artworkUrl, "now-art")}
+          <div class="now-copy">
+            <div class="now-kicker"><span class="table-meta">Now playing</span><span class="status-inline status-${statusTone}"><i class="status-dot"></i>${statusText}</span><span class="volume-chip">80% volume</span></div>
+            <h2 class="now-title">${escapeHtml(title)}</h2>
+            <p class="now-artist">${escapeHtml(artist)}</p>
+            <p class="player-channel">${icon("headphones")}<span>${connected ? `Connected to ${escapeHtml(channelLabel)}` : "Not connected to voice"}</span></p>
+          </div>
+        </div>
         <div class="player-progress"><output id="track-position" class="tabular">${escapeHtml(positionLabel)}</output><label class="sr-only" for="track-seek">Seek within current track</label><input id="track-seek" class="progress-line" type="range" min="0" max="${Math.max(duration, 1)}" value="${position}" aria-valuetext="${escapeHtml(`${positionLabel} of ${durationLabel}`)}" ${seekDisabled ? "disabled" : ""}><span class="tabular">${escapeHtml(durationLabel)}</span></div>
         <div class="transport">
           <button type="button" class="icon-button transport-secondary" data-action="music" data-music-action="shuffle" aria-label="Shuffle queue" ${queue.length < 2 ? "disabled" : ""}>${icon("shuffle")}</button>
@@ -334,11 +361,20 @@ function renderMusic(data) {
           <button type="button" class="icon-button transport-secondary" data-action="music" data-music-action="skip" aria-label="Skip track" ${current || queue.length ? "" : "disabled"}>${icon("skip-forward")}</button>
           <button type="button" class="loop-button" data-action="music" data-music-action="loop" data-loop-mode="${loopNext}" aria-label="Change repeat mode. Currently ${escapeHtml(loop)}.">${icon("repeat")}<span>${escapeHtml(loop)} repeat</span></button>
         </div>
-        <div class="volume-row">${icon("volume-up")}<label for="volume-control">Volume</label><input id="volume-control" type="range" min="0" max="150" value="${volume}" aria-valuetext="${volume} percent"><output for="volume-control" class="tabular">${volume}%</output></div>
-        <form class="play-form" id="play-form"><label for="voice-channel">Voice channel ID</label><input id="voice-channel" name="voiceChannelId" type="text" inputmode="numeric" placeholder="Right-click a voice channel in Discord, then Copy ID" autocomplete="off" value="${escapeHtml(state.voiceChannelId ?? "")}"><label for="track-query">Add to queue</label><div class="input-action"><input id="track-query" name="query" type="search" placeholder="Song or artist…" autocomplete="off" required><button class="button button-primary" type="submit">Add track</button></div></form>
-        <div class="player-actions"><button type="button" class="button button-secondary" data-action="music" data-music-action="join">Join voice</button><button type="button" class="button button-quiet" data-action="music" data-music-action="disconnect">Disconnect</button><button type="button" class="button button-quiet danger-text" data-action="music" data-music-action="stop" ${playing || paused ? "" : "disabled"}>Stop playback</button></div>
+        <div class="filter-strip" role="group" aria-label="Audio filter">
+          <span class="table-meta">Filter</span>
+          ${filters.map(([value, label]) => `<button type="button" class="filter-chip" data-action="music" data-music-action="filters" data-filter-preset="${value}" aria-pressed="${activeFilter === value}">${label}</button>`).join("")}
+        </div>
+        <div class="connect-row" role="group" aria-label="Voice connection">
+          <button type="button" class="button button-primary" data-action="music" data-music-action="join" data-voice-self="true">Join my voice channel</button>
+          <div class="connect-field"><label class="connect-label" for="voice-channel">or pick a channel</label><input id="voice-channel" name="voiceChannelId" type="text" placeholder="#general or paste an ID" autocomplete="off" value="${escapeHtml(state.voiceChannelId ?? "")}" data-resolve-kind="voice"></div>
+          <button type="button" class="button button-secondary" data-action="music" data-music-action="join">Join channel</button>
+          <button type="button" class="button button-quiet" data-action="music" data-music-action="disconnect">Disconnect</button>
+        </div>
+        <form class="play-form" id="play-form"><label for="track-query">Add to queue</label><div class="input-action"><input id="track-query" name="query" type="search" placeholder="Song or artist…" autocomplete="off" required><button class="button button-primary" type="submit">Add track</button></div></form>
+        <div class="player-actions"><button type="button" class="button button-quiet danger-text" data-action="music" data-music-action="stop" ${playing || paused ? "" : "disabled"}>Stop playback</button></div>
       </section>
-      <section class="queue-panel"><div class="section-heading"><h2>Queue <span class="queue-count">${String(queue.length).padStart(2, "0")}</span></h2><button type="button" class="button button-quiet" data-action="music" data-music-action="clear" ${queue.length ? "" : "disabled"}>Clear queue</button></div><ol class="queue-list">${queueHtml}</ol></section>
+      <section class="queue-panel" aria-label="Up next"><div class="section-heading"><h2>Up next <span class="queue-count">${String(queue.length).padStart(2, "0")}</span></h2><button type="button" class="button button-quiet" data-action="music" data-music-action="clear" ${queue.length ? "" : "disabled"}>Clear queue</button></div><ol class="queue-list">${queueHtml}</ol></section>
     </div>`;
 }
 
@@ -368,8 +404,8 @@ function gameStatus(game) {
   return { tone: "unknown", label: "Unknown" };
 }
 
-function gameMetrics(entries) {
-  return `<section class="metric-row" aria-label="Game metrics">${entries.map(([label, value]) => `<div class="metric"><span class="metric-label">${escapeHtml(label)}</span><strong class="metric-value tabular">${escapeHtml(value)}</strong></div>`).join("")}</section>`;
+function gameMetrics(entries, className = "") {
+  return `<section class="metric-row ${className}" aria-label="Game metrics">${entries.map(([label, value]) => `<div class="metric"><span class="metric-label">${escapeHtml(label)}</span><strong class="metric-value tabular">${escapeHtml(value)}</strong></div>`).join("")}</section>`;
 }
 
 function refreshButton() {
@@ -473,7 +509,7 @@ function renderCahHostForm() {
   return `<form class="settings-section" id="cah-host-form">
     <div class="settings-heading"><div><h2>Create a lobby</h2><p>The bot posts the lobby card in the channel. Members join, play hands, and judge rounds in Discord.</p></div><div class="settings-save"><button class="button button-primary" type="submit">Create lobby</button></div></div>
     <div class="settings-fields">
-      <label class="setting-field" for="cah-channel"><span><strong>Text channel ID</strong><small>Right-click a text channel in Discord, then Copy ID.</small></span><input id="cah-channel" name="channelId" type="text" inputmode="numeric" autocomplete="off" required placeholder="123456789012345678"></label>
+      <label class="setting-field" for="cah-channel"><span><strong>Text channel</strong><small>Type #channel-name or paste an ID.</small></span><input id="cah-channel" name="channelId" type="text" autocomplete="off" required placeholder="#general or paste an ID" data-resolve-kind="channel"></label>
       <label class="setting-field" for="cah-points"><span><strong>Points to win</strong><small>1 to 50. Default 7.</small></span><input id="cah-points" name="pointsGoal" type="number" min="1" max="50" step="1" value="7" required></label>
       <label class="setting-field" for="cah-players"><span><strong>Maximum players</strong><small>3 to 10.</small></span><input id="cah-players" name="maxPlayers" type="number" min="3" max="10" step="1" value="10" required></label>
     </div>
@@ -592,6 +628,142 @@ function renderCasinoResult(result) {
   return `<section class="casino-result ${result.payout > 0 ? "is-win" : "is-loss"}" role="status"><span class="table-meta">Last spin</span><div class="reel-row">${reels.map((reel) => `<span class="reel">${escapeHtml(reel)}</span>`).join("")}</div><p>${escapeHtml(label)} ${result.payout > 0 ? `Payout ${fmtNumber(result.payout)} SC` : `Lost ${fmtNumber(result.bet)} SC`}.</p></section>`;
 }
 
+function renderEconomyReady(readyAt) {
+  if (!readyAt) return { ready: true, label: "Ready now" };
+  const time = new Date(readyAt);
+  if (Number.isNaN(time.getTime()) || time.getTime() <= Date.now()) return { ready: true, label: "Ready now" };
+  return { ready: false, label: `Ready ${fmtDate(readyAt)}` };
+}
+
+function renderEconomy(data) {
+  const header = pageHeader("Economy", "Your balance, streak, and self-service rewards for this server.");
+  if (data?.discordRequired) {
+    return `${header}${permissionNotice("Sign in with Discord to use the economy. The dashboard needs your Discord user ID to read your balance.")}`;
+  }
+  if (data?.enabled === false) {
+    return `${header}${permissionNotice("The economy is turned off for this server. Enable economy-core in Features to claim rewards.")}`;
+  }
+  const daily = renderEconomyReady(data?.dailyReadyAt);
+  const work = renderEconomyReady(data?.workReadyAt);
+  const busy = state.economyBusy === true;
+  return `${header}
+    ${gameMetrics([
+      ["Balance", `${fmtNumber(data?.balance)} SC`],
+      ["Daily streak", fmtNumber(data?.dailyStreak)],
+      ["Total earned", `${fmtNumber(data?.totalEarned)} SC`],
+      ["Total spent", `${fmtNumber(data?.totalSpent)} SC`],
+    ], "economy-metrics")}
+    <div class="economy-actions">
+      <section class="settings-section economy-action">
+        <div class="settings-heading"><div><h2>Daily reward</h2><p>Claim once every 24 hours. Consecutive days raise the reward up to seven times.</p></div><div class="settings-save"><span class="economy-ready">${escapeHtml(daily.label)}</span><button class="button button-primary" type="button" data-action="economy" data-economy-action="daily" ${daily.ready && !busy ? "" : "disabled"}>${daily.ready ? "Claim daily" : "On cooldown"}</button></div></div>
+      </section>
+      <section class="settings-section economy-action">
+        <div class="settings-heading"><div><h2>Work shift</h2><p>Take a shift every two hours for a small random payout.</p></div><div class="settings-save"><span class="economy-ready">${escapeHtml(work.label)}</span><button class="button button-secondary" type="button" data-action="economy" data-economy-action="work" ${work.ready && !busy ? "" : "disabled"}>${work.ready ? "Work a shift" : "On cooldown"}</button></div></div>
+      </section>
+    </div>
+    <p class="game-note">Rewards are self-service. You can only claim for your own Discord account, and no administrator permission is needed.</p>
+    <div class="settings-feedback" data-feedback="economy" role="status" aria-live="polite"></div>`;
+}
+
+function renderLeaderboard(data) {
+  const header = pageHeader("Leaderboard", "The top 25 members by balance in this server.");
+  if (data?.discordRequired) {
+    return `${header}${permissionNotice("Sign in with Discord to see your rank on the leaderboard.")}`;
+  }
+  if (data?.enabled === false) {
+    return `${header}${permissionNotice("The economy is turned off for this server. Enable economy-core in Features to see balances.")}`;
+  }
+  const entries = list(data, "entries");
+  const me = data?.me ?? null;
+  const meRow = me
+    ? `<p class="leaderboard-me">You are ranked <strong>#${fmtNumber(me.rank)}</strong> with <strong>${fmtNumber(me.balance)} SC</strong>.</p>`
+    : "";
+  if (!entries.length) {
+    return `${header}${meRow}${emptyState("No economy accounts yet", "Claim a daily reward to open the first account on this server.")}`;
+  }
+  const meId = state.user?.id;
+  const rows = entries.map((entry) => {
+    const you = entry.userId === meId;
+    return `<tr class="${you ? "is-you" : ""}"><td class="numeric-cell" data-label="Rank">${fmtNumber(entry.rank)}</td><td><strong>${escapeHtml(entry.name ?? entry.userId)}</strong>${you ? `<span class="game-tag">You</span>` : ""}</td><td class="numeric-cell" data-label="Balance">${fmtNumber(entry.balance)} SC</td></tr>`;
+  }).join("");
+  return `${header}${meRow}<section class="table-panel"><div class="table-scroll"><table><thead><tr><th scope="col" class="numeric-cell">Rank</th><th scope="col">Member</th><th scope="col" class="numeric-cell">Balance</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+}
+
+function fmtDecimal(value, digits = 1) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(digits) : "N/A";
+}
+
+function fmtPercent(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${number >= 0 ? "+" : ""}${number.toFixed(2)}%` : "N/A";
+}
+
+function stockChange(history) {
+  const values = (Array.isArray(history) ? history : []).map(Number);
+  if (values.length < 2) return 0;
+  const previous = values.at(-2);
+  const latest = values.at(-1);
+  if (!Number.isFinite(previous) || previous <= 0 || !Number.isFinite(latest)) return 0;
+  return ((latest - previous) / previous) * 100;
+}
+
+function stockSparkline(history) {
+  const values = (Array.isArray(history) ? history : []).map(Number).filter(Number.isFinite).slice(-24);
+  if (values.length < 2) return "";
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const points = values.map((value, index) => `${((index / (values.length - 1)) * 100).toFixed(1)},${(19 - ((value - min) / span) * 18).toFixed(1)}`).join(" ");
+  return `<svg class="stock-sparkline" viewBox="0 0 100 20" width="100" height="20" aria-hidden="true" focusable="false"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+function renderStocks(data) {
+  const header = pageHeader("Stocks", "Siela Exchange prices, your portfolio, and self-service trades.");
+  if (data?.discordRequired) {
+    return `${header}${permissionNotice("Sign in with Discord to trade. The dashboard needs your Discord user ID to read your portfolio.")}`;
+  }
+  if (data?.enabled === false) {
+    return `${header}${permissionNotice("The economy is turned off for this server. Enable economy-core in Features to trade.")}`;
+  }
+  const market = data?.market ?? null;
+  const portfolio = data?.portfolio ?? null;
+  const stocks = list(market, "stocks");
+  const holdings = list(portfolio, "holdings");
+  const busy = state.stockBusy === true;
+  const indexChange = Number(market?.indexChange) || 0;
+  const unrealized = Number(portfolio?.unrealized) || 0;
+  const marketRows = stocks.map((stock) => {
+    const change = stockChange(stock.history);
+    return `<tr><td><strong>${escapeHtml(stock.symbol)}</strong><small class="table-subline">${escapeHtml(stock.sector ?? "")}</small></td><td>${escapeHtml(stock.name ?? "")}</td><td class="numeric-cell" data-label="Price">${fmtNumber(stock.price)} SC</td><td class="numeric-cell" data-label="Change"><span class="${change >= 0 ? "change-up" : "change-down"}">${fmtPercent(change)}</span></td><td class="stock-trend" data-label="Trend">${stockSparkline(stock.history)}</td></tr>`;
+  }).join("");
+  const holdingRows = holdings.map((holding) => `<tr><td><strong>${escapeHtml(holding.symbol)}</strong><small class="table-subline">${escapeHtml(holding.name ?? "")}</small></td><td data-label="Shares">${fmtNumber(holding.shares)}</td><td data-label="Average cost">${fmtNumber(holding.avgCost)} SC</td><td data-label="Price">${fmtNumber(holding.price)} SC</td><td data-label="Value">${fmtNumber(holding.value)} SC</td><td data-label="P/L"><span class="${holding.pnl >= 0 ? "change-up" : "change-down"}">${holding.pnl >= 0 ? "+" : ""}${fmtNumber(holding.pnl)} SC</span></td></tr>`).join("");
+  const options = stocks.map((stock) => `<option value="${escapeHtml(stock.symbol)}">${escapeHtml(stock.symbol)} · ${escapeHtml(stock.name ?? "")}</option>`).join("");
+  const canTrade = stocks.length > 0 && !busy;
+  return `${header}
+    ${gameMetrics([
+      ["Index", fmtDecimal(market?.index)],
+      ["Index change", fmtPercent(indexChange)],
+      ["Net worth", `${fmtNumber(portfolio?.netWorth)} SC`],
+      ["Unrealized P/L", `${unrealized >= 0 ? "+" : ""}${fmtNumber(unrealized)} SC`],
+    ], "economy-metrics")}
+    <section class="status-line stock-summary" aria-label="Portfolio summary">
+      <span class="status-fact"><span>Cash</span><strong class="tabular">${fmtNumber(portfolio?.cash)} SC</strong></span>
+      <span class="status-fact"><span>Holdings value</span><strong class="tabular">${fmtNumber(portfolio?.holdingsValue)} SC</strong></span>
+    </section>
+    <section class="table-panel stock-market"><div class="section-heading"><h2>Market</h2><span class="table-meta">Prices update hourly</span></div><div class="table-scroll"><table><thead><tr><th scope="col">Symbol</th><th scope="col">Name</th><th scope="col" class="numeric-cell">Price</th><th scope="col" class="numeric-cell">Change</th><th scope="col">Trend</th></tr></thead><tbody>${marketRows || `<tr><td colspan="5">No stocks are listed.</td></tr>`}</tbody></table></div></section>
+    <section class="table-panel stock-holdings"><div class="section-heading"><h2>Holdings</h2><span class="table-meta">${holdings.length} ${holdings.length === 1 ? "position" : "positions"}</span></div>${holdings.length ? `<div class="table-scroll"><table><thead><tr><th scope="col">Symbol</th><th scope="col">Shares</th><th scope="col">Average cost</th><th scope="col">Price</th><th scope="col">Value</th><th scope="col">P/L</th></tr></thead><tbody>${holdingRows}</tbody></table></div>` : emptyState("No holdings yet", "Buy shares from the trade form to start a portfolio.")}</section>
+    <form class="settings-section stock-trade" id="stock-trade-form">
+      <div class="settings-heading"><div><h2>Trade</h2><p>Buy or sell at the current price. The 1% fee is rounded up to at least 1 SC.</p></div></div>
+      <div class="settings-fields casino-fields">
+        <label class="setting-field" for="stock-symbol"><span><strong>Symbol</strong></span><select id="stock-symbol" name="symbol" required ${stocks.length ? "" : "disabled"}>${options}</select></label>
+        <label class="setting-field" for="stock-shares"><span><strong>Shares</strong><small>Whole shares, up to 1,000,000.</small></span><input id="stock-shares" name="shares" type="number" min="1" max="1000000" step="1" value="1" required ${stocks.length ? "" : "disabled"}></label>
+      </div>
+      <div class="stock-trade-actions"><button class="button button-primary" type="submit" data-stock-side="buy" ${canTrade ? "" : "disabled"}>Buy</button><button class="button button-secondary" type="submit" data-stock-side="sell" ${canTrade ? "" : "disabled"}>Sell</button></div>
+      <div class="settings-feedback" data-feedback="stocks" role="status" aria-live="polite"></div>
+    </form>`;
+}
+
 export function renderLivePanel(view, data) {
   if (view === "cah") return renderCahLive(data);
   if (view === "tambola") return renderTambolaLive(data);
@@ -633,11 +805,20 @@ function renderConfigField(field, value, disabled = false) {
   const longText = field === "message" || field === "dmMessage" || field === "goodbyeMessage";
   const type = typeof value === "number" ? "number" : "text";
   const valueString = isList ? value.join(", ") : value == null ? "" : String(value);
+  const resolveKind = resolveFieldKinds[field];
+  const resolveAttributes = resolveKind
+    ? ` data-resolve-kind="${resolveKind}"${field === "roleIds" || field === "djRoleIds" ? " data-resolve-append" : ""}`
+    : "";
+  const placeholder = resolveKind === "role"
+    ? (isList ? "@role-name, @another-role" : "@role-name")
+    : resolveKind
+      ? "#channel-name or paste an ID"
+      : isList ? "Comma-separated IDs" : "";
   const control = isList
-    ? `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="list" type="text" value="${escapeHtml(valueString)}" placeholder="Comma-separated IDs" autocomplete="off" inputmode="numeric" ${off}>`
+    ? `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="list" type="text" value="${escapeHtml(valueString)}" placeholder="${escapeHtml(placeholder)}" autocomplete="off"${resolveAttributes} ${off}>`
     : longText
       ? `<textarea id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="text" rows="3" ${off}>${escapeHtml(valueString)}</textarea>`
-    : `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="${type}" type="${type}" value="${escapeHtml(valueString)}" ${type === "number" ? "step=1" : "autocomplete=off"} ${off}>`;
+    : `<input id="setting-${escapeHtml(field)}" name="${escapeHtml(field)}" data-config-key="${escapeHtml(field)}" data-config-type="${type}" type="${type}" value="${escapeHtml(valueString)}" placeholder="${escapeHtml(placeholder)}" ${type === "number" ? "step=1" : "autocomplete=off"}${resolveAttributes} ${off}>`;
   return `<label class="setting-field" for="setting-${escapeHtml(field)}"><span><strong>${escapeHtml(label)}</strong>${hint}</span>${control}</label>`;
 }
 

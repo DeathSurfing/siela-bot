@@ -17,14 +17,12 @@ export function installHotkeys(actions: HotkeyActions): () => void {
   const manager = getHotkeyManager();
   const handles = [
     manager.register(["G", "O"] as const, () => actions.view("overview"), { timeout: 1200 }),
-    manager.register(["G", "S"] as const, () => actions.view("servers"), { timeout: 1200 }),
     manager.register(["G", "F"] as const, () => actions.view("features"), { timeout: 1200 }),
     manager.register(["G", "M"] as const, () => actions.view("music"), { timeout: 1200 }),
     manager.register(["G", "H"] as const, () => actions.view("cah"), { timeout: 1200 }),
     manager.register(["G", "B"] as const, () => actions.view("tambola"), { timeout: 1200 }),
     manager.register(["G", "D"] as const, () => actions.view("casino"), { timeout: 1200 }),
     manager.register(["G", "T"] as const, () => actions.view("settings"), { timeout: 1200 }),
-    manager.register(["G", "U"] as const, () => actions.view("user"), { timeout: 1200 }),
     manager.register(["G", "A"] as const, () => actions.view("audit"), { timeout: 1200 }),
     manager.register(["G", "C"] as const, () => actions.view("commands"), { timeout: 1200 }),
     manager.register("Mod+S", actions.save),

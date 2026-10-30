@@ -1,17 +1,23 @@
 export const MUSIC_ACTIONS = [
-  "join", "play", "pause", "resume", "skip", "stop", "volume", "seek", "loop", "shuffle", "clear", "disconnect",
+  "join", "play", "pause", "resume", "skip", "stop", "seek", "loop", "shuffle", "clear", "filters", "disconnect",
 ] as const;
 
 export const CONFIG_SECTIONS = ["prefix", "welcome", "autorole", "tempvc", "music"] as const;
 export const CAH_ACTIONS = ["start", "reveal", "next", "end"] as const;
 export const TAMBOLA_ACTIONS = ["end", "pause", "resume"] as const;
 export const CASINO_GAMES = ["coinflip", "slots"] as const;
+export const ECONOMY_ACTIONS = ["daily", "work"] as const;
+export const STOCK_ACTIONS = ["buy", "sell"] as const;
+export const RESOLVE_KINDS = ["channel", "voice", "role", "user"] as const;
 
 export type MusicAction = (typeof MUSIC_ACTIONS)[number];
 export type ConfigSection = (typeof CONFIG_SECTIONS)[number];
 export type CahAction = (typeof CAH_ACTIONS)[number];
 export type TambolaAction = (typeof TAMBOLA_ACTIONS)[number];
 export type CasinoGame = (typeof CASINO_GAMES)[number];
+export type EconomyAction = (typeof ECONOMY_ACTIONS)[number];
+export type StockAction = (typeof STOCK_ACTIONS)[number];
+export type ResolveKind = (typeof RESOLVE_KINDS)[number];
 
 export class ControlApiError extends Error {
   constructor(
@@ -37,11 +43,12 @@ export interface BirthdayInput {
 export interface ControlClient {
   getStatus(): Promise<unknown>;
   getGuilds(): Promise<unknown>;
+  resolve(guildId: string, query: string, kind?: ResolveKind): Promise<unknown>;
   getFeatures(guildId: string): Promise<unknown>;
   updateFeature(guildId: string, featureId: string, enabled: boolean, actorId?: string): Promise<unknown>;
   getAudit(guildId: string, limit: number): Promise<unknown>;
   getMusic(guildId: string): Promise<unknown>;
-  musicAction(guildId: string, action: MusicAction, body: unknown): Promise<unknown>;
+  musicAction(guildId: string, action: MusicAction, body: unknown, userId?: string): Promise<unknown>;
   getConfig(guildId: string): Promise<unknown>;
   patchConfig(guildId: string, section: ConfigSection, body: Record<string, unknown>, actorId?: string): Promise<unknown>;
   getCommands(): Promise<unknown>;
@@ -56,6 +63,11 @@ export interface ControlClient {
   tambolaAction(guildId: string, action: TambolaAction, body: Record<string, unknown>, userId: string): Promise<unknown>;
   casinoState(guildId: string, userId: string): Promise<unknown>;
   casinoPlay(guildId: string, game: CasinoGame, body: Record<string, unknown>, userId: string): Promise<unknown>;
+  economyState(guildId: string, userId: string): Promise<unknown>;
+  economyAction(guildId: string, action: EconomyAction, userId: string): Promise<unknown>;
+  economyLeaderboard(guildId: string, userId: string): Promise<unknown>;
+  stockState(guildId: string, userId: string): Promise<unknown>;
+  stockTrade(guildId: string, action: StockAction, body: Record<string, unknown>, userId: string): Promise<unknown>;
 }
 
 type ControlFetch = (url: URL, init?: RequestInit) => Promise<Response>;
@@ -105,12 +117,18 @@ export function createControlClient(baseUrl: string, token: string, fetcher: Con
   return {
     getStatus: () => request("/v1/status"),
     getGuilds: () => request("/v1/guilds"),
+    resolve: (guildId, query, kind) => {
+      const params = new URLSearchParams({ q: query });
+      if (kind) params.set("kind", kind);
+      return request(`/v1/resolve?${params.toString()}`, { guildId });
+    },
     getFeatures: (guildId) => request("/v1/features", { guildId }),
     updateFeature: (guildId, featureId, enabled, actorId) =>
       request("/v1/features", { guildId, actorId, method: "PATCH", body: { featureId, enabled } }),
     getAudit: (guildId, limit) => request(`/v1/audit?limit=${encodeURIComponent(String(limit))}`, { guildId }),
     getMusic: (guildId) => request("/v1/music/state", { guildId }),
-    musicAction: (guildId, action, body) => request(`/v1/music/${action}`, { guildId, method: "POST", body }),
+    musicAction: (guildId, action, body, userId) =>
+      request(`/v1/music/${action}`, { guildId, userId, actorId: userId, method: "POST", body }),
     getConfig: async (guildId) => {
       const [prefix, welcome, autorole, tempvc, music] = await Promise.all([
         request("/v1/prefix", { guildId }),
@@ -150,5 +168,12 @@ export function createControlClient(baseUrl: string, token: string, fetcher: Con
     casinoState: (guildId, userId) => request("/v1/casino/state", { guildId, userId }),
     casinoPlay: (guildId, game, body, userId) =>
       request(`/v1/casino/${game}`, { guildId, userId, actorId: userId, method: "POST", body }),
+    economyState: (guildId, userId) => request("/v1/economy/state", { guildId, userId }),
+    economyAction: (guildId, action, userId) =>
+      request(`/v1/economy/${action}`, { guildId, userId, actorId: userId, method: "POST", body: {} }),
+    economyLeaderboard: (guildId, userId) => request("/v1/economy/leaderboard?limit=25", { guildId, userId }),
+    stockState: (guildId, userId) => request("/v1/stocks/state", { guildId, userId }),
+    stockTrade: (guildId, action, body, userId) =>
+      request(`/v1/stocks/${action}`, { guildId, userId, actorId: userId, method: "POST", body }),
   };
 }

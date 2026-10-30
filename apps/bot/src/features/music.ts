@@ -28,6 +28,7 @@ import { buildMusicPayload } from "./music-ui.js";
 import type { ValkeyService } from "./valkey.js";
 
 const execFileAsync = promisify(execFile);
+export const MUSIC_VOLUME = 80;
 const AUDIO_FORMAT = "bestaudio[abr<=312]/bestaudio/best[abr<=312]/best";
 const SPOTIFY_COLLECTION_RE =
   /open\.spotify\.com\/(?:intl-[a-z-]+\/)?(?:user\/[^/]+\/)?(playlist|album)\/([A-Za-z0-9]+)/i;
@@ -164,7 +165,7 @@ class GuildPlayer {
   current: QueueTrack | null = null;
   loop: MusicLoopMode = "off";
   autoplay = false;
-  volume = 80;
+  volume = MUSIC_VOLUME;
   paused = false;
   filterPreset: "off" | "bassboost" | "nightcore" | "vaporwave" = "off";
   private ytdlpProcess: ChildProcess | null = null;
@@ -612,6 +613,9 @@ class GuildPlayer {
       position: this.positionMs(),
       current: trackInfo(this.current),
       upcoming: this.queue.map(toInfo),
+      channelId: this.connection.joinConfig.channelId ?? null,
+      channelName: null,
+      filter: this.filterPreset,
     };
   }
 }
@@ -1333,8 +1337,7 @@ export class MusicService extends EventEmitter {
       this.logger.debug({ guildId: member.guild.id, message }, "audio player debug");
     });
     const guildPlayer = new GuildPlayer(member.guild.id, connection, player, this);
-    const musicSettings = await this.options.settings.getMusic(member.guild.id);
-    guildPlayer.volume = musicSettings.defaultVolume;
+    guildPlayer.volume = MUSIC_VOLUME;
     const restored = await this.loadQueue(member.guild.id);
     if (restored.length) guildPlayer.queue.push(...restored);
     this.players.set(member.guild.id, guildPlayer);
@@ -1453,12 +1456,12 @@ export class MusicService extends EventEmitter {
     void this.clearNowPlaying(guildId);
   }
 
-  async volume(guildId: string, volume: number): Promise<number> {
+  /** Playback volume is fixed; callers can read it but cannot change it. */
+  async volume(guildId: string, _volume: number): Promise<number> {
     const gp = this.requirePlayer(guildId);
-    const value = Math.max(0, Math.min(150, Math.trunc(volume)));
-    gp.volume = value;
-    gp.resource?.volume?.setVolume(value / 100);
-    return value;
+    gp.volume = MUSIC_VOLUME;
+    gp.resource?.volume?.setVolume(MUSIC_VOLUME / 100);
+    return MUSIC_VOLUME;
   }
 
   async seek(guildId: string, positionMs: number): Promise<void> {

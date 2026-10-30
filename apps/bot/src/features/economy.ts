@@ -13,6 +13,7 @@ import {
   type Database,
 } from "@siela/db";
 import type { Logger } from "../lib/logger.js";
+import { MAX_STOCK_SHARES } from "@siela/shared";
 import { AttachmentBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle } from "discord.js";
 import type { ReplyPayload } from "../framework/types.js";
 import { actionRow, card } from "./ui.js";
@@ -39,14 +40,16 @@ const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const STREAK_WINDOW_MS = 36 * 60 * 60 * 1000;
 const DAILY_BASE = 10;
 const STARTING_BALANCE = 50;
-const MAX_STOCK_SHARES = 1_000_000;
 
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 export interface EconomyBalance {
   balance: number;
   lastDailyAt: Date | null;
+  lastWorkAt: Date | null;
   dailyStreak: number;
+  totalEarned: number;
+  totalSpent: number;
 }
 
 interface BlackjackGame {
@@ -99,6 +102,9 @@ export class EconomyService {
         try {
           const parsed = JSON.parse(cached) as EconomyBalance;
           if (parsed.lastDailyAt) parsed.lastDailyAt = new Date(parsed.lastDailyAt as string | Date);
+          if (parsed.lastWorkAt) parsed.lastWorkAt = new Date(parsed.lastWorkAt as string | Date);
+          parsed.totalEarned = Number(parsed.totalEarned ?? 0);
+          parsed.totalSpent = Number(parsed.totalSpent ?? 0);
           return parsed;
         } catch {
           // ignore
@@ -111,19 +117,39 @@ export class EconomyService {
       .select({
         balance: economyAccounts.balance,
         lastDailyAt: economyAccounts.lastDailyAt,
+        lastWorkAt: economyAccounts.lastWorkAt,
         dailyStreak: economyAccounts.dailyStreak,
+        totalEarned: economyAccounts.totalEarned,
+        totalSpent: economyAccounts.totalSpent,
       })
       .from(economyAccounts)
       .where(and(eq(economyAccounts.guildId, guildId), eq(economyAccounts.userId, userId)));
     const result: EconomyBalance = {
       balance: row?.balance ?? 0,
       lastDailyAt: row?.lastDailyAt ? new Date(row.lastDailyAt as string | Date) : null,
+      lastWorkAt: row?.lastWorkAt ? new Date(row.lastWorkAt as string | Date) : null,
       dailyStreak: row?.dailyStreak ?? 0,
+      totalEarned: Number(row?.totalEarned ?? 0),
+      totalSpent: Number(row?.totalSpent ?? 0),
     };
     if (redis) {
       await redis.set(cacheKey, JSON.stringify(result), "EX", 60).catch(() => undefined);
     }
     return result;
+  }
+
+  /** One-based position among accounts with a strictly higher balance. */
+  async getRank(guildId: string, userId: string): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(economyAccounts)
+      .where(
+        and(
+          eq(economyAccounts.guildId, guildId),
+          sql`${economyAccounts.balance} > (select ${economyAccounts.balance} from ${economyAccounts} where ${economyAccounts.guildId} = ${guildId} and ${economyAccounts.userId} = ${userId})`,
+        ),
+      );
+    return Number(row?.count ?? 0) + 1;
   }
 
   async invalidateBalance(guildId: string, userId: string): Promise<void> {
@@ -405,7 +431,8 @@ export class EconomyService {
       const cached = await redis.get(cacheKey).catch(() => null);
       if (cached) {
         try {
-          return JSON.parse(cached) as Array<{ userId: string; balance: number }>;
+          const rows = JSON.parse(cached) as Array<{ userId: string; balance: number }>;
+          if (rows.length >= limit) return rows.slice(0, limit);
         } catch {
           // ignore
         }

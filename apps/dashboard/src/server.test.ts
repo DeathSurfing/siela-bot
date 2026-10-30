@@ -44,6 +44,7 @@ function controlStub(overrides: Partial<ControlClient> = {}): ControlClient {
   return {
     getStatus: vi.fn().mockResolvedValue({ ready: true }),
     getGuilds: vi.fn().mockResolvedValue({ guilds: [] }),
+    resolve: vi.fn().mockResolvedValue({ results: [] }),
     getFeatures: vi.fn().mockResolvedValue({ features: [] }),
     updateFeature: vi.fn().mockResolvedValue({ featureId: "welcome", enabled: false }),
     getAudit: vi.fn().mockResolvedValue({ entries: [] }),
@@ -63,6 +64,11 @@ function controlStub(overrides: Partial<ControlClient> = {}): ControlClient {
     tambolaAction: vi.fn().mockResolvedValue({ enabled: true, game: null }),
     casinoState: vi.fn().mockResolvedValue({ enabled: true, balance: 500, maxBet: 10_000 }),
     casinoPlay: vi.fn().mockResolvedValue({ enabled: true, balance: 500, game: "coinflip", payout: 0 }),
+    economyState: vi.fn().mockResolvedValue({ enabled: true, balance: 500 }),
+    economyAction: vi.fn().mockResolvedValue({ amount: 10, balance: 510 }),
+    economyLeaderboard: vi.fn().mockResolvedValue({ enabled: true, entries: [], me: { rank: 1, balance: 500 } }),
+    stockState: vi.fn().mockResolvedValue({ enabled: true, market: null, portfolio: null }),
+    stockTrade: vi.fn().mockResolvedValue({ result: { symbol: "SIELA", shares: 1 }, market: null, portfolio: null }),
     ...overrides,
   };
 }
@@ -88,6 +94,9 @@ describe("dashboard HTTP boundary", () => {
     expect(asset.statusCode).toBe(200);
     expect(asset.body).toContain("dashboard");
     expect(asset.headers["content-security-policy"]).toContain("default-src 'self'");
+    expect(asset.headers["content-security-policy"]).toContain("https://i.ytimg.com");
+    expect(asset.headers["content-security-policy"]).toContain("https://img.youtube.com");
+    expect(asset.headers["content-security-policy"]).toContain("https://*.sndcdn.com");
     expect(asset.headers["cache-control"]).toBe("no-store");
     expect(index.headers["cache-control"]).toBe("no-store");
     expect(font.statusCode).toBe(200);
@@ -467,6 +476,61 @@ describe("dashboard HTTP boundary", () => {
   });
 });
 
+describe("dashboard resolver proxy", () => {
+  it("proxies a name lookup for any signed-in session without an Administrator check", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/guilds/123/resolve?q=general&kind=channel",
+      headers: sessionHeaders({ id: "operator", name: "Operator", avatarUrl: null }),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ results: [] });
+    expect(control.resolve).toHaveBeenCalledWith("123", "general", "channel");
+    expect(control.authorize).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("rejects a missing query, an overlong query, and an unknown kind", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders();
+    const missing = await app.inject({ method: "GET", url: "/api/guilds/123/resolve", headers });
+    const long = await app.inject({ method: "GET", url: `/api/guilds/123/resolve?q=${"a".repeat(81)}`, headers });
+    const kind = await app.inject({ method: "GET", url: "/api/guilds/123/resolve?q=general&kind=message", headers });
+
+    expect(missing.statusCode).toBe(400);
+    expect(long.statusCode).toBe(400);
+    expect(kind.statusCode).toBe(400);
+    expect(control.resolve).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("forwards a #channel or @role fragment with its kind", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders({ id: "operator", name: "Operator", avatarUrl: null });
+    const channel = await app.inject({ method: "GET", url: "/api/guilds/123/resolve?q=%23gene&kind=channel", headers });
+    const role = await app.inject({ method: "GET", url: "/api/guilds/123/resolve?q=%40mod&kind=role", headers });
+
+    expect(channel.statusCode).toBe(200);
+    expect(role.statusCode).toBe(200);
+    expect(control.resolve).toHaveBeenCalledWith("123", "#gene", "channel");
+    expect(control.resolve).toHaveBeenCalledWith("123", "@mod", "role");
+    await app.close();
+  });
+
+  it("requires a session", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({ method: "GET", url: "/api/guilds/123/resolve?q=general" });
+    expect(response.statusCode).toBe(401);
+    await app.close();
+  });
+});
+
 describe("dashboard game routes", () => {
   it("reads CAH and Tambola state for any signed-in session", async () => {
     const control = controlStub();
@@ -606,6 +670,207 @@ describe("dashboard game routes", () => {
     expect(invalid.statusCode).toBe(400);
     expect(invalid.json().error.code).toBe("invalid_body");
     expect(control.casinoPlay).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+});
+
+describe("dashboard economy member routes", () => {
+  it("reads economy state and the leaderboard for the session user", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders(owner);
+    const state = await app.inject({ method: "GET", url: "/api/guilds/123/economy", headers });
+    const board = await app.inject({ method: "GET", url: "/api/guilds/123/leaderboard", headers });
+
+    expect(state.statusCode).toBe(200);
+    expect(state.json()).toEqual({ enabled: true, balance: 500 });
+    expect(control.economyState).toHaveBeenCalledWith("123", owner.id);
+    expect(board.statusCode).toBe(200);
+    expect(control.economyLeaderboard).toHaveBeenCalledWith("123", owner.id);
+    await app.close();
+  });
+
+  it("runs daily and work for the session user and requires CSRF", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders(owner);
+    const daily = await app.inject({ method: "POST", url: "/api/guilds/123/economy/daily", headers, payload: {} });
+    const work = await app.inject({ method: "POST", url: "/api/guilds/123/economy/work", headers, payload: {} });
+    const noCsrf = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/economy/daily",
+      headers: { cookie: headers.cookie },
+      payload: {},
+    });
+    const unknown = await app.inject({ method: "POST", url: "/api/guilds/123/economy/gamble", headers, payload: {} });
+
+    expect(daily.statusCode).toBe(200);
+    expect(work.statusCode).toBe(200);
+    expect(control.economyAction).toHaveBeenCalledWith("123", "daily", owner.id);
+    expect(control.economyAction).toHaveBeenCalledWith("123", "work", owner.id);
+    expect(noCsrf.statusCode).toBe(403);
+    expect(noCsrf.json().error.code).toBe("csrf_mismatch");
+    expect(unknown.statusCode).toBe(404);
+    expect(control.economyAction).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+
+  it("requires a Discord identity for every economy route", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders({ id: "operator", name: "Operator", avatarUrl: null });
+    const state = await app.inject({ method: "GET", url: "/api/guilds/123/economy", headers });
+    const daily = await app.inject({ method: "POST", url: "/api/guilds/123/economy/daily", headers, payload: {} });
+    const board = await app.inject({ method: "GET", url: "/api/guilds/123/leaderboard", headers });
+
+    expect(state.statusCode).toBe(403);
+    expect(state.json().error.code).toBe("discord_account_required");
+    expect(daily.statusCode).toBe(403);
+    expect(board.statusCode).toBe(403);
+    expect(control.economyState).not.toHaveBeenCalled();
+    expect(control.economyAction).not.toHaveBeenCalled();
+    expect(control.economyLeaderboard).not.toHaveBeenCalled();
+    await app.close();
+  });
+});
+
+describe("dashboard music member routes", () => {
+  it("forwards the session user for join and play", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders(owner);
+    const join = await app.inject({ method: "POST", url: "/api/guilds/123/music/join", headers, payload: {} });
+    const play = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/music/play",
+      headers,
+      payload: { query: "song" },
+    });
+
+    expect(join.statusCode).toBe(200);
+    expect(play.statusCode).toBe(200);
+    expect(control.musicAction).toHaveBeenCalledWith("123", "join", {}, owner.id);
+    expect(control.musicAction).toHaveBeenCalledWith("123", "play", { query: "song" }, owner.id);
+    await app.close();
+  });
+
+  it("runs the filters action with the requested preset", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/music/filters",
+      headers: sessionHeaders(owner),
+      payload: { preset: "nightcore" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(control.musicAction).toHaveBeenCalledWith("123", "filters", { preset: "nightcore" }, undefined);
+    await app.close();
+  });
+
+  it("rejects the removed volume action while filters stay available", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders(owner);
+    const volume = await app.inject({ method: "POST", url: "/api/guilds/123/music/volume", headers, payload: { volume: 40 } });
+    const filters = await app.inject({ method: "POST", url: "/api/guilds/123/music/filters", headers, payload: { preset: "off" } });
+
+    expect(volume.statusCode).toBe(404);
+    expect(volume.json().error.code).toBe("unknown_music_action");
+    expect(filters.statusCode).toBe(200);
+    expect(control.musicAction).toHaveBeenCalledTimes(1);
+    expect(control.musicAction).toHaveBeenCalledWith("123", "filters", { preset: "off" }, undefined);
+    await app.close();
+  });
+
+  it("leaves the user out for a password-only join", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/music/join",
+      headers: sessionHeaders({ id: "operator", name: "Operator", avatarUrl: null }),
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(control.musicAction).toHaveBeenCalledWith("123", "join", {}, undefined);
+    await app.close();
+  });
+});
+
+describe("dashboard stock routes", () => {
+  it("reads the market and portfolio for the session user", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({ method: "GET", url: "/api/guilds/123/stocks", headers: sessionHeaders(owner) });
+
+    expect(response.statusCode).toBe(200);
+    expect(control.stockState).toHaveBeenCalledWith("123", owner.id);
+    await app.close();
+  });
+
+  it("forwards a trade with the session user and requires CSRF", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders(owner);
+    const buy = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/stocks/buy",
+      headers,
+      payload: { symbol: "SIELA", shares: 2 },
+    });
+    const sell = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/stocks/sell",
+      headers,
+      payload: { symbol: "SIELA", shares: 1 },
+    });
+    const noCsrf = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/stocks/buy",
+      headers: { cookie: headers.cookie },
+      payload: { symbol: "SIELA", shares: 1 },
+    });
+    const spoofed = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/stocks/buy",
+      headers,
+      payload: { symbol: "SIELA", shares: 1, userId: owner.id },
+    });
+
+    expect(buy.statusCode).toBe(200);
+    expect(sell.statusCode).toBe(200);
+    expect(control.stockTrade).toHaveBeenCalledWith("123", "buy", { symbol: "SIELA", shares: 2 }, owner.id);
+    expect(control.stockTrade).toHaveBeenCalledWith("123", "sell", { symbol: "SIELA", shares: 1 }, owner.id);
+    expect(noCsrf.statusCode).toBe(403);
+    expect(spoofed.statusCode).toBe(400);
+    expect(control.stockTrade).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+
+  it("rejects an unknown stock action and a password-only session", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders(owner);
+    const unknown = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/stocks/hold",
+      headers,
+      payload: { symbol: "SIELA", shares: 1 },
+    });
+    const operator = await app.inject({
+      method: "GET",
+      url: "/api/guilds/123/stocks",
+      headers: sessionHeaders({ id: "operator", name: "Operator", avatarUrl: null }),
+    });
+
+    expect(unknown.statusCode).toBe(404);
+    expect(operator.statusCode).toBe(403);
+    expect(operator.json().error.code).toBe("discord_account_required");
+    expect(control.stockState).not.toHaveBeenCalled();
+    expect(control.stockTrade).not.toHaveBeenCalled();
     await app.close();
   });
 });

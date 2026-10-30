@@ -9,13 +9,18 @@ import {
   CASINO_GAMES,
   CONFIG_SECTIONS,
   ControlApiError,
+  ECONOMY_ACTIONS,
   MUSIC_ACTIONS,
+  RESOLVE_KINDS,
+  STOCK_ACTIONS,
   TAMBOLA_ACTIONS,
   type CahAction,
   type CasinoGame,
   type ConfigSection,
   type ControlClient,
+  type EconomyAction,
   type MusicAction,
+  type StockAction,
   type TambolaAction,
   createControlClient,
 } from "./control-client.js";
@@ -58,6 +63,18 @@ const cahActionSchema = z
   .object({ gameId: gameIdSchema, roundIndex: z.number().int().min(0).optional() })
   .strict();
 const tambolaActionSchema = z.object({ gameId: gameIdSchema }).strict();
+const resolveQuerySchema = z
+  .object({
+    q: z.string().trim().min(1, "Enter a name to search for.").max(80, "Search text must be at most 80 characters."),
+    kind: z.enum(RESOLVE_KINDS).optional(),
+  })
+  .strict();
+const stockTradeSchema = z
+  .object({
+    symbol: z.string().trim().min(1, "Symbol is required.").max(8, "Symbol must be at most 8 characters.").regex(/^[A-Za-z]+$/, "Symbol may only contain letters."),
+    shares: z.number().int().positive("Shares must be a positive whole number.").max(1_000_000, "Shares must be at most 1,000,000."),
+  })
+  .strict();
 const requestIdSchema = z.string().min(8).max(100);
 const casinoCoinflipSchema = z
   .object({
@@ -173,7 +190,7 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
   });
 
   app.addHook("onSend", async (_request, reply, payload) => {
-    reply.header("content-security-policy", "default-src 'self'; img-src 'self' https://cdn.discordapp.com data:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
+    reply.header("content-security-policy", "default-src 'self'; img-src 'self' https://cdn.discordapp.com https://i.ytimg.com https://img.youtube.com https://*.sndcdn.com data:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
     reply.header("x-content-type-options", "nosniff");
     reply.header("referrer-policy", "no-referrer");
     reply.header("x-frame-options", "DENY");
@@ -243,6 +260,13 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
     const user = sessionUser(request);
     if (user && snowflakePattern.test(user.id)) return user;
     apiError(reply, 403, "discord_account_required", "Sign in with Discord to use game controls.");
+    return null;
+  };
+
+  const economyUser = (request: FastifyRequest, reply: FastifyReply): SessionUser | null => {
+    const user = sessionUser(request);
+    if (user && snowflakePattern.test(user.id)) return user;
+    apiError(reply, 403, "discord_account_required", "Sign in with Discord to use the economy.");
     return null;
   };
 
@@ -398,6 +422,14 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
     const user = sessionUser(request);
     return { administrator: user ? await isAdministrator(guildId, user.id) : false };
   });
+  get("/api/guilds/:guildId/resolve", (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    const query = resolveQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return Promise.resolve(apiError(reply, 400, "invalid_query", query.error.issues.map((issue) => issue.message).join("; ")));
+    }
+    return guildId ? control.resolve(guildId, query.data.q, query.data.kind) : Promise.resolve(undefined);
+  });
   get("/api/guilds/:guildId/features", (request, reply) => {
     const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
     return guildId ? control.getFeatures(guildId) : Promise.resolve(undefined);
@@ -432,7 +464,11 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
       }
       const body = bodySchema.safeParse(request.body ?? {});
       if (!body.success) return apiError(reply, 400, "invalid_body", "Music actions require a JSON object.");
-      return guildId ? control.musicAction(guildId, request.params.action as MusicAction, body.data) : undefined;
+      if (!guildId) return undefined;
+      const action = request.params.action as MusicAction;
+      const user = sessionUser(request);
+      const userId = user && snowflakePattern.test(user.id) ? user.id : undefined;
+      return control.musicAction(guildId, action, body.data, ["join", "play"].includes(action) ? userId : undefined);
     },
   );
   get("/api/guilds/:guildId/config", (request, reply) => {
@@ -508,6 +544,47 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
       return user ? control.casinoPlay(guildId, game as CasinoGame, body.data, user.id) : undefined;
     });
   }
+
+  get("/api/guilds/:guildId/economy", (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    if (!guildId) return Promise.resolve(undefined);
+    const user = economyUser(request, reply);
+    return user ? control.economyState(guildId, user.id) : Promise.resolve(undefined);
+  });
+  post("/api/guilds/:guildId/economy/:action", async (request, reply) => {
+    const params = request.params as { guildId: string; action: string };
+    const guildId = getGuildId(params.guildId, reply);
+    if (!ECONOMY_ACTIONS.includes(params.action as EconomyAction)) {
+      return apiError(reply, 404, "unknown_economy_action", "That economy action is not available.");
+    }
+    if (!guildId) return undefined;
+    const user = economyUser(request, reply);
+    return user ? control.economyAction(guildId, params.action as EconomyAction, user.id) : undefined;
+  });
+  get("/api/guilds/:guildId/leaderboard", (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    if (!guildId) return Promise.resolve(undefined);
+    const user = economyUser(request, reply);
+    return user ? control.economyLeaderboard(guildId, user.id) : Promise.resolve(undefined);
+  });
+  get("/api/guilds/:guildId/stocks", (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    if (!guildId) return Promise.resolve(undefined);
+    const user = economyUser(request, reply);
+    return user ? control.stockState(guildId, user.id) : Promise.resolve(undefined);
+  });
+  post("/api/guilds/:guildId/stocks/:action", async (request, reply) => {
+    const params = request.params as { guildId: string; action: string };
+    const guildId = getGuildId(params.guildId, reply);
+    if (!STOCK_ACTIONS.includes(params.action as StockAction)) {
+      return apiError(reply, 404, "unknown_stock_action", "That stock action is not available.");
+    }
+    const body = stockTradeSchema.safeParse(request.body);
+    if (!body.success) return apiError(reply, 400, "invalid_body", body.error.issues.map((issue) => issue.message).join("; "));
+    if (!guildId) return undefined;
+    const user = economyUser(request, reply);
+    return user ? control.stockTrade(guildId, params.action as StockAction, body.data, user.id) : undefined;
+  });
 
   get("/api/guilds/:guildId/me/birthday", async (request, reply) => {
     const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);

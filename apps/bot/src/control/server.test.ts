@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { PermissionsBitField, type Client, type Guild } from "discord.js";
+import { ChannelType, PermissionsBitField, type Client, type Guild } from "discord.js";
 import { ControlServer } from "./server.js";
 import type { Services } from "../framework/types.js";
 import type { Logger } from "../lib/logger.js";
@@ -17,6 +17,20 @@ interface TestMember {
   id: string;
   displayName: string;
   administrator: boolean;
+  bot?: boolean;
+  voiceChannelId?: string;
+}
+
+interface TestChannel {
+  id: string;
+  name: string;
+  type: ChannelType;
+  text?: boolean;
+}
+
+interface TestRole {
+  id: string;
+  name: string;
 }
 
 interface CahStubGame {
@@ -32,7 +46,22 @@ interface TambolaStubGame {
 }
 
 interface EconomyStub {
-  getBalance: (guildId: string, userId: string) => Promise<{ balance: number }>;
+  getBalance: (guildId: string, userId: string) => Promise<{
+    balance: number;
+    lastDailyAt: Date | null;
+    lastWorkAt: Date | null;
+    dailyStreak: number;
+    totalEarned: number;
+    totalSpent: number;
+  }>;
+  getRank: (guildId: string, userId: string) => Promise<number>;
+  leaderboard: (guildId: string, limit: number) => Promise<Array<{ userId: string; balance: number }>>;
+  daily: (guildId: string, userId: string) => Promise<{ amount: number; streak: number; nextAt: Date }>;
+  work: (guildId: string, userId: string) => Promise<{ amount: number; nextAt: Date }>;
+  getMarket: (guildId: string) => Promise<Record<string, unknown>>;
+  getPortfolio: (guildId: string, userId: string) => Promise<Record<string, unknown>>;
+  buyStock: (guildId: string, userId: string, symbol: string, shares: number) => Promise<Record<string, unknown>>;
+  sellStock: (guildId: string, userId: string, symbol: string, shares: number) => Promise<Record<string, unknown>>;
   spend: (...args: unknown[]) => Promise<unknown>;
   award: (...args: unknown[]) => Promise<unknown>;
 }
@@ -41,23 +70,40 @@ function member(entry: TestMember) {
   return {
     id: entry.id,
     displayName: entry.displayName,
+    user: { bot: entry.bot ?? false },
+    voice: { channelId: entry.voiceChannelId ?? null },
     permissions: {
       has: (flag: bigint) => entry.administrator && flag === PermissionsBitField.Flags.Administrator,
     },
   };
 }
 
-function guild(id: string, name: string, members: TestMember[], channel?: { id: string; guildId: string; isTextBased: () => boolean }) {
+function guild(
+  id: string,
+  name: string,
+  members: TestMember[],
+  channel?: { id: string; guildId: string; isTextBased: () => boolean },
+  options: { channels?: TestChannel[]; roles?: TestRole[]; search?: TestMember[] } = {},
+) {
   const cache = new Map(members.map((entry) => [entry.id, member(entry)]));
+  const search = new Map((options.search ?? []).map((entry) => [entry.id, member(entry)]));
   const fetch = vi.fn(async (input: unknown) => {
     if (typeof input === "string") {
       const found = cache.get(input);
       if (!found) throw new Error("Unknown Member");
       return found;
     }
-    return new Map();
+    return search;
   });
   const channelsFetch = vi.fn(async (channelId: string) => channel ? { ...channel, id: channelId } : null);
+  const channelCache = new Map((options.channels ?? []).map((entry) => [entry.id, {
+    id: entry.id,
+    name: entry.name,
+    type: entry.type,
+    guildId: id,
+    isTextBased: () => entry.text ?? false,
+  }]));
+  const roleCache = new Map((options.roles ?? []).map((entry) => [entry.id, { id: entry.id, name: entry.name }]));
   return {
     id,
     name,
@@ -66,7 +112,8 @@ function guild(id: string, name: string, members: TestMember[], channel?: { id: 
     joinedTimestamp: 1_710_000_000_000,
     iconURL: () => null,
     members: { cache, fetch },
-    channels: { cache: new Map(), fetch: channelsFetch },
+    roles: { cache: roleCache },
+    channels: { cache: channelCache, fetch: channelsFetch },
   } as unknown as Guild;
 }
 
@@ -78,6 +125,10 @@ function server(options: {
   tambolaEnabled?: boolean;
   economyEnabled?: boolean;
   members?: TestMember[];
+  channels?: TestChannel[];
+  roles?: TestRole[];
+  search?: TestMember[];
+  musicState?: Record<string, unknown>;
   auditEntries?: unknown[];
   channel?: { id: string; guildId: string; isTextBased: () => boolean };
   cahGame?: CahStubGame | null;
@@ -86,14 +137,22 @@ function server(options: {
   economy?: EconomyStub;
 } = {}) {
   const guilds = new Map<string, Guild>([
-    [GUILD_A, guild(GUILD_A, "Alpha", options.members ?? [], options.channel)],
+    [GUILD_A, guild(GUILD_A, "Alpha", options.members ?? [], options.channel, options)],
     [GUILD_B, guild(GUILD_B, "Beta", [])],
   ]);
   const ids = options.multiGuild ? [GUILD_A, GUILD_B] : [GUILD_A];
   const audits: unknown[] = [];
   const birthdays = new Map<string, Record<string, unknown>>();
   const economy = options.economy ?? {
-    getBalance: vi.fn(async () => ({ balance: 500 })),
+    getBalance: vi.fn(async () => ({ balance: 500, lastDailyAt: null, lastWorkAt: null, dailyStreak: 0, totalEarned: 0, totalSpent: 0 })),
+    getRank: vi.fn(async () => 1),
+    leaderboard: vi.fn(async () => []),
+    daily: vi.fn(async () => ({ amount: 10, streak: 1, nextAt: new Date("2026-10-31T00:00:00.000Z") })),
+    work: vi.fn(async () => ({ amount: 5, nextAt: new Date("2026-10-30T10:00:00.000Z") })),
+    getMarket: vi.fn(async () => ({ stocks: [], index: 100, indexChange: 0 })),
+    getPortfolio: vi.fn(async () => ({ cash: 500, holdings: [], holdingsValue: 0, netWorth: 500, unrealized: 0 })),
+    buyStock: vi.fn(async (_guildId: string, _userId: string, symbol: string, shares: number) => ({ symbol, shares, price: 100, fee: 1, total: 101, balance: 399 })),
+    sellStock: vi.fn(async (_guildId: string, _userId: string, symbol: string, shares: number) => ({ symbol, shares, price: 100, fee: 1, proceeds: 99, pnl: 0, balance: 599 })),
     spend: vi.fn(async () => undefined),
     award: vi.fn(async () => ({ amount: 0, duplicate: false })),
   };
@@ -124,16 +183,29 @@ function server(options: {
       return true;
     },
   };
+  const music = {
+    play: vi.fn(async () => ({ added: 1, first: { title: "Song" } })),
+    join: vi.fn(async (joined: { voice?: { channelId?: string | null } }, channelId?: string) => channelId ?? joined.voice?.channelId ?? "unknown"),
+    stop: vi.fn(async () => undefined),
+    state: vi.fn(() => options.musicState ?? {
+      playing: false,
+      paused: false,
+      volume: 0,
+      loop: "off",
+      position: 0,
+      current: null,
+      upcoming: [],
+      channelId: null,
+      channelName: null,
+      filter: "off",
+    }),
+  };
   const services = {
     features: featuresStub,
     cah,
     tambola,
     economy,
-    music: {
-      play: async () => ({ added: 1, first: { title: "Song" } }),
-      stop: async () => undefined,
-      state: () => ({ playing: false, paused: false, volume: 0, loop: "off", position: 0, current: null, upcoming: [] }),
-    },
+    music,
     audit: {
       log: async (entry: unknown) => { audits.push(entry); },
       tail: async (_guildId: string, limit: number) => (options.auditEntries ?? []).slice(0, limit),
@@ -174,11 +246,35 @@ function server(options: {
     members: { fetch: ReturnType<typeof vi.fn> };
     channels: { fetch: ReturnType<typeof vi.fn> };
   };
-  return { app: instance.instance, audits, memberFetch: guildA.members.fetch, channelFetch: guildA.channels.fetch, cah, tambola, economy };
+  return { app: instance.instance, audits, memberFetch: guildA.members.fetch, channelFetch: guildA.channels.fetch, cah, tambola, economy, music };
 }
 
 const auth = { authorization: `Bearer ${TOKEN}` };
 const asUser = (id: string) => ({ ...auth, "x-user-id": id });
+
+function economyStub(overrides: Partial<EconomyStub> = {}): EconomyStub {
+  return {
+    getBalance: vi.fn(async () => ({
+      balance: 500,
+      lastDailyAt: null,
+      lastWorkAt: null,
+      dailyStreak: 0,
+      totalEarned: 0,
+      totalSpent: 0,
+    })),
+    getRank: vi.fn(async () => 1),
+    leaderboard: vi.fn(async () => []),
+    daily: vi.fn(async () => ({ amount: 10, streak: 1, nextAt: new Date("2026-10-31T00:00:00.000Z") })),
+    work: vi.fn(async () => ({ amount: 5, nextAt: new Date("2026-10-30T10:00:00.000Z") })),
+    getMarket: vi.fn(async () => ({ stocks: [], index: 100, indexChange: 0 })),
+    getPortfolio: vi.fn(async () => ({ cash: 500, holdings: [], holdingsValue: 0, netWorth: 500, unrealized: 0 })),
+    buyStock: vi.fn(async (_guildId: string, _userId: string, symbol: string, shares: number) => ({ symbol, shares, price: 100, fee: 1, total: 101, balance: 399 })),
+    sellStock: vi.fn(async (_guildId: string, _userId: string, symbol: string, shares: number) => ({ symbol, shares, price: 100, fee: 1, proceeds: 99, pnl: 0, balance: 599 })),
+    spend: vi.fn(async () => undefined),
+    award: vi.fn(async () => ({ amount: 0, duplicate: false })),
+    ...overrides,
+  };
+}
 
 describe("ControlServer guild scoping", () => {
   it("rejects a request without the control token", async () => {
@@ -249,6 +345,465 @@ describe("ControlServer guild scoping", () => {
     expect(response.json()).toEqual({ guildId: GUILD_A, featureId: "relics", enabled: true });
     expect(audits).toHaveLength(1);
     expect((audits[0] as { action: string }).action).toBe("features.update");
+  });
+});
+
+describe("ControlServer name resolution", () => {
+  const channels: TestChannel[] = [
+    { id: "333333333333333301", name: "General", type: ChannelType.GuildText, text: true },
+    { id: "333333333333333302", name: "General Chat", type: ChannelType.GuildText, text: true },
+    { id: "333333333333333303", name: "Chatty General", type: ChannelType.GuildText, text: true },
+    { id: "333333333333333304", name: "General Voice", type: ChannelType.GuildVoice },
+    { id: "333333333333333305", name: "General", type: ChannelType.GuildCategory },
+  ];
+  const roles: TestRole[] = [
+    { id: GUILD_A, name: "@everyone" },
+    { id: "333333333333333306", name: "General" },
+  ];
+  const members: TestMember[] = [
+    { id: ADMIN_USER, displayName: "Ada", administrator: true },
+    { id: MEMBER_USER, displayName: "Adam", administrator: false },
+    { id: "900000000000000004", displayName: "Botty", administrator: false, bot: true },
+  ];
+
+  it("ranks an exact channel name, then a prefix, then a substring", async () => {
+    const { app } = server({ channels });
+    const response = await app.inject({ method: "GET", url: "/v1/resolve?q=general&kind=channel", headers: auth });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().results.map((entry: { id: string }) => entry.id)).toEqual([
+      "333333333333333301",
+      "333333333333333305",
+      "333333333333333302",
+      "333333333333333303",
+    ]);
+    expect(response.json().results[0]).toEqual({
+      id: "333333333333333301",
+      name: "General",
+      kind: "channel",
+      label: "#General",
+    });
+    expect(response.json().results[1].description).toBe("Category");
+  });
+
+  it("returns only voice channels for the voice kind", async () => {
+    const { app } = server({ channels });
+    const response = await app.inject({ method: "GET", url: "/v1/resolve?q=general&kind=voice", headers: auth });
+    expect(response.json().results).toEqual([
+      { id: "333333333333333304", name: "General Voice", kind: "voice", label: "#General Voice" },
+    ]);
+  });
+
+  it("resolves roles and marks the everyone role", async () => {
+    const { app } = server({ roles });
+    const exact = await app.inject({ method: "GET", url: "/v1/resolve?q=general&kind=role", headers: auth });
+    const everyone = await app.inject({ method: "GET", url: "/v1/resolve?q=everyone&kind=role", headers: auth });
+    expect(exact.json().results[0]).toEqual({
+      id: "333333333333333306",
+      name: "General",
+      kind: "role",
+      label: "@General",
+    });
+    expect(everyone.json().results[0]).toMatchObject({ label: "@everyone", description: "Includes every member" });
+  });
+
+  it("resolves cached members, marks bots, and searches the gateway when the cache misses", async () => {
+    const { app } = server({
+      members,
+      search: [{ id: "900000000000000005", displayName: "Fetched Friend", administrator: false }],
+    });
+    const response = await app.inject({ method: "GET", url: "/v1/resolve?q=ada&kind=user", headers: auth });
+    const bot = await app.inject({ method: "GET", url: "/v1/resolve?q=botty&kind=user", headers: auth });
+    const fetched = await app.inject({ method: "GET", url: "/v1/resolve?q=fetched&kind=user", headers: auth });
+    expect(response.json().results.map((entry: { id: string }) => entry.id)).toEqual([ADMIN_USER, MEMBER_USER]);
+    expect(bot.json().results[0]).toMatchObject({ id: "900000000000000004", description: "Bot" });
+    expect(fetched.json().results[0]).toMatchObject({ id: "900000000000000005", label: "Fetched Friend" });
+  });
+
+  it("strips a leading # or @ from the search text", async () => {
+    const { app } = server({ channels, members });
+    const channel = await app.inject({ method: "GET", url: "/v1/resolve?q=%23general&kind=channel", headers: auth });
+    const user = await app.inject({ method: "GET", url: "/v1/resolve?q=%40ada&kind=user", headers: auth });
+    expect(channel.json().results[0].id).toBe("333333333333333301");
+    expect(user.json().results[0].id).toBe(ADMIN_USER);
+  });
+
+  it("caps the result list at the requested limit", async () => {
+    const { app } = server({ channels });
+    const response = await app.inject({ method: "GET", url: "/v1/resolve?q=general&kind=channel&limit=2", headers: auth });
+    expect(response.json().results).toHaveLength(2);
+  });
+
+  it("never resolves names from another guild", async () => {
+    const { app } = server({ multiGuild: true, channels });
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/resolve?q=general&kind=channel",
+      headers: { ...auth, "x-guild-id": GUILD_B },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().results).toEqual([]);
+  });
+
+  it("rejects an empty query and an unknown kind", async () => {
+    const { app } = server();
+    const empty = await app.inject({ method: "GET", url: "/v1/resolve?q=%20", headers: auth });
+    const kind = await app.inject({ method: "GET", url: "/v1/resolve?q=general&kind=server", headers: auth });
+    expect(empty.statusCode).toBe(400);
+    expect(empty.json().error.code).toBe("validation_error");
+    expect(kind.statusCode).toBe(400);
+  });
+});
+
+describe("ControlServer economy member routes", () => {
+  it("returns the caller's balance, streak, totals, and ready times", async () => {
+    const lastDaily = new Date(Date.now() - 60_000);
+    const economy = economyStub({
+      getBalance: vi.fn(async () => ({
+        balance: 750,
+        lastDailyAt: lastDaily,
+        lastWorkAt: null,
+        dailyStreak: 4,
+        totalEarned: 900,
+        totalSpent: 150,
+      })),
+    });
+    const { app } = server({ economy, members: [{ id: MEMBER_USER, displayName: "Grace", administrator: false }] });
+    const response = await app.inject({ method: "GET", url: "/v1/economy/state", headers: asUser(MEMBER_USER) });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      enabled: true,
+      balance: 750,
+      dailyStreak: 4,
+      lastDailyAt: lastDaily.toISOString(),
+      lastWorkAt: null,
+      dailyReadyAt: new Date(lastDaily.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      workReadyAt: null,
+      totalEarned: 900,
+      totalSpent: 150,
+    });
+    expect(economy.getBalance).toHaveBeenCalledWith(GUILD_A, MEMBER_USER);
+  });
+
+  it("gates state, daily, and work on the economy feature", async () => {
+    const { app } = server({ economyEnabled: false });
+    const state = await app.inject({ method: "GET", url: "/v1/economy/state", headers: asUser(MEMBER_USER) });
+    const daily = await app.inject({ method: "POST", url: "/v1/economy/daily", headers: asUser(MEMBER_USER), payload: {} });
+    const work = await app.inject({ method: "POST", url: "/v1/economy/work", headers: asUser(MEMBER_USER), payload: {} });
+
+    expect(state.json()).toEqual({ enabled: false });
+    expect(daily.statusCode).toBe(400);
+    expect(daily.json().error.code).toBe("feature_disabled");
+    expect(work.statusCode).toBe(400);
+    expect(work.json().error.code).toBe("feature_disabled");
+  });
+
+  it("claims daily and work for the header user, never a body user", async () => {
+    const economy = economyStub();
+    const { app } = server({ economy });
+    const daily = await app.inject({
+      method: "POST",
+      url: "/v1/economy/daily",
+      headers: asUser(MEMBER_USER),
+      payload: { userId: ADMIN_USER },
+    });
+    const work = await app.inject({
+      method: "POST",
+      url: "/v1/economy/work",
+      headers: asUser(MEMBER_USER),
+      payload: { userId: ADMIN_USER },
+    });
+
+    expect(daily.statusCode).toBe(200);
+    expect(daily.json()).toEqual({
+      amount: 10,
+      streak: 1,
+      nextAt: "2026-10-31T00:00:00.000Z",
+      balance: 500,
+    });
+    expect(work.statusCode).toBe(200);
+    expect(work.json()).toEqual({ amount: 5, nextAt: "2026-10-30T10:00:00.000Z", balance: 500 });
+    expect(economy.daily).toHaveBeenCalledWith(GUILD_A, MEMBER_USER);
+    expect(economy.work).toHaveBeenCalledWith(GUILD_A, MEMBER_USER);
+    expect(economy.daily).not.toHaveBeenCalledWith(GUILD_A, ADMIN_USER);
+  });
+
+  it("maps cooldown errors to a message with the ready time", async () => {
+    const economy = economyStub({
+      daily: vi.fn(async () => { throw new Error("DAILY_COOLDOWN:2026-10-31T07:00:00.000Z"); }),
+      work: vi.fn(async () => { throw new Error("WORK_COOLDOWN:2026-10-30T09:30:00.000Z"); }),
+    });
+    const { app } = server({ economy });
+    const daily = await app.inject({ method: "POST", url: "/v1/economy/daily", headers: asUser(MEMBER_USER), payload: {} });
+    const work = await app.inject({ method: "POST", url: "/v1/economy/work", headers: asUser(MEMBER_USER), payload: {} });
+
+    expect(daily.statusCode).toBe(400);
+    expect(daily.json().error.code).toBe("daily_cooldown");
+    expect(daily.json().error.message).toMatch(/Try again at .*2026/);
+    expect(work.statusCode).toBe(400);
+    expect(work.json().error.code).toBe("work_cooldown");
+    expect(work.json().error.message).toMatch(/Try again at .*2026/);
+  });
+
+  it("assembles leaderboard names, rank, and a fallback for an unknown member", async () => {
+    const economy = economyStub({
+      getBalance: vi.fn(async () => ({
+        balance: 500,
+        lastDailyAt: null,
+        lastWorkAt: null,
+        dailyStreak: 0,
+        totalEarned: 0,
+        totalSpent: 0,
+      })),
+      getRank: vi.fn(async () => 2),
+      leaderboard: vi.fn(async () => [
+        { userId: MEMBER_USER, balance: 900 },
+        { userId: ADMIN_USER, balance: 500 },
+        { userId: UNKNOWN_USER, balance: 100 },
+      ]),
+    });
+    const { app, memberFetch } = server({
+      economy,
+      members: [
+        { id: MEMBER_USER, displayName: "Grace", administrator: false },
+        { id: ADMIN_USER, displayName: "Ada", administrator: true },
+      ],
+    });
+    const response = await app.inject({ method: "GET", url: "/v1/economy/leaderboard?limit=25", headers: asUser(MEMBER_USER) });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      enabled: true,
+      entries: [
+        { rank: 1, userId: MEMBER_USER, name: "Grace", balance: 900 },
+        { rank: 2, userId: ADMIN_USER, name: "Ada", balance: 500 },
+        { rank: 3, userId: UNKNOWN_USER, name: UNKNOWN_USER, balance: 100 },
+      ],
+      me: { rank: 2, balance: 500 },
+    });
+    expect(economy.leaderboard).toHaveBeenCalledWith(GUILD_A, 25);
+    expect(memberFetch).toHaveBeenCalledWith({ user: [UNKNOWN_USER] });
+  });
+
+  it("returns an empty leaderboard when the economy is off", async () => {
+    const { app } = server({ economyEnabled: false });
+    const response = await app.inject({ method: "GET", url: "/v1/economy/leaderboard", headers: asUser(MEMBER_USER) });
+    expect(response.json()).toEqual({ enabled: false, entries: [], me: null });
+  });
+
+  it("rejects a leaderboard limit outside 1 to 50", async () => {
+    const { app } = server();
+    const response = await app.inject({ method: "GET", url: "/v1/economy/leaderboard?limit=0", headers: asUser(MEMBER_USER) });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("validation_error");
+  });
+});
+
+describe("ControlServer stock member routes", () => {
+  const market = { stocks: [{ symbol: "SIELA", name: "Siela Coin", price: 120, history: [100, 120] }], index: 110, indexChange: 2.5 };
+  const portfolio = { cash: 400, holdings: [], holdingsValue: 0, netWorth: 400, unrealized: 0 };
+
+  it("returns the market and the caller's portfolio", async () => {
+    const economy = economyStub({
+      getMarket: vi.fn(async () => market),
+      getPortfolio: vi.fn(async () => portfolio),
+    });
+    const { app } = server({ economy });
+    const response = await app.inject({ method: "GET", url: "/v1/stocks/state", headers: asUser(MEMBER_USER) });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ enabled: true, market, portfolio });
+    expect(economy.getPortfolio).toHaveBeenCalledWith(GUILD_A, MEMBER_USER);
+  });
+
+  it("gates the stock view and trades on the economy feature", async () => {
+    const { app } = server({ economyEnabled: false });
+    const state = await app.inject({ method: "GET", url: "/v1/stocks/state", headers: asUser(MEMBER_USER) });
+    const buy = await app.inject({
+      method: "POST",
+      url: "/v1/stocks/buy",
+      headers: asUser(MEMBER_USER),
+      payload: { symbol: "SIELA", shares: 1 },
+    });
+
+    expect(state.json()).toEqual({ enabled: false, market: null, portfolio: null });
+    expect(buy.statusCode).toBe(400);
+    expect(buy.json().error.code).toBe("feature_disabled");
+  });
+
+  it("buys and sells for the header user and returns the fresh market", async () => {
+    const economy = economyStub({
+      getMarket: vi.fn(async () => market),
+      getPortfolio: vi.fn(async () => portfolio),
+    });
+    const { app } = server({ economy });
+    const buy = await app.inject({
+      method: "POST",
+      url: "/v1/stocks/buy",
+      headers: asUser(MEMBER_USER),
+      payload: { symbol: "siela", shares: 2 },
+    });
+    const sell = await app.inject({
+      method: "POST",
+      url: "/v1/stocks/sell",
+      headers: asUser(MEMBER_USER),
+      payload: { symbol: "SIELA", shares: 1 },
+    });
+
+    expect(buy.statusCode).toBe(200);
+    expect(buy.json()).toEqual({
+      result: { symbol: "SIELA", shares: 2, price: 100, fee: 1, total: 101, balance: 399 },
+      market,
+      portfolio,
+    });
+    expect(sell.statusCode).toBe(200);
+    expect(economy.buyStock).toHaveBeenCalledWith(GUILD_A, MEMBER_USER, "SIELA", 2);
+    expect(economy.sellStock).toHaveBeenCalledWith(GUILD_A, MEMBER_USER, "SIELA", 1);
+  });
+
+  it("rejects a spoofed user in the trade body", async () => {
+    const economy = economyStub();
+    const { app } = server({ economy });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/stocks/buy",
+      headers: asUser(MEMBER_USER),
+      payload: { symbol: "SIELA", shares: 1, userId: ADMIN_USER },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("validation_error");
+    expect(economy.buyStock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown symbol and maps trade failures to a user message", async () => {
+    const economy = economyStub({
+      buyStock: vi.fn(async () => { throw new Error("INSUFFICIENT_FUNDS"); }),
+    });
+    const { app } = server({ economy });
+    const unknown = await app.inject({
+      method: "POST",
+      url: "/v1/stocks/buy",
+      headers: asUser(MEMBER_USER),
+      payload: { symbol: "NOPE", shares: 1 },
+    });
+    const broke = await app.inject({
+      method: "POST",
+      url: "/v1/stocks/buy",
+      headers: asUser(MEMBER_USER),
+      payload: { symbol: "SIELA", shares: 1000 },
+    });
+
+    expect(unknown.statusCode).toBe(400);
+    expect(unknown.json().error.code).toBe("unknown_stock");
+    expect(broke.statusCode).toBe(400);
+    expect(broke.json().error.code).toBe("trade_failed");
+    expect(broke.json().error.message).toBe("You do not have enough SC for that trade.");
+  });
+
+  it("rejects shares outside the service limit", async () => {
+    const { app } = server();
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/stocks/buy",
+      headers: asUser(MEMBER_USER),
+      payload: { symbol: "SIELA", shares: 1_000_001 },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("validation_error");
+  });
+});
+
+describe("ControlServer music member routes", () => {
+  const voiceChannel = "333333333333333307";
+  const channels: TestChannel[] = [{ id: voiceChannel, name: "General Voice", type: ChannelType.GuildVoice }];
+
+  it("reports the connected channel name and active filter", async () => {
+    const musicState = {
+      playing: true,
+      paused: false,
+      volume: 60,
+      loop: "off",
+      position: 1_000,
+      current: null,
+      upcoming: [],
+      channelId: voiceChannel,
+      channelName: null,
+      filter: "nightcore",
+    };
+    const { app } = server({ channels, musicState });
+    const response = await app.inject({ method: "GET", url: "/v1/music/state", headers: auth });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      playing: true,
+      channelId: voiceChannel,
+      channelName: "General Voice",
+      filter: "nightcore",
+    });
+  });
+
+  it("reports no channel and the off filter when the player is idle", async () => {
+    const { app } = server();
+    const response = await app.inject({ method: "GET", url: "/v1/music/state", headers: auth });
+    expect(response.json()).toMatchObject({ channelId: null, channelName: null, filter: "off" });
+  });
+
+  it("joins the actor's current voice channel when no channel is supplied", async () => {
+    const { app, music } = server({
+      channels,
+      members: [{ id: MEMBER_USER, displayName: "Grace", administrator: false, voiceChannelId: voiceChannel }],
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/music/join",
+      headers: asUser(MEMBER_USER),
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ channelId: voiceChannel });
+    expect(music.join).toHaveBeenCalledWith(
+      expect.objectContaining({ id: MEMBER_USER, voice: { channelId: voiceChannel } }),
+      undefined,
+    );
+  });
+
+  it("queues for the actor's voice channel without a pasted channel ID", async () => {
+    const { app, music } = server({
+      channels,
+      members: [{ id: MEMBER_USER, displayName: "Grace", administrator: false, voiceChannelId: voiceChannel }],
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/music/play",
+      headers: asUser(MEMBER_USER),
+      payload: { query: "song" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(music.play).toHaveBeenCalledWith(
+      expect.objectContaining({ id: MEMBER_USER }),
+      "song",
+      undefined,
+      undefined,
+    );
+  });
+
+  it("still accepts an explicit voice channel alongside the actor", async () => {
+    const { app, music } = server({
+      channels,
+      members: [{ id: MEMBER_USER, displayName: "Grace", administrator: false, voiceChannelId: voiceChannel }],
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/music/join",
+      headers: asUser(MEMBER_USER),
+      payload: { voiceChannelId: voiceChannel },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(music.join).toHaveBeenCalledWith(expect.objectContaining({ id: MEMBER_USER }), voiceChannel);
   });
 });
 

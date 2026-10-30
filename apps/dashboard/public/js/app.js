@@ -91,8 +91,8 @@ function updateUserChip() {
   chip.hidden = !user;
   if (!user) return;
   const name = user.name || "Operator";
-  chip.title = `Open user settings for ${name}`;
-  chip.setAttribute("aria-label", `Open user settings for ${name}`);
+  chip.title = `Open your profile and settings, ${name}`;
+  chip.setAttribute("aria-label", `Open your profile and settings, ${name}`);
   const nameNode = document.querySelector("#session-name");
   if (nameNode) nameNode.textContent = name;
   const avatar = document.querySelector("#session-avatar");
@@ -283,6 +283,8 @@ async function loadData(route = currentRoute) {
   state.casinoResult = null;
   state.casinoPending = null;
   state.casinoBusy = false;
+  state.economyBusy = false;
+  state.stockBusy = false;
   state.permissions = { administrator: false };
   currentRoute = route;
   updateGuildPicker();
@@ -300,24 +302,30 @@ async function loadData(route = currentRoute) {
       if (sequence !== loadSequence) return;
       state.status = status;
       state.data = { status, audit };
-    } else if (route.view === "servers") {
-      state.data = { guilds: state.guilds };
-      statusRequest = api.status();
     } else if (!route.guildId) {
       state.data = null;
       statusRequest = api.status();
     } else {
-      const canLoadBirthday = /^\d{17,20}$/.test(state.user?.id ?? "");
+      const canLoadUserData = /^\d{17,20}$/.test(state.user?.id ?? "");
       const loaders = {
         features: () => api.features(route.guildId),
         music: () => api.music(route.guildId),
         cah: () => api.cah(route.guildId),
         tambola: () => api.tambola(route.guildId),
-        casino: () => canLoadBirthday
+        casino: () => canLoadUserData
           ? api.casino(route.guildId)
           : Promise.resolve({ enabled: true, balance: null, maxBet: 10_000, discordRequired: true }),
+        economy: () => canLoadUserData
+          ? api.economy(route.guildId)
+          : Promise.resolve({ enabled: true, discordRequired: true }),
+        leaderboard: () => canLoadUserData
+          ? api.leaderboard(route.guildId)
+          : Promise.resolve({ enabled: true, discordRequired: true, entries: [], me: null }),
+        stocks: () => canLoadUserData
+          ? api.stocks(route.guildId)
+          : Promise.resolve({ enabled: true, discordRequired: true, market: null, portfolio: null }),
         settings: () => api.config(route.guildId),
-        user: () => canLoadBirthday ? api.birthday(route.guildId) : Promise.resolve({ birthday: null }),
+        user: () => canLoadUserData ? api.birthday(route.guildId) : Promise.resolve({ birthday: null }),
         audit: () => api.audit(route.guildId, 50),
         commands: () => api.commands(),
       };
@@ -449,6 +457,289 @@ function setInlineFeedback(section, message, isError = false) {
   feedback.textContent = message;
   feedback.classList.toggle("feedback-error", isError);
 }
+
+const RESOLVE_DELAY_MS = 250;
+const RESOLVE_SNOWFLAKE = /^\d{17,20}$/;
+const resolverRecords = new WeakMap();
+let resolverListSequence = 0;
+let resolverRequestSequence = 0;
+
+function resolverRecord(input) {
+  let record = resolverRecords.get(input);
+  if (!record) {
+    record = { timer: null, sequence: 0, results: [], active: -1 };
+    resolverRecords.set(input, record);
+  }
+  return record;
+}
+
+function resolverQuery(input) {
+  const value = input.value.trim();
+  if (!input.hasAttribute("data-resolve-append")) return value;
+  return value.split(/[\s,]+/).filter(Boolean).at(-1) ?? "";
+}
+
+function enhanceResolver(input) {
+  if (input.dataset.resolveReady === "1") return;
+  input.dataset.resolveReady = "1";
+  const list = document.createElement("ul");
+  list.className = "resolver-list";
+  list.id = `resolver-list-${++resolverListSequence}`;
+  list.setAttribute("role", "listbox");
+  list.hidden = true;
+  const status = document.createElement("small");
+  status.className = "resolved-label";
+  status.hidden = true;
+  input.after(list, status);
+  input.setAttribute("role", "combobox");
+  input.setAttribute("aria-autocomplete", "list");
+  input.setAttribute("aria-expanded", "false");
+  input.setAttribute("aria-controls", list.id);
+  input.setAttribute("autocomplete", "off");
+}
+
+function closeResolverList(input) {
+  const list = document.getElementById(input.getAttribute("aria-controls") ?? "");
+  if (list) {
+    list.hidden = true;
+    list.replaceChildren();
+  }
+  input.setAttribute("aria-expanded", "false");
+  input.removeAttribute("aria-activedescendant");
+  const record = resolverRecords.get(input);
+  if (record) {
+    record.active = -1;
+    record.results = [];
+  }
+}
+
+function closeAllResolverLists() {
+  document.querySelectorAll("[data-resolve-ready]").forEach((node) => {
+    if (node instanceof HTMLInputElement) closeResolverList(node);
+  });
+}
+
+function syncResolvedLabel(input) {
+  const status = input.parentElement?.querySelector(".resolved-label");
+  if (!status || status.hidden) return;
+  const values = input.value.split(/[\s,]+/);
+  if (!values.includes(status.dataset.forId ?? "")) {
+    status.hidden = true;
+    status.textContent = "";
+    delete status.dataset.forId;
+  }
+}
+
+function renderResolverOptions(input, record) {
+  const list = document.getElementById(input.getAttribute("aria-controls") ?? "");
+  if (!list) return;
+  if (!record.results.length) {
+    closeResolverList(input);
+    return;
+  }
+  list.innerHTML = record.results.map((result, index) => `<li role="option" id="${list.id}-${index}" aria-selected="false" data-resolve-index="${index}"><span class="resolver-label">${escapeHtml(result.label ?? result.name ?? "")}</span>${result.description ? `<small>${escapeHtml(result.description)}</small>` : ""}</li>`).join("");
+  list.hidden = false;
+  input.setAttribute("aria-expanded", "true");
+}
+
+function setResolverActive(input, record, index) {
+  const list = document.getElementById(input.getAttribute("aria-controls") ?? "");
+  if (!list) return;
+  const options = [...list.querySelectorAll('[role="option"]')];
+  if (!options.length) return;
+  record.active = Math.max(0, Math.min(options.length - 1, index));
+  options.forEach((option, position) => option.setAttribute("aria-selected", String(position === record.active)));
+  const active = options[record.active];
+  input.setAttribute("aria-activedescendant", active.id);
+  active.scrollIntoView({ block: "nearest" });
+}
+
+async function loadResolverResults(input, record) {
+  const query = resolverQuery(input);
+  if (!query || RESOLVE_SNOWFLAKE.test(query) || !state.guildId) return null;
+  const sequence = ++resolverRequestSequence;
+  record.sequence = sequence;
+  let payload;
+  try {
+    payload = await api.resolve(state.guildId, query, input.dataset.resolveKind || undefined);
+  } catch {
+    if (record.sequence === sequence) record.results = [];
+    return null;
+  }
+  if (record.sequence !== sequence || !input.isConnected) return null;
+  record.results = Array.isArray(payload?.results) ? payload.results : [];
+  return record.results;
+}
+
+async function fetchResolverSuggestions(input, record) {
+  const results = await loadResolverResults(input, record);
+  if (!results) return;
+  if (document.activeElement !== input) return;
+  renderResolverOptions(input, record);
+}
+
+function handleResolverInput(input) {
+  if (!input.dataset.resolveKind) return;
+  enhanceResolver(input);
+  const record = resolverRecord(input);
+  clearTimeout(record.timer);
+  closeResolverList(input);
+  syncResolvedLabel(input);
+  const query = resolverQuery(input);
+  if (!query || RESOLVE_SNOWFLAKE.test(query)) return;
+  record.timer = setTimeout(() => {
+    record.timer = null;
+    void fetchResolverSuggestions(input, record);
+  }, RESOLVE_DELAY_MS);
+}
+
+function selectResolverResult(input, result) {
+  const id = String(result?.id ?? "");
+  if (!RESOLVE_SNOWFLAKE.test(id)) return;
+  if (input.hasAttribute("data-resolve-append")) {
+    const values = input.value.split(/[\s,]+/).map((value) => value.trim()).filter(Boolean);
+    const query = resolverQuery(input).toLocaleLowerCase();
+    if (values.length && query && values.at(-1).toLocaleLowerCase() === query) values.pop();
+    if (!values.includes(id)) values.push(id);
+    input.value = values.join(", ");
+  } else {
+    input.value = id;
+  }
+  const status = input.parentElement?.querySelector(".resolved-label");
+  if (status) {
+    status.textContent = `${result.label ?? result.name ?? id} · ${id}`;
+    status.dataset.forId = id;
+    status.hidden = false;
+  }
+  closeResolverList(input);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function exactResolverResult(input, record) {
+  const query = resolverQuery(input).replace(/^[#@]/, "").trim().toLocaleLowerCase();
+  if (!query) return null;
+  const matches = record.results.filter((result) => String(result.name ?? "").toLocaleLowerCase() === query);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+async function resolveInputValue(input) {
+  if (!input.dataset.resolveKind || !state.guildId) return;
+  const query = resolverQuery(input);
+  if (!query || RESOLVE_SNOWFLAKE.test(query)) return;
+  const record = resolverRecord(input);
+  const results = await loadResolverResults(input, record);
+  if (!results?.length) {
+    closeResolverList(input);
+    return;
+  }
+  const match = exactResolverResult(input, record) ?? (results.length === 1 ? results[0] : null);
+  if (match) selectResolverResult(input, match);
+  else closeResolverList(input);
+}
+
+function unresolvedResolverInputs(form) {
+  return [...form.querySelectorAll("input[data-resolve-kind]")].filter((input) => {
+    const query = resolverQuery(input);
+    return Boolean(query) && !RESOLVE_SNOWFLAKE.test(query);
+  });
+}
+
+function singleResolverResult(results, query) {
+  const term = query.toLocaleLowerCase();
+  const exact = results.filter((result) => String(result.name ?? "").toLocaleLowerCase() === term);
+  if (exact.length === 1) return exact[0];
+  return results.length === 1 ? results[0] : null;
+}
+
+async function resolveSingle(kind, raw) {
+  const value = String(raw ?? "").trim();
+  if (RESOLVE_SNOWFLAKE.test(value)) return { id: value };
+  const query = value.replace(/^[#@]/, "").trim();
+  if (!query || !state.guildId) return null;
+  let payload;
+  try {
+    payload = await api.resolve(state.guildId, query, kind);
+  } catch {
+    return null;
+  }
+  const results = Array.isArray(payload?.results) ? payload.results : [];
+  const match = singleResolverResult(results, query);
+  const id = String(match?.id ?? "");
+  return RESOLVE_SNOWFLAKE.test(id) ? { ...match, id } : null;
+}
+
+document.addEventListener("focusin", (event) => {
+  const target = event.target;
+  if (target instanceof HTMLInputElement && target.dataset.resolveKind) enhanceResolver(target);
+});
+
+document.addEventListener("focusout", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement) || !target.dataset.resolveReady) return;
+  const next = event.relatedTarget;
+  if (next instanceof Node && target.parentElement?.contains(next)) return;
+  void resolveInputValue(target);
+  setTimeout(() => {
+    if (document.activeElement !== target) closeResolverList(target);
+  }, 120);
+});
+
+document.addEventListener("pointerdown", (event) => {
+  const target = event.target;
+  if (target instanceof Element && target.closest(".resolver-list")) event.preventDefault();
+});
+
+document.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const option = target.closest("[data-resolve-index]");
+  if (!option) {
+    if (!target.closest("[data-resolve-kind]")) closeAllResolverLists();
+    return;
+  }
+  const list = option.closest(".resolver-list");
+  if (!list) return;
+  const input = document.querySelector(`[aria-controls="${CSS.escape(list.id)}"]`);
+  if (!(input instanceof HTMLInputElement)) return;
+  const result = resolverRecord(input).results[Number(option.dataset.resolveIndex)];
+  if (result) selectResolverResult(input, result);
+});
+
+document.addEventListener("keydown", (event) => {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement) || !input.dataset.resolveKind) return;
+  const record = resolverRecord(input);
+  const list = document.getElementById(input.getAttribute("aria-controls") ?? "");
+  const open = list && !list.hidden;
+  if (event.key === "Escape" && open) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeResolverList(input);
+    return;
+  }
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    if (!open && event.key === "ArrowDown" && resolverQuery(input)) {
+      event.preventDefault();
+      void fetchResolverSuggestions(input, record);
+      return;
+    }
+    if (!open) return;
+    event.preventDefault();
+    const options = list.querySelectorAll('[role="option"]');
+    const position = event.key === "ArrowDown" ? record.active + 1 : record.active - 1;
+    setResolverActive(input, record, position < 0 ? options.length - 1 : position);
+    return;
+  }
+  if (event.key === "Enter") {
+    const query = resolverQuery(input);
+    if (!query || RESOLVE_SNOWFLAKE.test(query)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const active = open ? record.results[record.active] ?? exactResolverResult(input, record) : null;
+    if (active) selectResolverResult(input, active);
+    else void resolveInputValue(input);
+  }
+});
 
 function featureButton(featureId) {
   return document.querySelector(`[data-feature-id="${CSS.escape(featureId)}"]`);
@@ -641,29 +932,65 @@ async function copyText(value) {
   field.remove();
 }
 
-async function runMusicAction(action, body = {}) {
+async function refreshMusic() {
+  if (!state.guildId) return;
+  const data = await api.music(state.guildId);
+  state.data = data;
+  renderMain();
+  stopProgress();
+  startProgress();
+}
+
+const MUSIC_CHANNEL_ACTIONS = new Set(["join", "play"]);
+
+function buildMusicBody(action, body = {}, voiceChannelId = "") {
+  const payload = { ...body };
+  if (MUSIC_CHANNEL_ACTIONS.has(action) && voiceChannelId) payload.voiceChannelId = voiceChannelId;
+  else delete payload.voiceChannelId;
+  return payload;
+}
+
+async function runMusicAction(action, body = {}, button = null) {
   if (!state.guildId) return;
   if (action === "play" && !body.query) {
     document.querySelector("#track-query")?.focus();
     return;
   }
-  const voiceChannel = document.querySelector("#voice-channel")?.value.trim() ?? state.voiceChannelId ?? "";
-  if (action === "join" && !voiceChannel) {
-    showToast("Paste a voice channel ID before joining.", { key: "music", tone: "error" });
-    document.querySelector("#voice-channel")?.focus();
-    return;
+  const field = document.querySelector("#voice-channel");
+  const voiceSelf = button?.dataset.voiceSelf === "true";
+  let voiceChannel = "";
+  if (MUSIC_CHANNEL_ACTIONS.has(action) && !voiceSelf) {
+    const raw = field?.value.trim() || state.voiceChannelId || "";
+    if (raw) {
+      const resolved = await resolveSingle("voice", raw);
+      if (!resolved) {
+        showToast("No unique voice channel matches that name. Pick one from the list.", { key: "music", tone: "error" });
+        field?.focus();
+        return;
+      }
+      voiceChannel = resolved.id;
+      if (field && field.value.trim() !== voiceChannel) {
+        field.value = voiceChannel;
+        state.voiceChannelId = voiceChannel;
+        localStorage.setItem(`siela.voice.${state.guildId}`, voiceChannel);
+      }
+    }
+    if (action === "join" && !voiceChannel) {
+      showToast("Enter a voice channel name, or use Join my voice channel.", { key: "music", tone: "error" });
+      field?.focus();
+      return;
+    }
   }
-  if (voiceChannel) body.voiceChannelId = voiceChannel;
-  const button = document.querySelector(`[data-music-action="${CSS.escape(action)}"]`);
-  if (button) button.disabled = true;
+  const trigger = button ?? document.querySelector(`[data-music-action="${CSS.escape(action)}"]`);
+  if (trigger) trigger.disabled = true;
   try {
-    await api.musicAction(state.guildId, action, body);
-    await loadData(currentRoute);
+    await api.musicAction(state.guildId, action, buildMusicBody(action, body, voiceChannel));
+    await refreshMusic();
     announce("Player updated.");
   } catch (error) {
     showToast(error instanceof Error ? error.message : "The music action failed.", { key: "music", tone: "error" });
   } finally {
-    if (button?.isConnected) button.disabled = false;
+    if (trigger?.isConnected) trigger.disabled = false;
   }
 }
 
@@ -806,8 +1133,70 @@ async function playCasino(game, form) {
   }
 }
 
-function readConfigForm(form) {
-  const body = {};
+async function runEconomyAction(action, button) {
+  if (!state.guildId || state.economyBusy) return;
+  const guildId = state.guildId;
+  state.economyBusy = true;
+  button.disabled = true;
+  setInlineFeedback("economy", action === "daily" ? "Claiming your daily reward…" : "Working a shift…");
+  try {
+    const result = await api.economyAction(guildId, action);
+    if (state.view !== "economy" || state.guildId !== guildId) return;
+    const fresh = await api.economy(guildId);
+    state.economyBusy = false;
+    state.data = fresh;
+    renderMain();
+    const message = action === "daily" ? `Daily reward claimed: ${result.amount} SC.` : `Shift complete: ${result.amount} SC.`;
+    showToast(message, { key: "economy" });
+    announce(message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "The economy action failed.";
+    if (button.isConnected) button.disabled = false;
+    setInlineFeedback("economy", message, true);
+    showToast(message, { key: "economy", tone: "error" });
+  } finally {
+    state.economyBusy = false;
+  }
+}
+
+async function tradeStock(form, submitter) {
+  if (!state.guildId || state.stockBusy) return;
+  const guildId = state.guildId;
+  const side = submitter?.dataset.stockSide === "sell" ? "sell" : "buy";
+  const data = new FormData(form);
+  const symbol = String(data.get("symbol") ?? "").trim();
+  const shares = Number(data.get("shares"));
+  if (!/^[A-Za-z]{1,8}$/.test(symbol) || !Number.isSafeInteger(shares) || shares <= 0) {
+    setInlineFeedback("stocks", "Choose a symbol and enter a whole number of shares.", true);
+    return;
+  }
+  const buttons = [...form.querySelectorAll("[data-stock-side]")];
+  state.stockBusy = true;
+  buttons.forEach((button) => { button.disabled = true; });
+  setInlineFeedback("stocks", side === "buy" ? "Buying shares…" : "Selling shares…");
+  try {
+    const payload = await api.stockTrade(guildId, side, { symbol, shares });
+    if (state.view !== "stocks" || state.guildId !== guildId) return;
+    state.stockBusy = false;
+    state.data = { enabled: true, market: payload?.market ?? null, portfolio: payload?.portfolio ?? null };
+    renderMain();
+    const result = payload?.result ?? null;
+    const filled = result?.shares ?? shares;
+    const price = result?.price ? ` at ${Number(result.price).toLocaleString()} SC` : "";
+    const message = side === "buy" ? `Bought ${filled} ${symbol}${price}.` : `Sold ${filled} ${symbol}${price}.`;
+    showToast(message, { key: "stocks" });
+    announce(message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "The trade failed.";
+    buttons.forEach((button) => { if (button.isConnected) button.disabled = false; });
+    setInlineFeedback("stocks", message, true);
+    showToast(message, { key: "stocks", tone: "error" });
+  } finally {
+    state.stockBusy = false;
+  }
+}
+
+function readConfigForm(form) {  const body = {};
   for (const button of form.querySelectorAll("[data-setting-toggle]")) {
     body[button.dataset.settingToggle] = button.getAttribute("aria-checked") === "true";
   }
@@ -917,9 +1306,29 @@ async function clearBirthday(button) {
   }
 }
 
+const resolvingForms = new WeakSet();
+
 document.addEventListener("submit", async (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
+  if (!resolvingForms.has(form)) {
+    const pending = unresolvedResolverInputs(form);
+    if (pending.length) {
+      event.preventDefault();
+      resolvingForms.add(form);
+      await Promise.all(pending.map((input) => resolveInputValue(input)));
+      const unresolved = unresolvedResolverInputs(form);
+      if (unresolved.length) {
+        resolvingForms.delete(form);
+        unresolved[0].focus();
+        showToast("Pick the matching name from the list before saving.", { key: "resolver", tone: "error" });
+        return;
+      }
+      resolvingForms.delete(form);
+      form.requestSubmit(event.submitter instanceof HTMLElement ? event.submitter : undefined);
+      return;
+    }
+  }
   if (form.id === "birthday-form") {
     event.preventDefault();
     await saveBirthday(form);
@@ -952,6 +1361,11 @@ document.addEventListener("submit", async (event) => {
   if (form.id === "casino-coinflip-form" || form.id === "casino-slots-form") {
     event.preventDefault();
     await playCasino(form.id === "casino-coinflip-form" ? "coinflip" : "slots", form);
+    return;
+  }
+  if (form.id === "stock-trade-form") {
+    event.preventDefault();
+    await tradeStock(form, event.submitter);
     return;
   }
   if (form.hasAttribute("data-config-section")) {
@@ -992,7 +1406,7 @@ document.addEventListener("click", async (event) => {
     try { await api.logout(); } catch { /* The server clears expired sessions on the next sign-in. */ }
     showLogin("", state.oauth);
   } else if (action?.dataset.action === "retry") {
-    if (currentRoute.view === "servers" || state.guilds.length === 0) {
+    if (state.guilds.length === 0) {
       try { await refreshGuilds(); } catch { /* The view displays its own retry state. */ }
     }
     await loadData(currentRoute);
@@ -1001,8 +1415,12 @@ document.addEventListener("click", async (event) => {
   } else if (action?.dataset.action === "clear-birthday") {
     await clearBirthday(action);
   } else if (action?.dataset.action === "music") {
-    const body = action.dataset.musicAction === "loop" ? { mode: action.dataset.loopMode } : {};
-    await runMusicAction(action.dataset.musicAction, body);
+    const body = action.dataset.musicAction === "loop"
+      ? { mode: action.dataset.loopMode }
+      : action.dataset.musicAction === "filters"
+        ? { preset: action.dataset.filterPreset }
+        : {};
+    await runMusicAction(action.dataset.musicAction, body, action);
   } else if (action?.dataset.action === "refresh-games") {
     await pollGameView(true);
     announce("Game state refreshed.");
@@ -1010,6 +1428,8 @@ document.addEventListener("click", async (event) => {
     await runCahAction(action.dataset.cahAction, action);
   } else if (action?.dataset.action === "tambola") {
     await runTambolaAction(action.dataset.tambolaAction, action);
+  } else if (action?.dataset.action === "economy") {
+    await runEconomyAction(action.dataset.economyAction, action);
   }
 
   const copy = target.closest("[data-copy]");
@@ -1037,14 +1457,10 @@ document.addEventListener("input", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
   if (target instanceof HTMLInputElement) {
+    if (target.dataset.resolveKind) handleResolverInput(target);
     if (target.id === "view-search") {
       state.search = target.value;
       renderMain(true);
-    }
-    if (target.id === "volume-control") {
-      const output = document.querySelector('output[for="volume-control"]');
-      if (output) output.value = `${target.value}%`;
-      target.setAttribute("aria-valuetext", `${target.value} percent`);
     }
     if (target.id === "voice-channel") {
       state.voiceChannelId = target.value.trim();
@@ -1064,9 +1480,6 @@ document.addEventListener("input", (event) => {
 
 document.addEventListener("change", async (event) => {
   const target = event.target;
-  if (target instanceof HTMLInputElement && target.id === "volume-control") {
-    await runMusicAction("volume", { volume: Number(target.value) });
-  }
   if (target instanceof HTMLInputElement && target.id === "track-seek") {
     await runMusicAction("seek", { positionMs: Number(target.value) });
   }

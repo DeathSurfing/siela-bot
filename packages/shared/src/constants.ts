@@ -77,3 +77,4 @@ export const MAX_TEMPVC_NAME = 100;
 export const MAX_MUSIC_QUERY = 500;
 export const MAX_MESSAGE_SEND = 2_000;
 export const MAX_CASINO_BET = 10_000;
+export const MAX_STOCK_SHARES = 1_000_000;

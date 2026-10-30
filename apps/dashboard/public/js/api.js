@@ -46,6 +46,11 @@ export const api = {
   logout: () => request("/api/logout", { method: "POST", body: {} }),
   status: () => request("/api/status"),
   guilds: () => request("/api/guilds"),
+  resolve: (guildId, query, kind) => {
+    const params = new URLSearchParams({ q: query });
+    if (kind) params.set("kind", kind);
+    return request(`/api/guilds/${encodeURIComponent(guildId)}/resolve?${params.toString()}`);
+  },
   features: (guildId) => request(`/api/guilds/${encodeURIComponent(guildId)}/features`),
   feature: (guildId, featureId, enabled) => request(`/api/guilds/${encodeURIComponent(guildId)}/features/${encodeURIComponent(featureId)}`, { method: "PATCH", body: { enabled } }),
   audit: (guildId, limit = 50) => request(`/api/guilds/${encodeURIComponent(guildId)}/audit?limit=${limit}`),
@@ -58,6 +63,11 @@ export const api = {
   tambolaAction: (guildId, action, body = {}) => request(`/api/guilds/${encodeURIComponent(guildId)}/tambola/${encodeURIComponent(action)}`, { method: "POST", body }),
   casino: (guildId) => request(`/api/guilds/${encodeURIComponent(guildId)}/casino`),
   casinoPlay: (guildId, game, body = {}) => request(`/api/guilds/${encodeURIComponent(guildId)}/casino/${encodeURIComponent(game)}`, { method: "POST", body }),
+  economy: (guildId) => request(`/api/guilds/${encodeURIComponent(guildId)}/economy`),
+  economyAction: (guildId, action) => request(`/api/guilds/${encodeURIComponent(guildId)}/economy/${encodeURIComponent(action)}`, { method: "POST", body: {} }),
+  leaderboard: (guildId) => request(`/api/guilds/${encodeURIComponent(guildId)}/leaderboard`),
+  stocks: (guildId) => request(`/api/guilds/${encodeURIComponent(guildId)}/stocks`),
+  stockTrade: (guildId, action, body) => request(`/api/guilds/${encodeURIComponent(guildId)}/stocks/${encodeURIComponent(action)}`, { method: "POST", body }),
   config: (guildId) => request(`/api/guilds/${encodeURIComponent(guildId)}/config`),
   patchConfig: (guildId, section, body) => request(`/api/guilds/${encodeURIComponent(guildId)}/config/${encodeURIComponent(section)}`, { method: "PATCH", body }),
   commands: () => request("/api/commands"),
