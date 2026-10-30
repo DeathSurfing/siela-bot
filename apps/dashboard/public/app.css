@@ -384,6 +384,23 @@ kbd { min-width: 17px; padding: 1px 4px; border: 1px solid var(--line); border-r
 .settings-dirty { width: 6px; height: 6px; border-radius: var(--radius-circle); background: var(--accent-bright); opacity: 0; transition: opacity var(--duration-press); }
 .settings-section.is-dirty .settings-dirty { opacity: 1; }
 .settings-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; padding-top: 18px; }
+.event-editor { margin-bottom: 24px; }
+.event-fields { align-items: end; }
+.event-enabled-field { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.event-enabled-field small { max-width: 42ch; }
+.event-form-actions { justify-content: flex-end; flex-wrap: wrap; margin-top: 16px; }
+.event-form-actions .settings-feedback { margin-inline-end: auto; }
+.event-section { margin: 0 0 28px; }
+.event-section > .section-heading { margin-bottom: 8px; }
+.event-metric-date { max-width: 22ch; font-size: 0.9rem; overflow-wrap: anywhere; }
+.event-metric-status { font-size: 0.88rem; }
+.event-actions { display: flex; flex-wrap: wrap; gap: 2px; }
+.event-actions .button { min-height: 30px; padding-inline: 7px; }
+.event-table .switch, .event-enabled-field .switch { min-height: 24px; }
+.event-table code, .event-runs-table td:last-child { overflow-wrap: anywhere; }
+.built-in-details { padding: 14px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.built-in-details summary { width: fit-content; color: var(--text); cursor: pointer; font-size: 0.84rem; font-weight: 560; }
+.built-in-details > p { margin: 6px 0 12px; color: var(--muted); font-size: 0.74rem; }
 .setting-field { min-width: 0; display: grid; gap: 5px; color: var(--text); }
 .setting-field > span { min-width: 0; display: grid; gap: 1px; }
 .setting-field small { color: var(--quiet); font: 0.69rem/1.4 ui-monospace, monospace; }
@@ -427,6 +444,7 @@ kbd { min-width: 17px; padding: 1px 4px; border: 1px solid var(--line); border-r
 .slot-label { color: var(--quiet); font: 600 0.64rem/1.2 ui-monospace, monospace; letter-spacing: 0.07em; text-transform: uppercase; }
 .card-slots p { margin: 0; color: var(--text); font-size: 0.82rem; line-height: 1.45; }
 .game-tag { display: inline-block; margin-right: 6px; padding: 1px 5px; border: 1px solid var(--line); border-radius: var(--radius-pill); color: var(--muted); font-size: 0.62rem; letter-spacing: 0.05em; text-transform: uppercase; }
+.is-you .game-tag { margin-inline-start: 6px; margin-inline-end: 0; }
 .game-side .section-block { margin-top: 22px; }
 .tambola-call { display: flex; align-items: baseline; gap: 18px; margin: 6px 0 22px; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .tambola-call strong { font-size: 2.2rem; font-weight: 600; letter-spacing: -0.04em; line-height: 1; }

@@ -275,6 +275,7 @@ async function loadData(route = currentRoute) {
   stopGamePoll();
   closeGuildMenu();
   state.view = route.view;
+  if (route.view !== "events") state.editingEventId = null;
   state.featureErrors = {};
   state.voiceChannelId = route.guildId ? (localStorage.getItem(`siela.voice.${route.guildId}`) ?? "") : "";
   state.error = null;
@@ -310,6 +311,7 @@ async function loadData(route = currentRoute) {
       const loaders = {
         features: () => api.features(route.guildId),
         music: () => api.music(route.guildId),
+        events: () => api.events(route.guildId),
         cah: () => api.cah(route.guildId),
         tambola: () => api.tambola(route.guildId),
         casino: () => canLoadUserData
@@ -1306,6 +1308,83 @@ async function clearBirthday(button) {
   }
 }
 
+async function saveScheduledEvent(form) {
+  if (!state.guildId || !state.permissions.administrator) return;
+  const fields = new FormData(form);
+  const startAt = new Date(String(fields.get("startAt") ?? ""));
+  if (Number.isNaN(startAt.getTime())) {
+    form.querySelector('[name="startAt"]')?.focus();
+    showToast("Choose a valid start time.", { key: "scheduled-event", tone: "error" });
+    return;
+  }
+  const enabled = form.querySelector("[data-event-enabled]")?.getAttribute("aria-checked") === "true";
+  const body = {
+    name: String(fields.get("name") ?? "").trim(),
+    channelId: String(fields.get("channelId") ?? "").trim(),
+    sourceUrl: String(fields.get("sourceUrl") ?? "").trim(),
+    startAt: startAt.toISOString(),
+    repeat: String(fields.get("repeat") ?? "none"),
+    enabled,
+  };
+  const eventId = state.editingEventId;
+  const submit = form.querySelector('[type="submit"]');
+  if (submit) submit.disabled = true;
+  try {
+    if (eventId === null) await api.createEvent(state.guildId, body);
+    else await api.updateEvent(state.guildId, eventId, body);
+    state.editingEventId = null;
+    await loadData({ view: "events", guildId: state.guildId });
+    showToast(eventId === null ? "Scheduled event created." : "Scheduled event updated.", { key: "scheduled-event" });
+  } catch (error) {
+    if (submit?.isConnected) submit.disabled = false;
+    showToast(error instanceof Error ? error.message : "The scheduled event could not be saved.", { key: "scheduled-event", tone: "error" });
+  }
+}
+
+async function updateScheduledEvent(eventId, body, action) {
+  if (!state.guildId || !state.permissions.administrator) return;
+  action.disabled = true;
+  try {
+    await api.updateEvent(state.guildId, eventId, body);
+    await loadData({ view: "events", guildId: state.guildId });
+    showToast("Scheduled event updated.", { key: "scheduled-event" });
+  } catch (error) {
+    if (action.isConnected) action.disabled = false;
+    showToast(error instanceof Error ? error.message : "The scheduled event could not be updated.", { key: "scheduled-event", tone: "error" });
+  }
+}
+
+async function runScheduledEvent(eventId, button) {
+  if (!state.guildId || !state.permissions.administrator) return;
+  const event = state.data?.events?.find((entry) => entry.id === eventId);
+  if (!event || !window.confirm(`Run “${event.name}” now in its selected voice channel?`)) return;
+  button.disabled = true;
+  try {
+    await api.runEvent(state.guildId, eventId);
+    await loadData({ view: "events", guildId: state.guildId });
+    showToast("Scheduled event run started.", { key: "scheduled-event" });
+  } catch (error) {
+    if (button.isConnected) button.disabled = false;
+    showToast(error instanceof Error ? error.message : "The scheduled event could not run.", { key: "scheduled-event", tone: "error" });
+  }
+}
+
+async function deleteScheduledEvent(eventId, button) {
+  if (!state.guildId || !state.permissions.administrator) return;
+  const event = state.data?.events?.find((entry) => entry.id === eventId);
+  if (!event || !window.confirm(`Delete “${event.name}”? Its run history will also be deleted.`)) return;
+  button.disabled = true;
+  try {
+    await api.deleteEvent(state.guildId, eventId);
+    if (state.editingEventId === eventId) state.editingEventId = null;
+    await loadData({ view: "events", guildId: state.guildId });
+    showToast("Scheduled event deleted.", { key: "scheduled-event" });
+  } catch (error) {
+    if (button.isConnected) button.disabled = false;
+    showToast(error instanceof Error ? error.message : "The scheduled event could not be deleted.", { key: "scheduled-event", tone: "error" });
+  }
+}
+
 const resolvingForms = new WeakSet();
 
 document.addEventListener("submit", async (event) => {
@@ -1332,6 +1411,11 @@ document.addEventListener("submit", async (event) => {
   if (form.id === "birthday-form") {
     event.preventDefault();
     await saveBirthday(form);
+    return;
+  }
+  if (form.id === "scheduled-event-form") {
+    event.preventDefault();
+    await saveScheduledEvent(form);
     return;
   }
   if (form.id === "login-form") {
@@ -1412,6 +1496,27 @@ document.addEventListener("click", async (event) => {
     await loadData(currentRoute);
   } else if (action?.dataset.action === "toggle-feature") {
     await toggleFeature(action);
+  } else if (action?.dataset.action === "event-create") {
+    state.editingEventId = null;
+    renderMain();
+    document.querySelector("#scheduled-event-name")?.focus();
+  } else if (action?.dataset.action === "event-cancel") {
+    state.editingEventId = null;
+    renderMain();
+  } else if (action?.dataset.action === "event-form-toggle") {
+    action.setAttribute("aria-checked", String(action.getAttribute("aria-checked") !== "true"));
+  } else if (action?.dataset.action === "event-edit") {
+    state.editingEventId = Number(action.dataset.eventId);
+    renderMain();
+    document.querySelector("#scheduled-event-name")?.focus();
+  } else if (action?.dataset.action === "event-toggle") {
+    const eventId = Number(action.dataset.eventId);
+    const enabled = action.getAttribute("aria-checked") !== "true";
+    await updateScheduledEvent(eventId, { enabled }, action);
+  } else if (action?.dataset.action === "event-run") {
+    await runScheduledEvent(Number(action.dataset.eventId), action);
+  } else if (action?.dataset.action === "event-delete") {
+    await deleteScheduledEvent(Number(action.dataset.eventId), action);
   } else if (action?.dataset.action === "clear-birthday") {
     await clearBirthday(action);
   } else if (action?.dataset.action === "music") {

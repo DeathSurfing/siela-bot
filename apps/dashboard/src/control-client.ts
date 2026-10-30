@@ -40,6 +40,17 @@ export interface BirthdayInput {
   year?: number | null;
 }
 
+export interface ScheduledEventPayload {
+  name: string;
+  channelId: string;
+  sourceUrl: string;
+  startAt: string;
+  repeat: "none" | "daily" | "weekly";
+  enabled: boolean;
+}
+
+export type ScheduledEventUpdatePayload = Partial<ScheduledEventPayload>;
+
 export interface ControlClient {
   getStatus(): Promise<unknown>;
   getGuilds(): Promise<unknown>;
@@ -49,6 +60,11 @@ export interface ControlClient {
   getAudit(guildId: string, limit: number): Promise<unknown>;
   getMusic(guildId: string): Promise<unknown>;
   musicAction(guildId: string, action: MusicAction, body: unknown, userId?: string): Promise<unknown>;
+  getScheduledEvents(guildId: string): Promise<unknown>;
+  createScheduledEvent(guildId: string, body: ScheduledEventPayload, userId: string): Promise<unknown>;
+  updateScheduledEvent(guildId: string, eventId: number, body: ScheduledEventUpdatePayload, userId: string): Promise<unknown>;
+  deleteScheduledEvent(guildId: string, eventId: number, userId: string): Promise<unknown>;
+  runScheduledEvent(guildId: string, eventId: number, userId: string): Promise<unknown>;
   getConfig(guildId: string): Promise<unknown>;
   patchConfig(guildId: string, section: ConfigSection, body: Record<string, unknown>, actorId?: string): Promise<unknown>;
   getCommands(): Promise<unknown>;
@@ -129,6 +145,15 @@ export function createControlClient(baseUrl: string, token: string, fetcher: Con
     getMusic: (guildId) => request("/v1/music/state", { guildId }),
     musicAction: (guildId, action, body, userId) =>
       request(`/v1/music/${action}`, { guildId, userId, actorId: userId, method: "POST", body }),
+    getScheduledEvents: (guildId) => request("/v1/events", { guildId }),
+    createScheduledEvent: (guildId, body, userId) =>
+      request("/v1/events", { guildId, userId, actorId: userId, method: "POST", body }),
+    updateScheduledEvent: (guildId, eventId, body, userId) =>
+      request(`/v1/events/${eventId}`, { guildId, userId, actorId: userId, method: "PATCH", body }),
+    deleteScheduledEvent: (guildId, eventId, userId) =>
+      request(`/v1/events/${eventId}`, { guildId, userId, actorId: userId, method: "DELETE" }),
+    runScheduledEvent: (guildId, eventId, userId) =>
+      request(`/v1/events/${eventId}/run`, { guildId, userId, actorId: userId, method: "POST" }),
     getConfig: async (guildId) => {
       const [prefix, welcome, autorole, tempvc, music] = await Promise.all([
         request("/v1/prefix", { guildId }),

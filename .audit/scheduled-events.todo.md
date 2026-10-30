@@ -12,10 +12,11 @@
 - [x] Follow-up: Serialize concurrent scheduler ticks for one guild so an overlapping tick cannot record a duplicate skipped run from stale due-event data.
 - [x] Follow-up: Keep the create-only `enabled` default out of partial update schemas.
 - [x] Follow-up: Preserve the existing 20-minute YouTube playback cap while recording actual process and player errors as failures.
-- [ ] Unit 4: Add dashboard client, routes, navigation, form, event list, history, built-in phases, and the leaderboard spacing fix.
+- [x] Unit 4: Add dashboard client, routes, navigation, form, event list, history, built-in phases, and the leaderboard spacing fix.
 - [ ] Unit 5: Add service, control, dashboard, and browser coverage; update docs; run all requested checks.
+- [ ] Headless browser execution: INCONCLUSIVE because Playwright Chromium cannot load the missing system library `libnspr4.so`; the in-app browser is disconnected.
 - [ ] Before every commit, run deslop and inspect the staged diff.
-- [ ] No independent review subagent: skip because the user prohibited spawning subagents.
+- [ ] BLOCKED: independent review. The user prohibited spawning subagents.
 
 ## Phase A framing
 

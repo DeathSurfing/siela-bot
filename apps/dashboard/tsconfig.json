@@ -1,7 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src/**/*.ts", "tsup.config.ts"],
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "tsup.config.ts"],
   "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
     "noEmit": true
   }
 }

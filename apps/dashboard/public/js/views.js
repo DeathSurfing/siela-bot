@@ -4,6 +4,7 @@ const titles = {
   overview: "Overview",
   features: "Features",
   music: "Music",
+  events: "Scheduled Events",
   cah: "Cards Against Humanity",
   tambola: "Tambola",
   casino: "Casino",
@@ -224,6 +225,7 @@ export function renderView(view) {
     case "overview": return renderOverview(data);
     case "features": return renderFeatures(data);
     case "music": return renderMusic(data);
+    case "events": return renderScheduledEvents(data);
     case "cah": return renderCah(data);
     case "tambola": return renderTambola(data);
     case "casino": return renderCasino(data);
@@ -376,6 +378,99 @@ function renderMusic(data) {
       </section>
       <section class="queue-panel" aria-label="Up next"><div class="section-heading"><h2>Up next <span class="queue-count">${String(queue.length).padStart(2, "0")}</span></h2><button type="button" class="button button-quiet" data-action="music" data-music-action="clear" ${queue.length ? "" : "disabled"}>Clear queue</button></div><ol class="queue-list">${queueHtml}</ol></section>
     </div>`;
+}
+
+function scheduledEventStatus(value) {
+  const status = {
+    success: { label: "Success", tone: "ok" },
+    failed: { label: "Failed", tone: "danger" },
+    skipped: { label: "Skipped", tone: "warn" },
+    running: { label: "Running", tone: "warn" },
+  }[value];
+  return status
+    ? `<span class="status-inline status-${status.tone}"><i class="status-dot"></i>${status.label}</span>`
+    : `<span class="status-inline status-unknown">Not run</span>`;
+}
+
+function scheduledRepeatLabel(value) {
+  return ({ none: "One time", daily: "Daily", weekly: "Weekly" })[value] ?? "Unknown";
+}
+
+function localDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+function renderScheduledEventForm(events) {
+  const event = events.find((entry) => entry.id === state.editingEventId) ?? null;
+  const enabled = event?.enabled ?? true;
+  return `<form id="scheduled-event-form" class="settings-section event-editor">
+    <div class="settings-heading"><div><h2>${event ? "Edit event" : "Create event"}</h2><p>Choose a voice channel and a YouTube video. Only YouTube video links are accepted.</p></div></div>
+    <div class="settings-fields event-fields">
+      <label class="setting-field" for="scheduled-event-name"><strong>Name</strong><input id="scheduled-event-name" name="name" type="text" maxlength="80" required value="${escapeHtml(event?.name ?? "")}" autocomplete="off"></label>
+      <label class="setting-field" for="scheduled-event-channel"><strong>Voice channel</strong><input id="scheduled-event-channel" name="channelId" type="text" data-resolve-kind="voice" placeholder="#general or paste an ID" required value="${escapeHtml(event?.channelId ?? "")}" autocomplete="off"></label>
+      <label class="setting-field" for="scheduled-event-url"><strong>YouTube URL</strong><input id="scheduled-event-url" name="sourceUrl" type="url" placeholder="https://youtu.be/abcdefghijk" required value="${escapeHtml(event?.sourceUrl ?? "")}" autocomplete="url"></label>
+      <label class="setting-field" for="scheduled-event-start"><strong>Start time</strong><input id="scheduled-event-start" name="startAt" type="datetime-local" required value="${event ? localDateTime(event.startAt) : ""}"></label>
+      <label class="setting-field" for="scheduled-event-repeat"><strong>Repeat</strong><select id="scheduled-event-repeat" name="repeat"><option value="none" ${event?.repeat === "none" || !event ? "selected" : ""}>One time</option><option value="daily" ${event?.repeat === "daily" ? "selected" : ""}>Daily</option><option value="weekly" ${event?.repeat === "weekly" ? "selected" : ""}>Weekly</option></select></label>
+      <div class="setting-field event-enabled-field"><span><strong>Event enabled</strong><small>When enabled, the scheduler runs this event at its next scheduled time.</small></span><button type="button" class="switch" role="switch" aria-checked="${enabled}" aria-label="Event enabled" data-action="event-form-toggle" data-event-enabled><span></span></button></div>
+    </div>
+    <div class="settings-save event-form-actions"><span class="settings-feedback" data-event-feedback role="status" aria-live="polite"></span><button class="button button-primary" type="submit">${event ? "Save changes" : "Create event"}</button>${event ? `<button class="button button-secondary" type="button" data-action="event-cancel">Cancel</button>` : ""}</div>
+  </form>`;
+}
+
+function renderScheduledEventRows(events, canManage, enabled) {
+  if (!events.length) {
+    return emptyState("No scheduled events", "Create an event to play a YouTube video in a voice channel on a schedule.");
+  }
+  const rows = events.map((event) => {
+    const name = escapeHtml(event.name);
+    const controls = canManage
+      ? `<div class="event-actions"><button class="button button-quiet" type="button" data-action="event-edit" data-event-id="${event.id}">Edit</button><button class="button button-quiet" type="button" data-action="event-run" data-event-id="${event.id}" ${enabled ? "" : "disabled"}>Run now</button><button class="button button-quiet danger-text" type="button" data-action="event-delete" data-event-id="${event.id}">Delete</button></div>`
+      : "";
+    const toggle = canManage
+      ? `<button type="button" class="switch" role="switch" aria-checked="${event.enabled}" aria-label="Enabled. ${event.enabled ? "Disable" : "Enable"} ${name}" data-action="event-toggle" data-event-id="${event.id}"><span></span></button>`
+      : `<span>${event.enabled ? "Enabled" : "Disabled"}</span>`;
+    const source = `<a class="text-link" href="${escapeHtml(event.sourceUrl)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Open video for ${name}</a>`;
+    const next = event.enabled && event.nextRunAt ? fmtDate(event.nextRunAt) : event.enabled ? "Not scheduled" : "Disabled";
+    return `<tr><td><strong>${name}</strong></td><td data-label="Channel"><code>${escapeHtml(event.channelId)}</code></td><td data-label="Source">${source}</td><td data-label="Next run">${escapeHtml(next)}</td><td data-label="Repeat">${scheduledRepeatLabel(event.repeat)}</td><td data-label="Enabled">${toggle}</td><td data-label="Last status">${scheduledEventStatus(event.lastStatus)}</td><td data-label="Actions">${controls}</td></tr>`;
+  }).join("");
+  return `<section class="table-panel event-table-panel"><div class="table-scroll"><table class="event-table"><thead><tr><th scope="col">Name</th><th scope="col">Channel</th><th scope="col">Source</th><th scope="col">Next run</th><th scope="col">Repeat</th><th scope="col">Enabled</th><th scope="col">Last status</th><th scope="col">Actions</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+}
+
+function renderScheduledRuns(runs) {
+  if (!runs.length) return emptyState("No runs yet", "Run history will appear after an event starts.");
+  const rows = runs.map((run) => `<tr><td><strong>${escapeHtml(run.eventName)}</strong></td><td data-label="Started">${escapeHtml(fmtDate(run.startedAt))}</td><td data-label="Status">${scheduledEventStatus(run.status)}</td><td data-label="Trigger">${run.triggeredBy === "scheduler" ? "Scheduler" : "Dashboard"}</td><td data-label="Error">${escapeHtml(run.error ?? "") || "None"}</td></tr>`).join("");
+  return `<section class="table-panel"><div class="table-scroll"><table class="event-runs-table"><thead><tr><th scope="col">Event</th><th scope="col">Started</th><th scope="col">Status</th><th scope="col">Trigger</th><th scope="col">Error</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+}
+
+function renderBuiltInPhases(phases) {
+  const rows = phases.map((phase) => `<tr><td><strong>${escapeHtml(phase.key)}</strong></td><td data-label="Channel">${escapeHtml(phase.channelName)}</td><td data-label="Source">${phase.youtube ? `<a class="text-link" href="${escapeHtml(phase.source)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Open ${escapeHtml(phase.key)} source on YouTube</a>` : escapeHtml(phase.source)}</td><td data-label="Offset">${escapeHtml(`${Math.floor(Number(phase.offsetMs) / 3_600_000)}h`)}</td></tr>`).join("");
+  return `<details class="built-in-details"><summary>Built-in prayer phases</summary><p>The built-in sequence still runs independently of operator-scheduled events.</p>${rows ? `<div class="table-panel"><div class="table-scroll"><table><thead><tr><th scope="col">Phase</th><th scope="col">Channel</th><th scope="col">Source</th><th scope="col">Offset</th></tr></thead><tbody>${rows}</tbody></table></div></div>` : emptyState("No built-in phases", "The bot has not returned its prayer phase list.")}</details>`;
+}
+
+function renderScheduledEvents(data) {
+  const events = list(data, "events");
+  const runs = list(data, "runs");
+  const phases = list(data, "builtIn");
+  const next = events.filter((event) => event.enabled && event.nextRunAt).sort((a, b) => new Date(a.nextRunAt) - new Date(b.nextRunAt))[0];
+  const lastStatus = runs[0]?.status ?? events.find((event) => event.lastStatus)?.lastStatus ?? null;
+  const notices = [
+    data?.enabled === false ? permissionNotice("Scheduled events are off for this server. You can still prepare and save events.") : "",
+    data?.schedulerEnabled === false ? permissionNotice("The global scheduled-event scheduler is off. Manual runs remain available while the feature is enabled.") : "",
+    state.permissions.administrator ? "" : permissionNotice("Administrator permission is required to create, edit, enable, run, or delete events."),
+  ].join("");
+  const form = state.permissions.administrator ? renderScheduledEventForm(events) : "";
+  return `${pageHeader("Scheduled Events", "Schedule YouTube videos in a selected voice channel.")}${notices}
+    <section class="metric-row event-metrics" aria-label="Scheduled event metrics">
+      <div class="metric"><span class="metric-label">Next event</span><strong class="metric-value event-metric-date">${escapeHtml(next ? fmtDate(next.nextRunAt) : "None")}</strong></div>
+      <div class="metric"><span class="metric-label">Total events</span><strong class="metric-value tabular">${fmtNumber(events.length)}</strong></div>
+      <div class="metric"><span class="metric-label">Last status</span><strong class="metric-value event-metric-status">${scheduledEventStatus(lastStatus)}</strong></div>
+    </section>
+    ${form}
+    <section class="event-section"><div class="section-heading"><h2>Events</h2>${state.permissions.administrator ? `<button class="button button-secondary" type="button" data-action="event-create">Create event</button>` : ""}</div>${renderScheduledEventRows(events, state.permissions.administrator, data?.enabled !== false)}</section>
+    <section class="event-section"><div class="section-heading"><h2>Recent runs</h2></div>${renderScheduledRuns(runs)}</section>
+    ${renderBuiltInPhases(phases)}`;
 }
 
 function currentGuildName() {
