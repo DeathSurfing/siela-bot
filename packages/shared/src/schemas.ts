@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MAX_CASINO_BET, MAX_WELCOME_MESSAGE, MAX_MUSIC_QUERY } from "./constants.js";
+import { MAX_CASINO_BET, MAX_STOCK_SHARES, MAX_WELCOME_MESSAGE, MAX_MUSIC_QUERY } from "./constants.js";
 
 export const snowflakeSchema = z
   .string()
@@ -144,6 +144,13 @@ export const privacyDeleteSchema = z
 export const auditQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(25),
+  })
+  .strict();
+
+export const stockTradeSchema = z
+  .object({
+    symbol: z.string().trim().min(1, "Symbol is required").max(8, "Symbol must be at most 8 characters").regex(/^[A-Za-z]+$/, "Symbol may only contain letters"),
+    shares: z.number().int().positive("Shares must be a positive whole number").max(MAX_STOCK_SHARES, `Shares must be at most ${MAX_STOCK_SHARES}`),
   })
   .strict();
 
@@ -328,5 +335,6 @@ export type CountersQuery = z.infer<typeof countersQuerySchema>;
 export type CountersReset = z.infer<typeof countersResetSchema>;
 export type ResolveKind = z.infer<typeof resolveKindSchema>;
 export type ResolveQuery = z.infer<typeof resolveQuerySchema>;
+export type StockTrade = z.infer<typeof stockTradeSchema>;
 export type MusicPlayInput = z.infer<typeof musicPlaySchema>;
 export type WelcomeTestInput = z.infer<typeof welcomeTestSchema>;

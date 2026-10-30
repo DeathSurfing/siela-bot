@@ -284,6 +284,7 @@ async function loadData(route = currentRoute) {
   state.casinoPending = null;
   state.casinoBusy = false;
   state.economyBusy = false;
+  state.stockBusy = false;
   state.permissions = { administrator: false };
   currentRoute = route;
   updateGuildPicker();
@@ -323,6 +324,9 @@ async function loadData(route = currentRoute) {
         leaderboard: () => canLoadUserData
           ? api.leaderboard(route.guildId)
           : Promise.resolve({ enabled: true, discordRequired: true, entries: [], me: null }),
+        stocks: () => canLoadUserData
+          ? api.stocks(route.guildId)
+          : Promise.resolve({ enabled: true, discordRequired: true, market: null, portfolio: null }),
         settings: () => api.config(route.guildId),
         user: () => canLoadUserData ? api.birthday(route.guildId) : Promise.resolve({ birthday: null }),
         audit: () => api.audit(route.guildId, 50),
@@ -1065,6 +1069,43 @@ async function runEconomyAction(action, button) {
   }
 }
 
+async function tradeStock(form, submitter) {
+  if (!state.guildId || state.stockBusy) return;
+  const guildId = state.guildId;
+  const side = submitter?.dataset.stockSide === "sell" ? "sell" : "buy";
+  const data = new FormData(form);
+  const symbol = String(data.get("symbol") ?? "").trim();
+  const shares = Number(data.get("shares"));
+  if (!/^[A-Za-z]{1,8}$/.test(symbol) || !Number.isSafeInteger(shares) || shares <= 0) {
+    setInlineFeedback("stocks", "Choose a symbol and enter a whole number of shares.", true);
+    return;
+  }
+  const buttons = [...form.querySelectorAll("[data-stock-side]")];
+  state.stockBusy = true;
+  buttons.forEach((button) => { button.disabled = true; });
+  setInlineFeedback("stocks", side === "buy" ? "Buying shares…" : "Selling shares…");
+  try {
+    const payload = await api.stockTrade(guildId, side, { symbol, shares });
+    if (state.view !== "stocks" || state.guildId !== guildId) return;
+    state.stockBusy = false;
+    state.data = { enabled: true, market: payload?.market ?? null, portfolio: payload?.portfolio ?? null };
+    renderMain();
+    const result = payload?.result ?? null;
+    const filled = result?.shares ?? shares;
+    const price = result?.price ? ` at ${Number(result.price).toLocaleString()} SC` : "";
+    const message = side === "buy" ? `Bought ${filled} ${symbol}${price}.` : `Sold ${filled} ${symbol}${price}.`;
+    showToast(message, { key: "stocks" });
+    announce(message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "The trade failed.";
+    buttons.forEach((button) => { if (button.isConnected) button.disabled = false; });
+    setInlineFeedback("stocks", message, true);
+    showToast(message, { key: "stocks", tone: "error" });
+  } finally {
+    state.stockBusy = false;
+  }
+}
+
 function readConfigForm(form) {  const body = {};
   for (const button of form.querySelectorAll("[data-setting-toggle]")) {
     body[button.dataset.settingToggle] = button.getAttribute("aria-checked") === "true";
@@ -1210,6 +1251,11 @@ document.addEventListener("submit", async (event) => {
   if (form.id === "casino-coinflip-form" || form.id === "casino-slots-form") {
     event.preventDefault();
     await playCasino(form.id === "casino-coinflip-form" ? "coinflip" : "slots", form);
+    return;
+  }
+  if (form.id === "stock-trade-form") {
+    event.preventDefault();
+    await tradeStock(form, event.submitter);
     return;
   }
   if (form.hasAttribute("data-config-section")) {

@@ -7,6 +7,7 @@ export const CAH_ACTIONS = ["start", "reveal", "next", "end"] as const;
 export const TAMBOLA_ACTIONS = ["end", "pause", "resume"] as const;
 export const CASINO_GAMES = ["coinflip", "slots"] as const;
 export const ECONOMY_ACTIONS = ["daily", "work"] as const;
+export const STOCK_ACTIONS = ["buy", "sell"] as const;
 export const RESOLVE_KINDS = ["channel", "voice", "role", "user"] as const;
 
 export type MusicAction = (typeof MUSIC_ACTIONS)[number];
@@ -15,6 +16,7 @@ export type CahAction = (typeof CAH_ACTIONS)[number];
 export type TambolaAction = (typeof TAMBOLA_ACTIONS)[number];
 export type CasinoGame = (typeof CASINO_GAMES)[number];
 export type EconomyAction = (typeof ECONOMY_ACTIONS)[number];
+export type StockAction = (typeof STOCK_ACTIONS)[number];
 export type ResolveKind = (typeof RESOLVE_KINDS)[number];
 
 export class ControlApiError extends Error {
@@ -64,6 +66,8 @@ export interface ControlClient {
   economyState(guildId: string, userId: string): Promise<unknown>;
   economyAction(guildId: string, action: EconomyAction, userId: string): Promise<unknown>;
   economyLeaderboard(guildId: string, userId: string): Promise<unknown>;
+  stockState(guildId: string, userId: string): Promise<unknown>;
+  stockTrade(guildId: string, action: StockAction, body: Record<string, unknown>, userId: string): Promise<unknown>;
 }
 
 type ControlFetch = (url: URL, init?: RequestInit) => Promise<Response>;
@@ -167,5 +171,8 @@ export function createControlClient(baseUrl: string, token: string, fetcher: Con
     economyAction: (guildId, action, userId) =>
       request(`/v1/economy/${action}`, { guildId, userId, actorId: userId, method: "POST", body: {} }),
     economyLeaderboard: (guildId, userId) => request("/v1/economy/leaderboard?limit=25", { guildId, userId }),
+    stockState: (guildId, userId) => request("/v1/stocks/state", { guildId, userId }),
+    stockTrade: (guildId, action, body, userId) =>
+      request(`/v1/stocks/${action}`, { guildId, userId, actorId: userId, method: "POST", body }),
   };
 }

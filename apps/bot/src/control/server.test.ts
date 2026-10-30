@@ -57,6 +57,10 @@ interface EconomyStub {
   leaderboard: (guildId: string, limit: number) => Promise<Array<{ userId: string; balance: number }>>;
   daily: (guildId: string, userId: string) => Promise<{ amount: number; streak: number; nextAt: Date }>;
   work: (guildId: string, userId: string) => Promise<{ amount: number; nextAt: Date }>;
+  getMarket: (guildId: string) => Promise<Record<string, unknown>>;
+  getPortfolio: (guildId: string, userId: string) => Promise<Record<string, unknown>>;
+  buyStock: (guildId: string, userId: string, symbol: string, shares: number) => Promise<Record<string, unknown>>;
+  sellStock: (guildId: string, userId: string, symbol: string, shares: number) => Promise<Record<string, unknown>>;
   spend: (...args: unknown[]) => Promise<unknown>;
   award: (...args: unknown[]) => Promise<unknown>;
 }
@@ -142,6 +146,10 @@ function server(options: {
     leaderboard: vi.fn(async () => []),
     daily: vi.fn(async () => ({ amount: 10, streak: 1, nextAt: new Date("2026-10-31T00:00:00.000Z") })),
     work: vi.fn(async () => ({ amount: 5, nextAt: new Date("2026-10-30T10:00:00.000Z") })),
+    getMarket: vi.fn(async () => ({ stocks: [], index: 100, indexChange: 0 })),
+    getPortfolio: vi.fn(async () => ({ cash: 500, holdings: [], holdingsValue: 0, netWorth: 500, unrealized: 0 })),
+    buyStock: vi.fn(async (_guildId: string, _userId: string, symbol: string, shares: number) => ({ symbol, shares, price: 100, fee: 1, total: 101, balance: 399 })),
+    sellStock: vi.fn(async (_guildId: string, _userId: string, symbol: string, shares: number) => ({ symbol, shares, price: 100, fee: 1, proceeds: 99, pnl: 0, balance: 599 })),
     spend: vi.fn(async () => undefined),
     award: vi.fn(async () => ({ amount: 0, duplicate: false })),
   };
@@ -242,6 +250,10 @@ function economyStub(overrides: Partial<EconomyStub> = {}): EconomyStub {
     leaderboard: vi.fn(async () => []),
     daily: vi.fn(async () => ({ amount: 10, streak: 1, nextAt: new Date("2026-10-31T00:00:00.000Z") })),
     work: vi.fn(async () => ({ amount: 5, nextAt: new Date("2026-10-30T10:00:00.000Z") })),
+    getMarket: vi.fn(async () => ({ stocks: [], index: 100, indexChange: 0 })),
+    getPortfolio: vi.fn(async () => ({ cash: 500, holdings: [], holdingsValue: 0, netWorth: 500, unrealized: 0 })),
+    buyStock: vi.fn(async (_guildId: string, _userId: string, symbol: string, shares: number) => ({ symbol, shares, price: 100, fee: 1, total: 101, balance: 399 })),
+    sellStock: vi.fn(async (_guildId: string, _userId: string, symbol: string, shares: number) => ({ symbol, shares, price: 100, fee: 1, proceeds: 99, pnl: 0, balance: 599 })),
     spend: vi.fn(async () => undefined),
     award: vi.fn(async () => ({ amount: 0, duplicate: false })),
     ...overrides,
@@ -566,6 +578,121 @@ describe("ControlServer economy member routes", () => {
   it("rejects a leaderboard limit outside 1 to 50", async () => {
     const { app } = server();
     const response = await app.inject({ method: "GET", url: "/v1/economy/leaderboard?limit=0", headers: asUser(MEMBER_USER) });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("validation_error");
+  });
+});
+
+describe("ControlServer stock member routes", () => {
+  const market = { stocks: [{ symbol: "SIELA", name: "Siela Coin", price: 120, history: [100, 120] }], index: 110, indexChange: 2.5 };
+  const portfolio = { cash: 400, holdings: [], holdingsValue: 0, netWorth: 400, unrealized: 0 };
+
+  it("returns the market and the caller's portfolio", async () => {
+    const economy = economyStub({
+      getMarket: vi.fn(async () => market),
+      getPortfolio: vi.fn(async () => portfolio),
+    });
+    const { app } = server({ economy });
+    const response = await app.inject({ method: "GET", url: "/v1/stocks/state", headers: asUser(MEMBER_USER) });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ enabled: true, market, portfolio });
+    expect(economy.getPortfolio).toHaveBeenCalledWith(GUILD_A, MEMBER_USER);
+  });
+
+  it("gates the stock view and trades on the economy feature", async () => {
+    const { app } = server({ economyEnabled: false });
+    const state = await app.inject({ method: "GET", url: "/v1/stocks/state", headers: asUser(MEMBER_USER) });
+    const buy = await app.inject({
+      method: "POST",
+      url: "/v1/stocks/buy",
+      headers: asUser(MEMBER_USER),
+      payload: { symbol: "SIELA", shares: 1 },
+    });
+
+    expect(state.json()).toEqual({ enabled: false, market: null, portfolio: null });
+    expect(buy.statusCode).toBe(400);
+    expect(buy.json().error.code).toBe("feature_disabled");
+  });
+
+  it("buys and sells for the header user and returns the fresh market", async () => {
+    const economy = economyStub({
+      getMarket: vi.fn(async () => market),
+      getPortfolio: vi.fn(async () => portfolio),
+    });
+    const { app } = server({ economy });
+    const buy = await app.inject({
+      method: "POST",
+      url: "/v1/stocks/buy",
+      headers: asUser(MEMBER_USER),
+      payload: { symbol: "siela", shares: 2 },
+    });
+    const sell = await app.inject({
+      method: "POST",
+      url: "/v1/stocks/sell",
+      headers: asUser(MEMBER_USER),
+      payload: { symbol: "SIELA", shares: 1 },
+    });
+
+    expect(buy.statusCode).toBe(200);
+    expect(buy.json()).toEqual({
+      result: { symbol: "SIELA", shares: 2, price: 100, fee: 1, total: 101, balance: 399 },
+      market,
+      portfolio,
+    });
+    expect(sell.statusCode).toBe(200);
+    expect(economy.buyStock).toHaveBeenCalledWith(GUILD_A, MEMBER_USER, "SIELA", 2);
+    expect(economy.sellStock).toHaveBeenCalledWith(GUILD_A, MEMBER_USER, "SIELA", 1);
+  });
+
+  it("rejects a spoofed user in the trade body", async () => {
+    const economy = economyStub();
+    const { app } = server({ economy });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/stocks/buy",
+      headers: asUser(MEMBER_USER),
+      payload: { symbol: "SIELA", shares: 1, userId: ADMIN_USER },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("validation_error");
+    expect(economy.buyStock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown symbol and maps trade failures to a user message", async () => {
+    const economy = economyStub({
+      buyStock: vi.fn(async () => { throw new Error("INSUFFICIENT_FUNDS"); }),
+    });
+    const { app } = server({ economy });
+    const unknown = await app.inject({
+      method: "POST",
+      url: "/v1/stocks/buy",
+      headers: asUser(MEMBER_USER),
+      payload: { symbol: "NOPE", shares: 1 },
+    });
+    const broke = await app.inject({
+      method: "POST",
+      url: "/v1/stocks/buy",
+      headers: asUser(MEMBER_USER),
+      payload: { symbol: "SIELA", shares: 1000 },
+    });
+
+    expect(unknown.statusCode).toBe(400);
+    expect(unknown.json().error.code).toBe("unknown_stock");
+    expect(broke.statusCode).toBe(400);
+    expect(broke.json().error.code).toBe("trade_failed");
+    expect(broke.json().error.message).toBe("You do not have enough SC for that trade.");
+  });
+
+  it("rejects shares outside the service limit", async () => {
+    const { app } = server();
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/stocks/buy",
+      headers: asUser(MEMBER_USER),
+      payload: { symbol: "SIELA", shares: 1_000_001 },
+    });
     expect(response.statusCode).toBe(400);
     expect(response.json().error.code).toBe("validation_error");
   });

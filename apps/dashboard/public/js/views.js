@@ -10,6 +10,7 @@ const titles = {
   casino: "Casino",
   economy: "Economy",
   leaderboard: "Leaderboard",
+  stocks: "Stocks",
   settings: "Server settings",
   user: "User settings",
   audit: "Audit",
@@ -231,6 +232,7 @@ export function renderView(view) {
     case "casino": return renderCasino(data);
     case "economy": return renderEconomy(data);
     case "leaderboard": return renderLeaderboard(data);
+    case "stocks": return renderStocks(data);
     case "settings": return renderSettings(data);
     case "user": return renderUserSettings(data);
     case "audit": return renderAudit(data);
@@ -665,6 +667,81 @@ function renderLeaderboard(data) {
     return `<tr class="${you ? "is-you" : ""}"><td class="numeric-cell" data-label="Rank">${fmtNumber(entry.rank)}</td><td><strong>${escapeHtml(entry.name ?? entry.userId)}</strong>${you ? `<span class="game-tag">You</span>` : ""}</td><td class="numeric-cell" data-label="Balance">${fmtNumber(entry.balance)} SC</td></tr>`;
   }).join("");
   return `${header}${meRow}<section class="table-panel"><div class="table-scroll"><table><thead><tr><th scope="col" class="numeric-cell">Rank</th><th scope="col">Member</th><th scope="col" class="numeric-cell">Balance</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+}
+
+function fmtDecimal(value, digits = 1) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(digits) : "N/A";
+}
+
+function fmtPercent(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${number >= 0 ? "+" : ""}${number.toFixed(2)}%` : "N/A";
+}
+
+function stockChange(history) {
+  const values = (Array.isArray(history) ? history : []).map(Number);
+  if (values.length < 2) return 0;
+  const previous = values.at(-2);
+  const latest = values.at(-1);
+  if (!Number.isFinite(previous) || previous <= 0 || !Number.isFinite(latest)) return 0;
+  return ((latest - previous) / previous) * 100;
+}
+
+function stockSparkline(history) {
+  const values = (Array.isArray(history) ? history : []).map(Number).filter(Number.isFinite).slice(-24);
+  if (values.length < 2) return "";
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const points = values.map((value, index) => `${((index / (values.length - 1)) * 100).toFixed(1)},${(19 - ((value - min) / span) * 18).toFixed(1)}`).join(" ");
+  return `<svg class="stock-sparkline" viewBox="0 0 100 20" width="100" height="20" aria-hidden="true" focusable="false"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+function renderStocks(data) {
+  const header = pageHeader("Stocks", "Siela Exchange prices, your portfolio, and self-service trades.");
+  if (data?.discordRequired) {
+    return `${header}${permissionNotice("Sign in with Discord to trade. The dashboard needs your Discord user ID to read your portfolio.")}`;
+  }
+  if (data?.enabled === false) {
+    return `${header}${permissionNotice("The economy is turned off for this server. Enable economy-core in Features to trade.")}`;
+  }
+  const market = data?.market ?? null;
+  const portfolio = data?.portfolio ?? null;
+  const stocks = list(market, "stocks");
+  const holdings = list(portfolio, "holdings");
+  const busy = state.stockBusy === true;
+  const indexChange = Number(market?.indexChange) || 0;
+  const unrealized = Number(portfolio?.unrealized) || 0;
+  const marketRows = stocks.map((stock) => {
+    const change = stockChange(stock.history);
+    return `<tr><td><strong>${escapeHtml(stock.symbol)}</strong><small class="table-subline">${escapeHtml(stock.sector ?? "")}</small></td><td>${escapeHtml(stock.name ?? "")}</td><td class="numeric-cell" data-label="Price">${fmtNumber(stock.price)} SC</td><td class="numeric-cell" data-label="Change"><span class="${change >= 0 ? "change-up" : "change-down"}">${fmtPercent(change)}</span></td><td class="stock-trend" data-label="Trend">${stockSparkline(stock.history)}</td></tr>`;
+  }).join("");
+  const holdingRows = holdings.map((holding) => `<tr><td><strong>${escapeHtml(holding.symbol)}</strong><small class="table-subline">${escapeHtml(holding.name ?? "")}</small></td><td data-label="Shares">${fmtNumber(holding.shares)}</td><td data-label="Average cost">${fmtNumber(holding.avgCost)} SC</td><td data-label="Price">${fmtNumber(holding.price)} SC</td><td data-label="Value">${fmtNumber(holding.value)} SC</td><td data-label="P/L"><span class="${holding.pnl >= 0 ? "change-up" : "change-down"}">${holding.pnl >= 0 ? "+" : ""}${fmtNumber(holding.pnl)} SC</span></td></tr>`).join("");
+  const options = stocks.map((stock) => `<option value="${escapeHtml(stock.symbol)}">${escapeHtml(stock.symbol)} · ${escapeHtml(stock.name ?? "")}</option>`).join("");
+  const canTrade = stocks.length > 0 && !busy;
+  return `${header}
+    ${gameMetrics([
+      ["Index", fmtDecimal(market?.index)],
+      ["Index change", fmtPercent(indexChange)],
+      ["Net worth", `${fmtNumber(portfolio?.netWorth)} SC`],
+      ["Unrealized P/L", `${unrealized >= 0 ? "+" : ""}${fmtNumber(unrealized)} SC`],
+    ], "economy-metrics")}
+    <section class="status-line stock-summary" aria-label="Portfolio summary">
+      <span class="status-fact"><span>Cash</span><strong class="tabular">${fmtNumber(portfolio?.cash)} SC</strong></span>
+      <span class="status-fact"><span>Holdings value</span><strong class="tabular">${fmtNumber(portfolio?.holdingsValue)} SC</strong></span>
+    </section>
+    <section class="table-panel stock-market"><div class="section-heading"><h2>Market</h2><span class="table-meta">Prices update hourly</span></div><div class="table-scroll"><table><thead><tr><th scope="col">Symbol</th><th scope="col">Name</th><th scope="col" class="numeric-cell">Price</th><th scope="col" class="numeric-cell">Change</th><th scope="col">Trend</th></tr></thead><tbody>${marketRows || `<tr><td colspan="5">No stocks are listed.</td></tr>`}</tbody></table></div></section>
+    <section class="table-panel stock-holdings"><div class="section-heading"><h2>Holdings</h2><span class="table-meta">${holdings.length} ${holdings.length === 1 ? "position" : "positions"}</span></div>${holdings.length ? `<div class="table-scroll"><table><thead><tr><th scope="col">Symbol</th><th scope="col">Shares</th><th scope="col">Average cost</th><th scope="col">Price</th><th scope="col">Value</th><th scope="col">P/L</th></tr></thead><tbody>${holdingRows}</tbody></table></div>` : emptyState("No holdings yet", "Buy shares from the trade form to start a portfolio.")}</section>
+    <form class="settings-section stock-trade" id="stock-trade-form">
+      <div class="settings-heading"><div><h2>Trade</h2><p>Buy or sell at the current price. The 1% fee is rounded up to at least 1 SC.</p></div></div>
+      <div class="settings-fields casino-fields">
+        <label class="setting-field" for="stock-symbol"><span><strong>Symbol</strong></span><select id="stock-symbol" name="symbol" required ${stocks.length ? "" : "disabled"}>${options}</select></label>
+        <label class="setting-field" for="stock-shares"><span><strong>Shares</strong><small>Whole shares, up to 1,000,000.</small></span><input id="stock-shares" name="shares" type="number" min="1" max="1000000" step="1" value="1" required ${stocks.length ? "" : "disabled"}></label>
+      </div>
+      <div class="stock-trade-actions"><button class="button button-primary" type="submit" data-stock-side="buy" ${canTrade ? "" : "disabled"}>Buy</button><button class="button button-secondary" type="submit" data-stock-side="sell" ${canTrade ? "" : "disabled"}>Sell</button></div>
+      <div class="settings-feedback" data-feedback="stocks" role="status" aria-live="polite"></div>
+    </form>`;
 }
 
 export function renderLivePanel(view, data) {

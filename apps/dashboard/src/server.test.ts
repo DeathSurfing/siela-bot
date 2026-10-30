@@ -67,6 +67,8 @@ function controlStub(overrides: Partial<ControlClient> = {}): ControlClient {
     economyState: vi.fn().mockResolvedValue({ enabled: true, balance: 500 }),
     economyAction: vi.fn().mockResolvedValue({ amount: 10, balance: 510 }),
     economyLeaderboard: vi.fn().mockResolvedValue({ enabled: true, entries: [], me: { rank: 1, balance: 500 } }),
+    stockState: vi.fn().mockResolvedValue({ enabled: true, market: null, portfolio: null }),
+    stockTrade: vi.fn().mockResolvedValue({ result: { symbol: "SIELA", shares: 1 }, market: null, portfolio: null }),
     ...overrides,
   };
 }
@@ -711,6 +713,81 @@ describe("dashboard economy member routes", () => {
     expect(control.economyState).not.toHaveBeenCalled();
     expect(control.economyAction).not.toHaveBeenCalled();
     expect(control.economyLeaderboard).not.toHaveBeenCalled();
+    await app.close();
+  });
+});
+
+describe("dashboard stock routes", () => {
+  it("reads the market and portfolio for the session user", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({ method: "GET", url: "/api/guilds/123/stocks", headers: sessionHeaders(owner) });
+
+    expect(response.statusCode).toBe(200);
+    expect(control.stockState).toHaveBeenCalledWith("123", owner.id);
+    await app.close();
+  });
+
+  it("forwards a trade with the session user and requires CSRF", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders(owner);
+    const buy = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/stocks/buy",
+      headers,
+      payload: { symbol: "SIELA", shares: 2 },
+    });
+    const sell = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/stocks/sell",
+      headers,
+      payload: { symbol: "SIELA", shares: 1 },
+    });
+    const noCsrf = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/stocks/buy",
+      headers: { cookie: headers.cookie },
+      payload: { symbol: "SIELA", shares: 1 },
+    });
+    const spoofed = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/stocks/buy",
+      headers,
+      payload: { symbol: "SIELA", shares: 1, userId: owner.id },
+    });
+
+    expect(buy.statusCode).toBe(200);
+    expect(sell.statusCode).toBe(200);
+    expect(control.stockTrade).toHaveBeenCalledWith("123", "buy", { symbol: "SIELA", shares: 2 }, owner.id);
+    expect(control.stockTrade).toHaveBeenCalledWith("123", "sell", { symbol: "SIELA", shares: 1 }, owner.id);
+    expect(noCsrf.statusCode).toBe(403);
+    expect(spoofed.statusCode).toBe(400);
+    expect(control.stockTrade).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+
+  it("rejects an unknown stock action and a password-only session", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders(owner);
+    const unknown = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/stocks/hold",
+      headers,
+      payload: { symbol: "SIELA", shares: 1 },
+    });
+    const operator = await app.inject({
+      method: "GET",
+      url: "/api/guilds/123/stocks",
+      headers: sessionHeaders({ id: "operator", name: "Operator", avatarUrl: null }),
+    });
+
+    expect(unknown.statusCode).toBe(404);
+    expect(operator.statusCode).toBe(403);
+    expect(operator.json().error.code).toBe("discord_account_required");
+    expect(control.stockState).not.toHaveBeenCalled();
+    expect(control.stockTrade).not.toHaveBeenCalled();
     await app.close();
   });
 });

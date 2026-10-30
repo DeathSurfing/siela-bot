@@ -35,6 +35,7 @@ import {
   privacyDeleteSchema,
   resolveQuerySchema,
   snowflakeSchema,
+  stockTradeSchema,
   tambolaGameActionSchema,
   tempvcChannelUpdateSchema,
   tempvcSettingsUpdateSchema,
@@ -48,6 +49,8 @@ import type { Services } from "../framework/types.js";
 import type { Logger } from "../lib/logger.js";
 import { UserError, errorMessage } from "../lib/errors.js";
 import { playCoinflip, playSlots } from "../features/casino.js";
+import { stockSeed } from "../features/stocks.js";
+import { tradeErrorMessage } from "../features/stocks-ui.js";
 import { selectGuildId } from "./guildScope.js";
 
 export interface ControlServerOptions {
@@ -810,6 +813,36 @@ export class ControlServer {
       ]);
       return { enabled: true, entries, me: { rank, balance: balance.balance } };
     });
+
+    this.route("GET", "/v1/stocks/state", async (request) => {
+      const guildId = this.guildId(request);
+      const userId = this.userId(request);
+      if (!(await services.features.isEnabled(guildId, "economy-core"))) {
+        return { enabled: false, market: null, portfolio: null };
+      }
+      const market = await services.economy.getMarket(guildId);
+      const portfolio = await services.economy.getPortfolio(guildId, userId);
+      return { enabled: true, market, portfolio };
+    });
+    for (const side of ["buy", "sell"] as const) {
+      this.route("POST", `/v1/stocks/${side}`, async (request) => {
+        const guildId = this.guildId(request);
+        const userId = this.userId(request);
+        const body = this.parse(stockTradeSchema, request.body);
+        await this.requireEconomy(guildId);
+        const symbol = body.symbol.toUpperCase();
+        if (!stockSeed(symbol)) throw new UserError("That symbol is not on the exchange.", "unknown_stock");
+        const result = await (side === "buy"
+          ? services.economy.buyStock(guildId, userId, symbol, body.shares)
+          : services.economy.sellStock(guildId, userId, symbol, body.shares)
+        ).catch((error) => {
+          throw new UserError(tradeErrorMessage(error), "trade_failed");
+        });
+        const market = await services.economy.getMarket(guildId);
+        const portfolio = await services.economy.getPortfolio(guildId, userId);
+        return { result, market, portfolio };
+      });
+    }
 
     this.route("POST", "/v1/messages", async (request) => {
       const body = this.parse(messageSendSchema, request.body);

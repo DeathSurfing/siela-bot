@@ -12,6 +12,7 @@ import {
   ECONOMY_ACTIONS,
   MUSIC_ACTIONS,
   RESOLVE_KINDS,
+  STOCK_ACTIONS,
   TAMBOLA_ACTIONS,
   type CahAction,
   type CasinoGame,
@@ -19,6 +20,7 @@ import {
   type ControlClient,
   type EconomyAction,
   type MusicAction,
+  type StockAction,
   type TambolaAction,
   createControlClient,
 } from "./control-client.js";
@@ -65,6 +67,12 @@ const resolveQuerySchema = z
   .object({
     q: z.string().trim().min(1, "Enter a name to search for.").max(80, "Search text must be at most 80 characters."),
     kind: z.enum(RESOLVE_KINDS).optional(),
+  })
+  .strict();
+const stockTradeSchema = z
+  .object({
+    symbol: z.string().trim().min(1, "Symbol is required.").max(8, "Symbol must be at most 8 characters.").regex(/^[A-Za-z]+$/, "Symbol may only contain letters."),
+    shares: z.number().int().positive("Shares must be a positive whole number.").max(1_000_000, "Shares must be at most 1,000,000."),
   })
   .strict();
 const requestIdSchema = z.string().min(8).max(100);
@@ -554,6 +562,24 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
     if (!guildId) return Promise.resolve(undefined);
     const user = economyUser(request, reply);
     return user ? control.economyLeaderboard(guildId, user.id) : Promise.resolve(undefined);
+  });
+  get("/api/guilds/:guildId/stocks", (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    if (!guildId) return Promise.resolve(undefined);
+    const user = economyUser(request, reply);
+    return user ? control.stockState(guildId, user.id) : Promise.resolve(undefined);
+  });
+  post("/api/guilds/:guildId/stocks/:action", async (request, reply) => {
+    const params = request.params as { guildId: string; action: string };
+    const guildId = getGuildId(params.guildId, reply);
+    if (!STOCK_ACTIONS.includes(params.action as StockAction)) {
+      return apiError(reply, 404, "unknown_stock_action", "That stock action is not available.");
+    }
+    const body = stockTradeSchema.safeParse(request.body);
+    if (!body.success) return apiError(reply, 400, "invalid_body", body.error.issues.map((issue) => issue.message).join("; "));
+    if (!guildId) return undefined;
+    const user = economyUser(request, reply);
+    return user ? control.stockTrade(guildId, params.action as StockAction, body.data, user.id) : undefined;
   });
 
   get("/api/guilds/:guildId/me/birthday", async (request, reply) => {

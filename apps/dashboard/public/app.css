@@ -438,6 +438,15 @@ kbd { min-width: 17px; padding: 1px 4px; border: 1px solid var(--line); border-r
 .leaderboard-me { margin: 0 0 18px; color: var(--muted); font-size: 0.8rem; }
 .leaderboard-me strong { color: var(--text); font-weight: 560; }
 tr.is-you td { background: var(--accent-soft); }
+.change-up { color: var(--ok); }
+.change-down { color: var(--danger); }
+.stock-summary { margin-bottom: 26px; }
+.stock-market, .stock-holdings { margin-bottom: 28px; }
+.stock-market .section-heading, .stock-holdings .section-heading { margin-bottom: 8px; }
+.stock-sparkline { width: 84px; height: 22px; color: var(--muted); }
+.stock-trend { width: 96px; }
+.stock-trade { border-top: 1px solid var(--line); }
+.stock-trade-actions { display: flex; gap: 6px; margin-top: 16px; }
 .reel-row { display: flex; gap: 8px; margin: 8px 0 4px; }
 .reel { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); font-size: 1.35rem; }
 

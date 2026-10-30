@@ -13,6 +13,7 @@ import {
   type Database,
 } from "@siela/db";
 import type { Logger } from "../lib/logger.js";
+import { MAX_STOCK_SHARES } from "@siela/shared";
 import { AttachmentBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle } from "discord.js";
 import type { ReplyPayload } from "../framework/types.js";
 import { actionRow, card } from "./ui.js";
@@ -39,7 +40,6 @@ const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const STREAK_WINDOW_MS = 36 * 60 * 60 * 1000;
 const DAILY_BASE = 10;
 const STARTING_BALANCE = 50;
-const MAX_STOCK_SHARES = 1_000_000;
 
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
