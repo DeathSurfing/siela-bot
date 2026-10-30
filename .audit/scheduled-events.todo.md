@@ -4,7 +4,7 @@
 - [x] Phase A: Frame the definition of done, scope, blockers, and rigor.
 - [x] Phase B: Design the workflow and write the phase list.
 - [ ] Phase C: Run each unit as an experiment, verify it, and commit only green units.
-- [ ] Phase D: Keep the audit trail current.
+- [x] Phase D: Keep the audit trail current.
 - [ ] Phase E: Verify the full result against the definition of done and hand it back.
 - [x] Unit 1: Add scheduled-event tables, generate and inspect the migration, and add tested YouTube normalization and next-run rules.
 - [x] Unit 2: Add the persisted service methods, playback exclusion, run history, and scheduler execution.
@@ -14,6 +14,7 @@
 - [x] Follow-up: Preserve the existing 20-minute YouTube playback cap while recording actual process and player errors as failures.
 - [x] Unit 4: Add dashboard client, routes, navigation, form, event list, history, built-in phases, and the leaderboard spacing fix.
 - [ ] Unit 5: Add service, control, dashboard, and browser coverage; update docs; run all requested checks.
+- [x] Update dashboard documentation and README tab list with routes, permissions, YouTube-only rules, recurrence, history, and scheduler config.
 - [ ] Headless browser execution: INCONCLUSIVE because Playwright Chromium cannot load the missing system library `libnspr4.so`; the in-app browser is disconnected.
 - [ ] Before every commit, run deslop and inspect the staged diff.
 - [ ] BLOCKED: independent review. The user prohibited spawning subagents.
