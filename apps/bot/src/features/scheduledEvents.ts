@@ -54,6 +54,53 @@ const PHASES: Phase[] = [
 ];
 const TICK_MS = 15_000;
 const RUN_WINDOW_MS = 60_000;
+export type ScheduledEventRepeat = "none" | "daily" | "weekly";
+
+const YOUTUBE_HOSTS = new Set([
+  "youtube.com",
+  "www.youtube.com",
+  "m.youtube.com",
+  "music.youtube.com",
+  "youtu.be",
+]);
+const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+
+export function normalizeYouTubeUrl(raw: string): string {
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    throw new Error("Enter a valid YouTube video URL.");
+  }
+
+  if (!(["http:", "https:"].includes(url.protocol)) || url.username || url.password || url.port || !YOUTUBE_HOSTS.has(url.hostname.toLowerCase())) {
+    throw new Error("Only YouTube video URLs are supported.");
+  }
+
+  const host = url.hostname.toLowerCase();
+  let videoId: string | null = null;
+  if (host === "youtu.be") {
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (parts.length === 1) videoId = parts[0] ?? null;
+  } else if (url.pathname === "/watch") {
+    const ids = url.searchParams.getAll("v");
+    if (ids.length === 1) videoId = ids[0] ?? null;
+  } else {
+    const match = url.pathname.match(/^\/(?:shorts|live|embed)\/([^/]+)$/);
+    videoId = match?.[1] ?? null;
+  }
+
+  if (!videoId || !VIDEO_ID.test(videoId)) throw new Error("Enter a YouTube video URL with a valid video ID.");
+  return `https://www.youtube.com/watch?v=${videoId}`;
+}
+
+export function nextScheduledRun(from: Date, repeat: ScheduledEventRepeat, now: Date): Date | null {
+  if (repeat === "none") return null;
+  const intervalMs = repeat === "daily" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+  const elapsed = now.getTime() - from.getTime();
+  const intervals = Math.max(0, Math.floor(elapsed / intervalMs) + 1);
+  return new Date(from.getTime() + intervals * intervalMs);
+}
 
 function delhiDate(date = new Date()): string {
   const parts = new Intl.DateTimeFormat("en-GB", {
