@@ -21,6 +21,7 @@ import {
   type Database,
   type ScheduledVoiceEventRow,
 } from "@siela/db";
+import { NotFoundError, ServiceUnavailableError, UserError } from "../lib/errors.js";
 import type { Logger } from "../lib/logger.js";
 import type { MusicService } from "./music.js";
 
@@ -151,6 +152,14 @@ function scheduledStart(startAt: Date, repeat: ScheduledEventRepeat, now: Date):
   return repeat === "none" ? startAt : nextScheduledRun(startAt, repeat, now);
 }
 
+function eventSource(raw: string): string {
+  try {
+    return normalizeYouTubeUrl(raw);
+  } catch (error) {
+    throw new UserError(error instanceof Error ? error.message : String(error), "invalid_source_url");
+  }
+}
+
 function scheduledRepeat(value: string): ScheduledEventRepeat {
   if (value === "none" || value === "daily" || value === "weekly") return value;
   throw new Error(`Unknown scheduled event repeat: ${value}`);
@@ -253,7 +262,7 @@ export class ScheduledEventService {
   }
 
   private database(): Database {
-    if (!this.db) throw new Error("Scheduled event storage is not ready.");
+    if (!this.db) throw new ServiceUnavailableError("Scheduled event storage is not ready.");
     return this.db;
   }
 
@@ -263,7 +272,7 @@ export class ScheduledEventService {
       .from(scheduledVoiceEvents)
       .where(and(eq(scheduledVoiceEvents.guildId, guildId), eq(scheduledVoiceEvents.id, id)))
       .limit(1);
-    if (!event) throw new Error("Scheduled event was not found.");
+    if (!event) throw new NotFoundError("Scheduled event was not found.");
     return event;
   }
 
@@ -309,7 +318,7 @@ export class ScheduledEventService {
         guildId,
         name: input.name.trim(),
         channelId: input.channelId,
-        sourceUrl: normalizeYouTubeUrl(input.sourceUrl),
+        sourceUrl: eventSource(input.sourceUrl),
         repeat: input.repeat,
         enabled: input.enabled,
         startAt: input.startAt,
@@ -342,7 +351,7 @@ export class ScheduledEventService {
       .set({
         ...(input.name !== undefined ? { name: input.name.trim() } : {}),
         ...(input.channelId !== undefined ? { channelId: input.channelId } : {}),
-        ...(input.sourceUrl !== undefined ? { sourceUrl: normalizeYouTubeUrl(input.sourceUrl) } : {}),
+        ...(input.sourceUrl !== undefined ? { sourceUrl: eventSource(input.sourceUrl) } : {}),
         ...(input.repeat !== undefined ? { repeat: input.repeat } : {}),
         ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
         ...(input.startAt !== undefined ? { startAt: input.startAt } : {}),
@@ -351,7 +360,7 @@ export class ScheduledEventService {
       })
       .where(and(eq(scheduledVoiceEvents.guildId, guildId), eq(scheduledVoiceEvents.id, id)))
       .returning();
-    if (!event) throw new Error("Scheduled event was not found.");
+    if (!event) throw new NotFoundError("Scheduled event was not found.");
     return eventView(event);
   }
 
@@ -365,14 +374,14 @@ export class ScheduledEventService {
 
   async runNow(guildId: string, id: number, triggeredBy: string): Promise<ScheduledEventRunView> {
     if (this.runningGuilds.has(guildId) || this.isVoiceBusy?.(guildId)) {
-      throw new Error("A voice event is already running in this server.");
+      throw new UserError("A voice event is already running in this server.", "voice_busy");
     }
     const guild = this.guilds.get(guildId);
-    if (!guild) throw new Error("The bot is not connected to this server.");
+    if (!guild) throw new ServiceUnavailableError("The bot is not connected to this server.");
     this.runningGuilds.add(guildId);
     try {
       if (this.isEnabled && !(await this.isEnabled(guildId))) {
-        throw new Error("Scheduled events are turned off on this server.");
+        throw new UserError("Scheduled events are turned off on this server.", "feature_disabled");
       }
       const event = await this.eventFor(guildId, id);
       return await this.recordAndExecute(guild, event, triggeredBy);
@@ -383,7 +392,7 @@ export class ScheduledEventService {
 
   private validateStartAt(startAt: Date, now: Date): void {
     if (Number.isNaN(startAt.getTime()) || startAt.getTime() < now.getTime() - 60_000) {
-      throw new Error("Start time must be in the future or within the last minute.");
+      throw new UserError("Start time must be in the future or within the last minute.", "invalid_start_at");
     }
   }
 

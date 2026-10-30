@@ -33,6 +33,23 @@ interface TestRole {
   name: string;
 }
 
+interface ScheduledTestEvent {
+  id: number;
+  name: string;
+  channelId: string;
+  sourceUrl: string;
+  repeat: "none" | "daily" | "weekly";
+  enabled: boolean;
+  startAt: string;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastStatus: "running" | "success" | "failed" | "skipped" | null;
+  lastError: string | null;
+  runCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface CahStubGame {
   id: string;
   hostId: string;
@@ -95,7 +112,6 @@ function guild(
     }
     return search;
   });
-  const channelsFetch = vi.fn(async (channelId: string) => channel ? { ...channel, id: channelId } : null);
   const channelCache = new Map((options.channels ?? []).map((entry) => [entry.id, {
     id: entry.id,
     name: entry.name,
@@ -103,6 +119,7 @@ function guild(
     guildId: id,
     isTextBased: () => entry.text ?? false,
   }]));
+  const channelsFetch = vi.fn(async (channelId: string) => channelCache.get(channelId) ?? (channel ? { ...channel, id: channelId } : null));
   const roleCache = new Map((options.roles ?? []).map((entry) => [entry.id, { id: entry.id, name: entry.name }]));
   return {
     id,
@@ -135,6 +152,7 @@ function server(options: {
   cahLast?: CahStubGame | null;
   tambolaGame?: TambolaStubGame | null;
   economy?: EconomyStub;
+  scheduledEventsEnabled?: boolean;
 } = {}) {
   const guilds = new Map<string, Guild>([
     [GUILD_A, guild(GUILD_A, "Alpha", options.members ?? [], options.channel, options)],
@@ -180,6 +198,7 @@ function server(options: {
       if (featureId === "games-cah") return options.cahEnabled !== false;
       if (featureId === "games-tambola") return options.tambolaEnabled !== false;
       if (featureId === "economy-core") return options.economyEnabled !== false;
+      if (featureId === "automation-scheduled-events") return options.scheduledEventsEnabled !== false;
       return true;
     },
   };
@@ -200,12 +219,79 @@ function server(options: {
       filter: "off",
     }),
   };
+  const scheduledEventRows = new Map<number, ScheduledTestEvent>();
+  let nextScheduledEventId = 1;
+  const scheduledEvents = {
+    schedulerEnabled: true,
+    builtInPhases: vi.fn(() => [{ key: "azan", channelName: "masjid", source: "azan", youtube: false, offsetMs: 0 }]),
+    list: vi.fn(async () => [...scheduledEventRows.values()]),
+    listRuns: vi.fn(async () => []),
+    create: vi.fn(async (_guildId: string, input: {
+      name: string;
+      channelId: string;
+      sourceUrl: string;
+      startAt: Date;
+      repeat: "none" | "daily" | "weekly";
+      enabled: boolean;
+    }) => {
+      const now = new Date().toISOString();
+      const event: ScheduledTestEvent = {
+        id: nextScheduledEventId++,
+        ...input,
+        startAt: input.startAt.toISOString(),
+        nextRunAt: input.startAt.toISOString(),
+        lastRunAt: null,
+        lastStatus: null,
+        lastError: null,
+        runCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      };
+      scheduledEventRows.set(event.id, event);
+      return event;
+    }),
+    update: vi.fn(async (_guildId: string, id: number, input: Partial<{
+      name: string;
+      channelId: string;
+      sourceUrl: string;
+      startAt: Date;
+      repeat: "none" | "daily" | "weekly";
+      enabled: boolean;
+    }>) => {
+      const current = scheduledEventRows.get(id);
+      if (!current) throw new Error("Scheduled event was not found.");
+      const event: ScheduledTestEvent = {
+        ...current,
+        ...input,
+        startAt: input.startAt?.toISOString() ?? current.startAt,
+        updatedAt: new Date().toISOString(),
+      };
+      scheduledEventRows.set(id, event);
+      return event;
+    }),
+    remove: vi.fn(async (_guildId: string, id: number) => {
+      const event = scheduledEventRows.get(id);
+      if (!event) throw new Error("Scheduled event was not found.");
+      scheduledEventRows.delete(id);
+      return event;
+    }),
+    runNow: vi.fn(async (_guildId: string, id: number, triggeredBy: string) => ({
+      id: 1,
+      eventName: scheduledEventRows.get(id)?.name ?? "Event",
+      status: "success" as const,
+      triggeredBy,
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      error: null,
+    })),
+  };
   const services = {
     features: featuresStub,
     cah,
     tambola,
     economy,
     music,
+    scheduledEvents,
     audit: {
       log: async (entry: unknown) => { audits.push(entry); },
       tail: async (_guildId: string, limit: number) => (options.auditEntries ?? []).slice(0, limit),
@@ -246,11 +332,11 @@ function server(options: {
     members: { fetch: ReturnType<typeof vi.fn> };
     channels: { fetch: ReturnType<typeof vi.fn> };
   };
-  return { app: instance.instance, audits, memberFetch: guildA.members.fetch, channelFetch: guildA.channels.fetch, cah, tambola, economy, music };
+  return { app: instance.instance, audits, memberFetch: guildA.members.fetch, channelFetch: guildA.channels.fetch, cah, tambola, economy, music, scheduledEvents };
 }
 
 const auth = { authorization: `Bearer ${TOKEN}` };
-const asUser = (id: string) => ({ ...auth, "x-user-id": id });
+const asUser = (id: string) => ({ ...auth, "x-user-id": id, "x-guild-id": GUILD_A });
 
 function economyStub(overrides: Partial<EconomyStub> = {}): EconomyStub {
   return {
@@ -979,6 +1065,10 @@ describe("ControlServer game tabs", () => {
     { id: MEMBER_USER, displayName: "Grace", administrator: false },
     { id: OTHER_USER, displayName: "Linus", administrator: false },
   ];
+  const channels: TestChannel[] = [
+    { id: "333333333333333301", name: "general", type: ChannelType.GuildText, text: true },
+    { id: "333333333333333304", name: "General Voice", type: ChannelType.GuildVoice },
+  ];
 
   it("reports the CAH feature flag and the redacted state", async () => {
     const { app } = server({ cahGame, cahEnabled: false });
@@ -1217,5 +1307,117 @@ describe("ControlServer game tabs", () => {
     expect(response.statusCode).toBe(400);
     expect(response.json().error.code).toBe("feature_disabled");
     expect(economy.spend).not.toHaveBeenCalled();
+  });
+
+  it("returns event state only when x-guild-id is explicit", async () => {
+    const { app } = server({ members });
+    const missingGuild = await app.inject({ method: "GET", url: "/v1/events", headers: auth });
+    const state = await app.inject({ method: "GET", url: "/v1/events", headers: asUser(MEMBER_USER) });
+
+    expect(missingGuild.statusCode).toBe(400);
+    expect(missingGuild.json().error.code).toBe("guild_required");
+    expect(state.statusCode).toBe(200);
+    expect(state.json()).toMatchObject({ enabled: true, schedulerEnabled: true, events: [], runs: [], builtIn: [{ key: "azan" }] });
+  });
+
+  it.each([
+    ["POST", "/v1/events", { name: "Event", channelId: "333333333333333304", sourceUrl: "https://youtu.be/abcdefghijk", startAt: new Date(Date.now() + 60_000).toISOString(), repeat: "none" }],
+    ["PATCH", "/v1/events/1", { name: "Updated" }],
+    ["DELETE", "/v1/events/1", undefined],
+    ["POST", "/v1/events/1/run", undefined],
+  ] as const)("requires a live Administrator for %s %s", async (method, url, payload) => {
+    const { app, scheduledEvents } = server({ members });
+    const response = await app.inject({ method, url, headers: asUser(MEMBER_USER), ...(payload ? { payload } : {}) });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("forbidden");
+    expect(scheduledEvents.create).not.toHaveBeenCalled();
+    expect(scheduledEvents.update).not.toHaveBeenCalled();
+    expect(scheduledEvents.remove).not.toHaveBeenCalled();
+    expect(scheduledEvents.runNow).not.toHaveBeenCalled();
+  });
+
+  it("validates voice-channel ownership and strict event bodies", async () => {
+    const { app, scheduledEvents } = server({ members, channels });
+    const badChannel = await app.inject({
+      method: "POST",
+      url: "/v1/events",
+      headers: asUser(ADMIN_USER),
+      payload: {
+        name: "Event",
+        channelId: "333333333333333301",
+        sourceUrl: "https://youtu.be/abcdefghijk",
+        startAt: new Date(Date.now() + 60_000).toISOString(),
+        repeat: "none",
+      },
+    });
+    const extraField = await app.inject({
+      method: "POST",
+      url: "/v1/events",
+      headers: asUser(ADMIN_USER),
+      payload: {
+        name: "Event",
+        channelId: "333333333333333304",
+        sourceUrl: "https://youtu.be/abcdefghijk",
+        startAt: new Date(Date.now() + 60_000).toISOString(),
+        repeat: "none",
+        private: true,
+      },
+    });
+
+    expect(badChannel.statusCode).toBe(400);
+    expect(badChannel.json().error.code).toBe("invalid_voice_channel");
+    expect(extraField.statusCode).toBe(400);
+    expect(extraField.json().error.code).toBe("validation_error");
+    expect(scheduledEvents.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses manual event runs while the feature is off", async () => {
+    const { app, scheduledEvents } = server({ members, scheduledEventsEnabled: false });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/events/1/run",
+      headers: asUser(ADMIN_USER),
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("feature_disabled");
+    expect(scheduledEvents.runNow).not.toHaveBeenCalled();
+  });
+
+  it("audits event creation, edits, manual runs, and deletion", async () => {
+    const { app, audits, scheduledEvents } = server({ members, channels });
+    const headers = asUser(ADMIN_USER);
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/events",
+      headers,
+      payload: {
+        name: "  Morning  ",
+        channelId: "333333333333333304",
+        sourceUrl: "https://youtu.be/abcdefghijk",
+        startAt: new Date(Date.now() + 60_000).toISOString(),
+        repeat: "daily",
+      },
+    });
+    const updated = await app.inject({ method: "PATCH", url: "/v1/events/1", headers, payload: { enabled: false } });
+    const ran = await app.inject({ method: "POST", url: "/v1/events/1/run", headers });
+    const deleted = await app.inject({ method: "DELETE", url: "/v1/events/1", headers });
+
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({ enabled: true, events: [{ name: "Morning" }] });
+    expect(updated.statusCode).toBe(200);
+    expect(ran.statusCode).toBe(200);
+    expect(deleted.statusCode).toBe(200);
+    expect(scheduledEvents.create).toHaveBeenCalledWith(GUILD_A, expect.objectContaining({ enabled: true }), ADMIN_USER);
+    expect(scheduledEvents.update).toHaveBeenCalledWith(GUILD_A, 1, { enabled: false }, ADMIN_USER);
+    expect(scheduledEvents.runNow).toHaveBeenCalledWith(GUILD_A, 1, ADMIN_USER);
+    expect(audits.map((entry) => (entry as { action: string }).action)).toEqual([
+      "scheduled_event.create",
+      "scheduled_event.update",
+      "scheduled_event.run",
+      "scheduled_event.delete",
+    ]);
+    expect(audits[0]).toMatchObject({ actorId: ADMIN_USER, targetType: "scheduled_event", before: null });
   });
 });

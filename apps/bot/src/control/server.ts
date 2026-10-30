@@ -33,6 +33,8 @@ import {
   prefixSetSchema,
   privacyDeleteSchema,
   resolveQuerySchema,
+  scheduledEventCreateSchema,
+  scheduledEventUpdateSchema,
   snowflakeSchema,
   stockTradeSchema,
   tambolaGameActionSchema,
@@ -45,6 +47,7 @@ import {
   type ResolveKind,
 } from "@siela/shared";
 import type { Services } from "../framework/types.js";
+import type { ScheduledEventView } from "../features/scheduledEvents.js";
 import type { Logger } from "../lib/logger.js";
 import { UserError, errorMessage } from "../lib/errors.js";
 import { playCoinflip, playSlots } from "../features/casino.js";
@@ -289,6 +292,51 @@ export class ControlServer {
     this.route("GET", "/v1/resolve", async (request) => {
       const query = this.parse(resolveQuerySchema, request.query);
       return { results: await this.resolveNames(this.guild(request), query) };
+    });
+
+    this.route("GET", "/v1/events", async (request) => {
+      return this.scheduledEventState(this.scheduledGuildId(request));
+    });
+    this.route("POST", "/v1/events", async (request) => {
+      const guildId = this.scheduledGuildId(request);
+      const actor = await this.requireAdministrator(request);
+      const input = this.parse(scheduledEventCreateSchema, request.body);
+      await this.validateScheduledChannel(this.guild(request), input.channelId);
+      const event = await services.scheduledEvents.create(guildId, input, actor.id);
+      await this.auditScheduledEvent(request, guildId, actor.id, "create", event.id, null, event);
+      return this.scheduledEventState(guildId);
+    });
+    this.route("PATCH", "/v1/events/:id", async (request) => {
+      const guildId = this.scheduledGuildId(request);
+      const actor = await this.requireAdministrator(request);
+      const id = this.scheduledEventId(request);
+      const input = this.parse(scheduledEventUpdateSchema, request.body);
+      if (input.channelId !== undefined) await this.validateScheduledChannel(this.guild(request), input.channelId);
+      const before = (await services.scheduledEvents.list(guildId)).find((event) => event.id === id) ?? null;
+      const event = await services.scheduledEvents.update(guildId, id, input, actor.id);
+      await this.auditScheduledEvent(request, guildId, actor.id, "update", id, before, event);
+      return this.scheduledEventState(guildId);
+    });
+    this.route("DELETE", "/v1/events/:id", async (request) => {
+      const guildId = this.scheduledGuildId(request);
+      const actor = await this.requireAdministrator(request);
+      const id = this.scheduledEventId(request);
+      const event = await services.scheduledEvents.remove(guildId, id);
+      await this.auditScheduledEvent(request, guildId, actor.id, "delete", id, event, null);
+      return this.scheduledEventState(guildId);
+    });
+    this.route("POST", "/v1/events/:id/run", async (request) => {
+      const guildId = this.scheduledGuildId(request);
+      const actor = await this.requireAdministrator(request);
+      const id = this.scheduledEventId(request);
+      if (!(await services.features.isEnabled(guildId, "automation-scheduled-events"))) {
+        throw new UserError("Scheduled events are turned off on this server.", "feature_disabled");
+      }
+      const before = (await services.scheduledEvents.list(guildId)).find((event) => event.id === id) ?? null;
+      await services.scheduledEvents.runNow(guildId, id, actor.id);
+      const after = (await services.scheduledEvents.list(guildId)).find((event) => event.id === id) ?? null;
+      await this.auditScheduledEvent(request, guildId, actor.id, "run", id, before, after);
+      return this.scheduledEventState(guildId);
     });
 
     this.route("GET", "/v1/features", async (request) => {
@@ -954,6 +1002,91 @@ export class ControlServer {
 
   private administrator(member: GuildMember): boolean {
     return member.permissions.has(PermissionsBitField.Flags.Administrator);
+  }
+
+  private async requireAdministrator(request: FastifyRequest): Promise<GuildMember> {
+    const member = await this.controlMember(request);
+    if (!this.administrator(member)) {
+      throw new UserError("Only a server Administrator can change scheduled events.", "forbidden");
+    }
+    return member;
+  }
+
+  private scheduledGuildId(request: FastifyRequest): string {
+    const header = snowflakeSchema.safeParse(request.headers["x-guild-id"]);
+    if (!header.success) throw new UserError("Provide a valid x-guild-id header.", "guild_required");
+    return this.guildId(request);
+  }
+
+  private scheduledEventId(request: FastifyRequest): number {
+    const raw = (request.params as { id?: string }).id;
+    const id = Number(raw);
+    if (!raw || !Number.isSafeInteger(id) || id < 1) {
+      throw new UserError("Provide a valid scheduled event ID.", "invalid_event_id");
+    }
+    return id;
+  }
+
+  private async validateScheduledChannel(guild: Guild, channelId: string): Promise<void> {
+    const channel = await guild.channels.fetch(channelId);
+    if (!channel || channel.guildId !== guild.id || channel.type !== ChannelType.GuildVoice) {
+      throw new UserError("Choose a voice channel from this server.", "invalid_voice_channel");
+    }
+  }
+
+  private async scheduledEventState(guildId: string) {
+    const { features, scheduledEvents } = this.options.services;
+    const [enabled, events, runs] = await Promise.all([
+      features.isEnabled(guildId, "automation-scheduled-events"),
+      scheduledEvents.list(guildId),
+      scheduledEvents.listRuns(guildId),
+    ]);
+    return {
+      enabled,
+      schedulerEnabled: scheduledEvents.schedulerEnabled,
+      events,
+      runs,
+      builtIn: scheduledEvents.builtInPhases(),
+    };
+  }
+
+  private eventAuditSnapshot(event: ScheduledEventView) {
+    return {
+      id: event.id,
+      name: event.name,
+      channelId: event.channelId,
+      sourceUrl: event.sourceUrl,
+      repeat: event.repeat,
+      enabled: event.enabled,
+      startAt: event.startAt,
+      nextRunAt: event.nextRunAt,
+      lastRunAt: event.lastRunAt,
+      lastStatus: event.lastStatus,
+      runCount: event.runCount,
+    };
+  }
+
+  private async auditScheduledEvent(
+    request: FastifyRequest,
+    guildId: string,
+    actorId: string,
+    action: string,
+    eventId: number,
+    before: ScheduledEventView | null,
+    after: ScheduledEventView | null,
+  ): Promise<void> {
+    await this.options.services.audit.log({
+      guildId,
+      actorId,
+      actorType: "user",
+      source: "control",
+      action: `scheduled_event.${action}`,
+      targetType: "scheduled_event",
+      targetId: String(eventId),
+      before: before ? this.eventAuditSnapshot(before) : null,
+      after: after ? this.eventAuditSnapshot(after) : null,
+      requestId: this.requestId(request),
+    });
   }
 
   private async requireCah(guildId: string): Promise<void> {
