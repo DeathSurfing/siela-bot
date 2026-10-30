@@ -20,6 +20,7 @@ export const state = {
   casinoResult: null,
   casinoPending: null,
   casinoBusy: false,
+  economyBusy: false,
 };
 
 export function updateState(patch) {

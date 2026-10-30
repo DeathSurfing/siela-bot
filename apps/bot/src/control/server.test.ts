@@ -45,7 +45,18 @@ interface TambolaStubGame {
 }
 
 interface EconomyStub {
-  getBalance: (guildId: string, userId: string) => Promise<{ balance: number }>;
+  getBalance: (guildId: string, userId: string) => Promise<{
+    balance: number;
+    lastDailyAt: Date | null;
+    lastWorkAt: Date | null;
+    dailyStreak: number;
+    totalEarned: number;
+    totalSpent: number;
+  }>;
+  getRank: (guildId: string, userId: string) => Promise<number>;
+  leaderboard: (guildId: string, limit: number) => Promise<Array<{ userId: string; balance: number }>>;
+  daily: (guildId: string, userId: string) => Promise<{ amount: number; streak: number; nextAt: Date }>;
+  work: (guildId: string, userId: string) => Promise<{ amount: number; nextAt: Date }>;
   spend: (...args: unknown[]) => Promise<unknown>;
   award: (...args: unknown[]) => Promise<unknown>;
 }
@@ -126,7 +137,11 @@ function server(options: {
   const audits: unknown[] = [];
   const birthdays = new Map<string, Record<string, unknown>>();
   const economy = options.economy ?? {
-    getBalance: vi.fn(async () => ({ balance: 500 })),
+    getBalance: vi.fn(async () => ({ balance: 500, lastDailyAt: null, lastWorkAt: null, dailyStreak: 0, totalEarned: 0, totalSpent: 0 })),
+    getRank: vi.fn(async () => 1),
+    leaderboard: vi.fn(async () => []),
+    daily: vi.fn(async () => ({ amount: 10, streak: 1, nextAt: new Date("2026-10-31T00:00:00.000Z") })),
+    work: vi.fn(async () => ({ amount: 5, nextAt: new Date("2026-10-30T10:00:00.000Z") })),
     spend: vi.fn(async () => undefined),
     award: vi.fn(async () => ({ amount: 0, duplicate: false })),
   };
@@ -212,6 +227,26 @@ function server(options: {
 
 const auth = { authorization: `Bearer ${TOKEN}` };
 const asUser = (id: string) => ({ ...auth, "x-user-id": id });
+
+function economyStub(overrides: Partial<EconomyStub> = {}): EconomyStub {
+  return {
+    getBalance: vi.fn(async () => ({
+      balance: 500,
+      lastDailyAt: null,
+      lastWorkAt: null,
+      dailyStreak: 0,
+      totalEarned: 0,
+      totalSpent: 0,
+    })),
+    getRank: vi.fn(async () => 1),
+    leaderboard: vi.fn(async () => []),
+    daily: vi.fn(async () => ({ amount: 10, streak: 1, nextAt: new Date("2026-10-31T00:00:00.000Z") })),
+    work: vi.fn(async () => ({ amount: 5, nextAt: new Date("2026-10-30T10:00:00.000Z") })),
+    spend: vi.fn(async () => undefined),
+    award: vi.fn(async () => ({ amount: 0, duplicate: false })),
+    ...overrides,
+  };
+}
 
 describe("ControlServer guild scoping", () => {
   it("rejects a request without the control token", async () => {
@@ -388,6 +423,151 @@ describe("ControlServer name resolution", () => {
     expect(empty.statusCode).toBe(400);
     expect(empty.json().error.code).toBe("validation_error");
     expect(kind.statusCode).toBe(400);
+  });
+});
+
+describe("ControlServer economy member routes", () => {
+  it("returns the caller's balance, streak, totals, and ready times", async () => {
+    const lastDaily = new Date(Date.now() - 60_000);
+    const economy = economyStub({
+      getBalance: vi.fn(async () => ({
+        balance: 750,
+        lastDailyAt: lastDaily,
+        lastWorkAt: null,
+        dailyStreak: 4,
+        totalEarned: 900,
+        totalSpent: 150,
+      })),
+    });
+    const { app } = server({ economy, members: [{ id: MEMBER_USER, displayName: "Grace", administrator: false }] });
+    const response = await app.inject({ method: "GET", url: "/v1/economy/state", headers: asUser(MEMBER_USER) });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      enabled: true,
+      balance: 750,
+      dailyStreak: 4,
+      lastDailyAt: lastDaily.toISOString(),
+      lastWorkAt: null,
+      dailyReadyAt: new Date(lastDaily.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      workReadyAt: null,
+      totalEarned: 900,
+      totalSpent: 150,
+    });
+    expect(economy.getBalance).toHaveBeenCalledWith(GUILD_A, MEMBER_USER);
+  });
+
+  it("gates state, daily, and work on the economy feature", async () => {
+    const { app } = server({ economyEnabled: false });
+    const state = await app.inject({ method: "GET", url: "/v1/economy/state", headers: asUser(MEMBER_USER) });
+    const daily = await app.inject({ method: "POST", url: "/v1/economy/daily", headers: asUser(MEMBER_USER), payload: {} });
+    const work = await app.inject({ method: "POST", url: "/v1/economy/work", headers: asUser(MEMBER_USER), payload: {} });
+
+    expect(state.json()).toEqual({ enabled: false });
+    expect(daily.statusCode).toBe(400);
+    expect(daily.json().error.code).toBe("feature_disabled");
+    expect(work.statusCode).toBe(400);
+    expect(work.json().error.code).toBe("feature_disabled");
+  });
+
+  it("claims daily and work for the header user, never a body user", async () => {
+    const economy = economyStub();
+    const { app } = server({ economy });
+    const daily = await app.inject({
+      method: "POST",
+      url: "/v1/economy/daily",
+      headers: asUser(MEMBER_USER),
+      payload: { userId: ADMIN_USER },
+    });
+    const work = await app.inject({
+      method: "POST",
+      url: "/v1/economy/work",
+      headers: asUser(MEMBER_USER),
+      payload: { userId: ADMIN_USER },
+    });
+
+    expect(daily.statusCode).toBe(200);
+    expect(daily.json()).toEqual({
+      amount: 10,
+      streak: 1,
+      nextAt: "2026-10-31T00:00:00.000Z",
+      balance: 500,
+    });
+    expect(work.statusCode).toBe(200);
+    expect(work.json()).toEqual({ amount: 5, nextAt: "2026-10-30T10:00:00.000Z", balance: 500 });
+    expect(economy.daily).toHaveBeenCalledWith(GUILD_A, MEMBER_USER);
+    expect(economy.work).toHaveBeenCalledWith(GUILD_A, MEMBER_USER);
+    expect(economy.daily).not.toHaveBeenCalledWith(GUILD_A, ADMIN_USER);
+  });
+
+  it("maps cooldown errors to a message with the ready time", async () => {
+    const economy = economyStub({
+      daily: vi.fn(async () => { throw new Error("DAILY_COOLDOWN:2026-10-31T07:00:00.000Z"); }),
+      work: vi.fn(async () => { throw new Error("WORK_COOLDOWN:2026-10-30T09:30:00.000Z"); }),
+    });
+    const { app } = server({ economy });
+    const daily = await app.inject({ method: "POST", url: "/v1/economy/daily", headers: asUser(MEMBER_USER), payload: {} });
+    const work = await app.inject({ method: "POST", url: "/v1/economy/work", headers: asUser(MEMBER_USER), payload: {} });
+
+    expect(daily.statusCode).toBe(400);
+    expect(daily.json().error.code).toBe("daily_cooldown");
+    expect(daily.json().error.message).toMatch(/Try again at .*2026/);
+    expect(work.statusCode).toBe(400);
+    expect(work.json().error.code).toBe("work_cooldown");
+    expect(work.json().error.message).toMatch(/Try again at .*2026/);
+  });
+
+  it("assembles leaderboard names, rank, and a fallback for an unknown member", async () => {
+    const economy = economyStub({
+      getBalance: vi.fn(async () => ({
+        balance: 500,
+        lastDailyAt: null,
+        lastWorkAt: null,
+        dailyStreak: 0,
+        totalEarned: 0,
+        totalSpent: 0,
+      })),
+      getRank: vi.fn(async () => 2),
+      leaderboard: vi.fn(async () => [
+        { userId: MEMBER_USER, balance: 900 },
+        { userId: ADMIN_USER, balance: 500 },
+        { userId: UNKNOWN_USER, balance: 100 },
+      ]),
+    });
+    const { app, memberFetch } = server({
+      economy,
+      members: [
+        { id: MEMBER_USER, displayName: "Grace", administrator: false },
+        { id: ADMIN_USER, displayName: "Ada", administrator: true },
+      ],
+    });
+    const response = await app.inject({ method: "GET", url: "/v1/economy/leaderboard?limit=25", headers: asUser(MEMBER_USER) });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      enabled: true,
+      entries: [
+        { rank: 1, userId: MEMBER_USER, name: "Grace", balance: 900 },
+        { rank: 2, userId: ADMIN_USER, name: "Ada", balance: 500 },
+        { rank: 3, userId: UNKNOWN_USER, name: UNKNOWN_USER, balance: 100 },
+      ],
+      me: { rank: 2, balance: 500 },
+    });
+    expect(economy.leaderboard).toHaveBeenCalledWith(GUILD_A, 25);
+    expect(memberFetch).toHaveBeenCalledWith({ user: [UNKNOWN_USER] });
+  });
+
+  it("returns an empty leaderboard when the economy is off", async () => {
+    const { app } = server({ economyEnabled: false });
+    const response = await app.inject({ method: "GET", url: "/v1/economy/leaderboard", headers: asUser(MEMBER_USER) });
+    expect(response.json()).toEqual({ enabled: false, entries: [], me: null });
+  });
+
+  it("rejects a leaderboard limit outside 1 to 50", async () => {
+    const { app } = server();
+    const response = await app.inject({ method: "GET", url: "/v1/economy/leaderboard?limit=0", headers: asUser(MEMBER_USER) });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("validation_error");
   });
 });
 

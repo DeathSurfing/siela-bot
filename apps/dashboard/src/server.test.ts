@@ -64,6 +64,9 @@ function controlStub(overrides: Partial<ControlClient> = {}): ControlClient {
     tambolaAction: vi.fn().mockResolvedValue({ enabled: true, game: null }),
     casinoState: vi.fn().mockResolvedValue({ enabled: true, balance: 500, maxBet: 10_000 }),
     casinoPlay: vi.fn().mockResolvedValue({ enabled: true, balance: 500, game: "coinflip", payout: 0 }),
+    economyState: vi.fn().mockResolvedValue({ enabled: true, balance: 500 }),
+    economyAction: vi.fn().mockResolvedValue({ amount: 10, balance: 510 }),
+    economyLeaderboard: vi.fn().mockResolvedValue({ enabled: true, entries: [], me: { rank: 1, balance: 500 } }),
     ...overrides,
   };
 }
@@ -509,7 +512,8 @@ describe("dashboard resolver proxy", () => {
   });
 });
 
-describe("dashboard game routes", () => {  it("reads CAH and Tambola state for any signed-in session", async () => {
+describe("dashboard game routes", () => {
+  it("reads CAH and Tambola state for any signed-in session", async () => {
     const control = controlStub();
     const app = createDashboardServer({ config, publicDir, control });
     const cah = await app.inject({ method: "GET", url: "/api/guilds/123/cah", headers: sessionHeaders() });
@@ -647,6 +651,66 @@ describe("dashboard game routes", () => {  it("reads CAH and Tambola state for a
     expect(invalid.statusCode).toBe(400);
     expect(invalid.json().error.code).toBe("invalid_body");
     expect(control.casinoPlay).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+});
+
+describe("dashboard economy member routes", () => {
+  it("reads economy state and the leaderboard for the session user", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders(owner);
+    const state = await app.inject({ method: "GET", url: "/api/guilds/123/economy", headers });
+    const board = await app.inject({ method: "GET", url: "/api/guilds/123/leaderboard", headers });
+
+    expect(state.statusCode).toBe(200);
+    expect(state.json()).toEqual({ enabled: true, balance: 500 });
+    expect(control.economyState).toHaveBeenCalledWith("123", owner.id);
+    expect(board.statusCode).toBe(200);
+    expect(control.economyLeaderboard).toHaveBeenCalledWith("123", owner.id);
+    await app.close();
+  });
+
+  it("runs daily and work for the session user and requires CSRF", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders(owner);
+    const daily = await app.inject({ method: "POST", url: "/api/guilds/123/economy/daily", headers, payload: {} });
+    const work = await app.inject({ method: "POST", url: "/api/guilds/123/economy/work", headers, payload: {} });
+    const noCsrf = await app.inject({
+      method: "POST",
+      url: "/api/guilds/123/economy/daily",
+      headers: { cookie: headers.cookie },
+      payload: {},
+    });
+    const unknown = await app.inject({ method: "POST", url: "/api/guilds/123/economy/gamble", headers, payload: {} });
+
+    expect(daily.statusCode).toBe(200);
+    expect(work.statusCode).toBe(200);
+    expect(control.economyAction).toHaveBeenCalledWith("123", "daily", owner.id);
+    expect(control.economyAction).toHaveBeenCalledWith("123", "work", owner.id);
+    expect(noCsrf.statusCode).toBe(403);
+    expect(noCsrf.json().error.code).toBe("csrf_mismatch");
+    expect(unknown.statusCode).toBe(404);
+    expect(control.economyAction).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+
+  it("requires a Discord identity for every economy route", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const headers = sessionHeaders({ id: "operator", name: "Operator", avatarUrl: null });
+    const state = await app.inject({ method: "GET", url: "/api/guilds/123/economy", headers });
+    const daily = await app.inject({ method: "POST", url: "/api/guilds/123/economy/daily", headers, payload: {} });
+    const board = await app.inject({ method: "GET", url: "/api/guilds/123/leaderboard", headers });
+
+    expect(state.statusCode).toBe(403);
+    expect(state.json().error.code).toBe("discord_account_required");
+    expect(daily.statusCode).toBe(403);
+    expect(board.statusCode).toBe(403);
+    expect(control.economyState).not.toHaveBeenCalled();
+    expect(control.economyAction).not.toHaveBeenCalled();
+    expect(control.economyLeaderboard).not.toHaveBeenCalled();
     await app.close();
   });
 });

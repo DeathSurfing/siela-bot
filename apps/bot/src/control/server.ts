@@ -66,6 +66,9 @@ type Handler = (request: FastifyRequest, reply: FastifyReply) => Promise<unknown
 
 const SNOWFLAKE = /^\d{17,20}$/;
 const AUDIT_ACTOR_FETCH_LIMIT = 10;
+const ECONOMY_DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const ECONOMY_WORK_COOLDOWN_MS = 2 * 60 * 60 * 1000;
+const ECONOMY_MEMBER_FETCH_LIMIT = 10;
 
 const RESOLVE_KIND_ORDER: Record<ResolveKind, number> = { channel: 0, voice: 1, role: 2, user: 3 };
 
@@ -754,6 +757,60 @@ export class ControlServer {
       return { enabled: true, maxBet: MAX_CASINO_BET, ...result };
     });
 
+    this.route("GET", "/v1/economy/state", async (request) => {
+      return this.economyState(this.guildId(request), this.userId(request));
+    });
+    this.route("POST", "/v1/economy/daily", async (request) => {
+      const guildId = this.guildId(request);
+      const userId = this.userId(request);
+      await this.requireEconomy(guildId);
+      const claim = await services.economy.daily(guildId, userId).catch((error) => {
+        throw this.cooldownError(error, "daily_cooldown", "DAILY_COOLDOWN", "You already claimed today's reward.");
+      });
+      const balance = await services.economy.getBalance(guildId, userId);
+      return { amount: claim.amount, streak: claim.streak, nextAt: claim.nextAt.toISOString(), balance: balance.balance };
+    });
+    this.route("POST", "/v1/economy/work", async (request) => {
+      const guildId = this.guildId(request);
+      const userId = this.userId(request);
+      await this.requireEconomy(guildId);
+      const shift = await services.economy.work(guildId, userId).catch((error) => {
+        throw this.cooldownError(error, "work_cooldown", "WORK_COOLDOWN", "You already worked a shift.");
+      });
+      const balance = await services.economy.getBalance(guildId, userId);
+      return { amount: shift.amount, nextAt: shift.nextAt.toISOString(), balance: balance.balance };
+    });
+    this.route("GET", "/v1/economy/leaderboard", async (request) => {
+      const guildId = this.guildId(request);
+      const userId = this.userId(request);
+      const query = request.query as { limit?: string };
+      const limit = query.limit === undefined ? 25 : Number(query.limit);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+        throw new UserError("Leaderboard limit must be between 1 and 50.", "validation_error");
+      }
+      if (!(await services.features.isEnabled(guildId, "economy-core"))) {
+        return { enabled: false, entries: [], me: null };
+      }
+      const rows = await services.economy.leaderboard(guildId, limit);
+      const guild = this.guild(request);
+      const missing = rows
+        .filter((row) => !guild.members.cache.has(row.userId))
+        .map((row) => row.userId)
+        .slice(0, ECONOMY_MEMBER_FETCH_LIMIT);
+      if (missing.length) await guild.members.fetch({ user: missing }).catch(() => undefined);
+      const entries = rows.map((row, index) => ({
+        rank: index + 1,
+        userId: row.userId,
+        name: guild.members.cache.get(row.userId)?.displayName ?? row.userId,
+        balance: row.balance,
+      }));
+      const [balance, rank] = await Promise.all([
+        services.economy.getBalance(guildId, userId),
+        services.economy.getRank(guildId, userId),
+      ]);
+      return { enabled: true, entries, me: { rank, balance: balance.balance } };
+    });
+
     this.route("POST", "/v1/messages", async (request) => {
       const body = this.parse(messageSendSchema, request.body);
       const channel = await this.options.client.channels.fetch(body.channelId).catch(() => null);
@@ -861,6 +918,38 @@ export class ControlServer {
     if (!(await this.options.services.features.isEnabled(guildId, "economy-core"))) {
       throw new UserError("The economy is turned off on this server.", "feature_disabled");
     }
+  }
+
+  private async economyState(guildId: string, userId: string) {
+    if (!(await this.options.services.features.isEnabled(guildId, "economy-core"))) return { enabled: false };
+    const balance = await this.options.services.economy.getBalance(guildId, userId);
+    const now = Date.now();
+    return {
+      enabled: true,
+      balance: balance.balance,
+      dailyStreak: balance.dailyStreak,
+      lastDailyAt: balance.lastDailyAt?.toISOString() ?? null,
+      lastWorkAt: balance.lastWorkAt?.toISOString() ?? null,
+      dailyReadyAt: this.readyAt(balance.lastDailyAt, ECONOMY_DAILY_COOLDOWN_MS, now),
+      workReadyAt: this.readyAt(balance.lastWorkAt, ECONOMY_WORK_COOLDOWN_MS, now),
+      totalEarned: balance.totalEarned,
+      totalSpent: balance.totalSpent,
+    };
+  }
+
+  private readyAt(last: Date | null, cooldownMs: number, now: number): string | null {
+    if (!last) return null;
+    const readyAt = last.getTime() + cooldownMs;
+    return readyAt > now ? new Date(readyAt).toISOString() : null;
+  }
+
+  private cooldownError(error: unknown, code: string, prefix: string, message: string): Error {
+    const raw = errorMessage(error);
+    if (!raw.startsWith(`${prefix}:`)) return error instanceof Error ? error : new Error(raw);
+    const readyAt = new Date(raw.slice(prefix.length + 1));
+    if (Number.isNaN(readyAt.getTime())) return new UserError(message, code);
+    const when = `${readyAt.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" })} UTC`;
+    return new UserError(`${message} Try again at ${when}.`, code);
   }
 
   private async cahState(guildId: string) {

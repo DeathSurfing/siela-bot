@@ -431,6 +431,13 @@ kbd { min-width: 17px; padding: 1px 4px; border: 1px solid var(--line); border-r
 .casino-result p { margin: 3px 0 0; color: var(--muted); font-size: 0.78rem; }
 .casino-result.is-win h2 { color: var(--ok); }
 .casino-result.is-loss h2 { color: var(--danger); }
+.economy-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.economy-actions { border-top: 1px solid var(--line); }
+.economy-action .settings-heading { align-items: center; }
+.economy-ready { color: var(--quiet); font: 0.7rem/1.4 ui-monospace, monospace; white-space: nowrap; }
+.leaderboard-me { margin: 0 0 18px; color: var(--muted); font-size: 0.8rem; }
+.leaderboard-me strong { color: var(--text); font-weight: 560; }
+tr.is-you td { background: var(--accent-soft); }
 .reel-row { display: flex; gap: 8px; margin: 8px 0 4px; }
 .reel { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); font-size: 1.35rem; }
 
@@ -529,6 +536,7 @@ td code { overflow-wrap: anywhere; }
   .game-main { padding-right: 0; }
   .game-side { margin-top: 28px; padding-top: 28px; padding-left: 0; border-top: 1px solid var(--line); border-left: 0; }
   .casino-forms { grid-template-columns: minmax(0, 1fr); }
+  .economy-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 700px) {

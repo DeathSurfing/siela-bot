@@ -283,6 +283,7 @@ async function loadData(route = currentRoute) {
   state.casinoResult = null;
   state.casinoPending = null;
   state.casinoBusy = false;
+  state.economyBusy = false;
   state.permissions = { administrator: false };
   currentRoute = route;
   updateGuildPicker();
@@ -307,17 +308,23 @@ async function loadData(route = currentRoute) {
       state.data = null;
       statusRequest = api.status();
     } else {
-      const canLoadBirthday = /^\d{17,20}$/.test(state.user?.id ?? "");
+      const canLoadUserData = /^\d{17,20}$/.test(state.user?.id ?? "");
       const loaders = {
         features: () => api.features(route.guildId),
         music: () => api.music(route.guildId),
         cah: () => api.cah(route.guildId),
         tambola: () => api.tambola(route.guildId),
-        casino: () => canLoadBirthday
+        casino: () => canLoadUserData
           ? api.casino(route.guildId)
           : Promise.resolve({ enabled: true, balance: null, maxBet: 10_000, discordRequired: true }),
+        economy: () => canLoadUserData
+          ? api.economy(route.guildId)
+          : Promise.resolve({ enabled: true, discordRequired: true }),
+        leaderboard: () => canLoadUserData
+          ? api.leaderboard(route.guildId)
+          : Promise.resolve({ enabled: true, discordRequired: true, entries: [], me: null }),
         settings: () => api.config(route.guildId),
-        user: () => canLoadBirthday ? api.birthday(route.guildId) : Promise.resolve({ birthday: null }),
+        user: () => canLoadUserData ? api.birthday(route.guildId) : Promise.resolve({ birthday: null }),
         audit: () => api.audit(route.guildId, 50),
         commands: () => api.commands(),
       };
@@ -1032,8 +1039,33 @@ async function playCasino(game, form) {
   }
 }
 
-function readConfigForm(form) {
-  const body = {};
+async function runEconomyAction(action, button) {
+  if (!state.guildId || state.economyBusy) return;
+  const guildId = state.guildId;
+  state.economyBusy = true;
+  button.disabled = true;
+  setInlineFeedback("economy", action === "daily" ? "Claiming your daily reward…" : "Working a shift…");
+  try {
+    const result = await api.economyAction(guildId, action);
+    if (state.view !== "economy" || state.guildId !== guildId) return;
+    const fresh = await api.economy(guildId);
+    state.economyBusy = false;
+    state.data = fresh;
+    renderMain();
+    const message = action === "daily" ? `Daily reward claimed: ${result.amount} SC.` : `Shift complete: ${result.amount} SC.`;
+    showToast(message, { key: "economy" });
+    announce(message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "The economy action failed.";
+    if (button.isConnected) button.disabled = false;
+    setInlineFeedback("economy", message, true);
+    showToast(message, { key: "economy", tone: "error" });
+  } finally {
+    state.economyBusy = false;
+  }
+}
+
+function readConfigForm(form) {  const body = {};
   for (const button of form.querySelectorAll("[data-setting-toggle]")) {
     body[button.dataset.settingToggle] = button.getAttribute("aria-checked") === "true";
   }
@@ -1236,6 +1268,8 @@ document.addEventListener("click", async (event) => {
     await runCahAction(action.dataset.cahAction, action);
   } else if (action?.dataset.action === "tambola") {
     await runTambolaAction(action.dataset.tambolaAction, action);
+  } else if (action?.dataset.action === "economy") {
+    await runEconomyAction(action.dataset.economyAction, action);
   }
 
   const copy = target.closest("[data-copy]");

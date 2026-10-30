@@ -9,6 +9,7 @@ import {
   CASINO_GAMES,
   CONFIG_SECTIONS,
   ControlApiError,
+  ECONOMY_ACTIONS,
   MUSIC_ACTIONS,
   RESOLVE_KINDS,
   TAMBOLA_ACTIONS,
@@ -16,6 +17,7 @@ import {
   type CasinoGame,
   type ConfigSection,
   type ControlClient,
+  type EconomyAction,
   type MusicAction,
   type TambolaAction,
   createControlClient,
@@ -250,6 +252,13 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
     const user = sessionUser(request);
     if (user && snowflakePattern.test(user.id)) return user;
     apiError(reply, 403, "discord_account_required", "Sign in with Discord to use game controls.");
+    return null;
+  };
+
+  const economyUser = (request: FastifyRequest, reply: FastifyReply): SessionUser | null => {
+    const user = sessionUser(request);
+    if (user && snowflakePattern.test(user.id)) return user;
+    apiError(reply, 403, "discord_account_required", "Sign in with Discord to use the economy.");
     return null;
   };
 
@@ -523,6 +532,29 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
       return user ? control.casinoPlay(guildId, game as CasinoGame, body.data, user.id) : undefined;
     });
   }
+
+  get("/api/guilds/:guildId/economy", (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    if (!guildId) return Promise.resolve(undefined);
+    const user = economyUser(request, reply);
+    return user ? control.economyState(guildId, user.id) : Promise.resolve(undefined);
+  });
+  post("/api/guilds/:guildId/economy/:action", async (request, reply) => {
+    const params = request.params as { guildId: string; action: string };
+    const guildId = getGuildId(params.guildId, reply);
+    if (!ECONOMY_ACTIONS.includes(params.action as EconomyAction)) {
+      return apiError(reply, 404, "unknown_economy_action", "That economy action is not available.");
+    }
+    if (!guildId) return undefined;
+    const user = economyUser(request, reply);
+    return user ? control.economyAction(guildId, params.action as EconomyAction, user.id) : undefined;
+  });
+  get("/api/guilds/:guildId/leaderboard", (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    if (!guildId) return Promise.resolve(undefined);
+    const user = economyUser(request, reply);
+    return user ? control.economyLeaderboard(guildId, user.id) : Promise.resolve(undefined);
+  });
 
   get("/api/guilds/:guildId/me/birthday", async (request, reply) => {
     const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);

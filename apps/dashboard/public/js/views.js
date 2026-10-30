@@ -8,6 +8,8 @@ const titles = {
   cah: "Cards Against Humanity",
   tambola: "Tambola",
   casino: "Casino",
+  economy: "Economy",
+  leaderboard: "Leaderboard",
   settings: "Server settings",
   user: "User settings",
   audit: "Audit",
@@ -227,6 +229,8 @@ export function renderView(view) {
     case "cah": return renderCah(data);
     case "tambola": return renderTambola(data);
     case "casino": return renderCasino(data);
+    case "economy": return renderEconomy(data);
+    case "leaderboard": return renderLeaderboard(data);
     case "settings": return renderSettings(data);
     case "user": return renderUserSettings(data);
     case "audit": return renderAudit(data);
@@ -378,8 +382,8 @@ function gameStatus(game) {
   return { tone: "unknown", label: "Unknown" };
 }
 
-function gameMetrics(entries) {
-  return `<section class="metric-row" aria-label="Game metrics">${entries.map(([label, value]) => `<div class="metric"><span class="metric-label">${escapeHtml(label)}</span><strong class="metric-value tabular">${escapeHtml(value)}</strong></div>`).join("")}</section>`;
+function gameMetrics(entries, className = "") {
+  return `<section class="metric-row ${className}" aria-label="Game metrics">${entries.map(([label, value]) => `<div class="metric"><span class="metric-label">${escapeHtml(label)}</span><strong class="metric-value tabular">${escapeHtml(value)}</strong></div>`).join("")}</section>`;
 }
 
 function refreshButton() {
@@ -600,6 +604,67 @@ function renderCasinoResult(result) {
   const reels = Array.isArray(result.reels) ? result.reels : [];
   const label = result.multiplier === 5 ? "Three of a kind, 5x." : result.multiplier === 1.6 ? "A pair, 1.6x." : "No match.";
   return `<section class="casino-result ${result.payout > 0 ? "is-win" : "is-loss"}" role="status"><span class="table-meta">Last spin</span><div class="reel-row">${reels.map((reel) => `<span class="reel">${escapeHtml(reel)}</span>`).join("")}</div><p>${escapeHtml(label)} ${result.payout > 0 ? `Payout ${fmtNumber(result.payout)} SC` : `Lost ${fmtNumber(result.bet)} SC`}.</p></section>`;
+}
+
+function renderEconomyReady(readyAt) {
+  if (!readyAt) return { ready: true, label: "Ready now" };
+  const time = new Date(readyAt);
+  if (Number.isNaN(time.getTime()) || time.getTime() <= Date.now()) return { ready: true, label: "Ready now" };
+  return { ready: false, label: `Ready ${fmtDate(readyAt)}` };
+}
+
+function renderEconomy(data) {
+  const header = pageHeader("Economy", "Your balance, streak, and self-service rewards for this server.");
+  if (data?.discordRequired) {
+    return `${header}${permissionNotice("Sign in with Discord to use the economy. The dashboard needs your Discord user ID to read your balance.")}`;
+  }
+  if (data?.enabled === false) {
+    return `${header}${permissionNotice("The economy is turned off for this server. Enable economy-core in Features to claim rewards.")}`;
+  }
+  const daily = renderEconomyReady(data?.dailyReadyAt);
+  const work = renderEconomyReady(data?.workReadyAt);
+  const busy = state.economyBusy === true;
+  return `${header}
+    ${gameMetrics([
+      ["Balance", `${fmtNumber(data?.balance)} SC`],
+      ["Daily streak", fmtNumber(data?.dailyStreak)],
+      ["Total earned", `${fmtNumber(data?.totalEarned)} SC`],
+      ["Total spent", `${fmtNumber(data?.totalSpent)} SC`],
+    ], "economy-metrics")}
+    <div class="economy-actions">
+      <section class="settings-section economy-action">
+        <div class="settings-heading"><div><h2>Daily reward</h2><p>Claim once every 24 hours. Consecutive days raise the reward up to seven times.</p></div><div class="settings-save"><span class="economy-ready">${escapeHtml(daily.label)}</span><button class="button button-primary" type="button" data-action="economy" data-economy-action="daily" ${daily.ready && !busy ? "" : "disabled"}>${daily.ready ? "Claim daily" : "On cooldown"}</button></div></div>
+      </section>
+      <section class="settings-section economy-action">
+        <div class="settings-heading"><div><h2>Work shift</h2><p>Take a shift every two hours for a small random payout.</p></div><div class="settings-save"><span class="economy-ready">${escapeHtml(work.label)}</span><button class="button button-secondary" type="button" data-action="economy" data-economy-action="work" ${work.ready && !busy ? "" : "disabled"}>${work.ready ? "Work a shift" : "On cooldown"}</button></div></div>
+      </section>
+    </div>
+    <p class="game-note">Rewards are self-service. You can only claim for your own Discord account, and no administrator permission is needed.</p>
+    <div class="settings-feedback" data-feedback="economy" role="status" aria-live="polite"></div>`;
+}
+
+function renderLeaderboard(data) {
+  const header = pageHeader("Leaderboard", "The top 25 members by balance in this server.");
+  if (data?.discordRequired) {
+    return `${header}${permissionNotice("Sign in with Discord to see your rank on the leaderboard.")}`;
+  }
+  if (data?.enabled === false) {
+    return `${header}${permissionNotice("The economy is turned off for this server. Enable economy-core in Features to see balances.")}`;
+  }
+  const entries = list(data, "entries");
+  const me = data?.me ?? null;
+  const meRow = me
+    ? `<p class="leaderboard-me">You are ranked <strong>#${fmtNumber(me.rank)}</strong> with <strong>${fmtNumber(me.balance)} SC</strong>.</p>`
+    : "";
+  if (!entries.length) {
+    return `${header}${meRow}${emptyState("No economy accounts yet", "Claim a daily reward to open the first account on this server.")}`;
+  }
+  const meId = state.user?.id;
+  const rows = entries.map((entry) => {
+    const you = entry.userId === meId;
+    return `<tr class="${you ? "is-you" : ""}"><td class="numeric-cell" data-label="Rank">${fmtNumber(entry.rank)}</td><td><strong>${escapeHtml(entry.name ?? entry.userId)}</strong>${you ? `<span class="game-tag">You</span>` : ""}</td><td class="numeric-cell" data-label="Balance">${fmtNumber(entry.balance)} SC</td></tr>`;
+  }).join("");
+  return `${header}${meRow}<section class="table-panel"><div class="table-scroll"><table><thead><tr><th scope="col" class="numeric-cell">Rank</th><th scope="col">Member</th><th scope="col" class="numeric-cell">Balance</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
 export function renderLivePanel(view, data) {
