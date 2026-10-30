@@ -306,6 +306,13 @@ function renderFeature(feature, features, canManage) {
   return `<article class="feature-row ${pending ? "is-pending" : ""}"${commandHint}><div class="feature-copy"><h3>${escapeHtml(feature.label ?? feature.id)}</h3><p>${escapeHtml(feature.description ?? "")}</p>${dependencies}${error ? `<p class="feature-error" role="alert">${escapeHtml(error)}</p>` : ""}</div><button type="button" class="switch" role="switch" aria-checked="${Boolean(feature.enabled)}" aria-label="${escapeHtml(feature.enabled ? `Disable ${feature.label}` : `Enable ${feature.label}`)}" aria-busy="${pending}" data-action="toggle-feature" data-feature-id="${escapeHtml(feature.id)}" ${pending || !canManage ? "disabled" : ""}><span></span></button></article>`;
 }
 
+function artworkMarkup(url, className) {
+  const src = typeof url === "string" ? url.trim() : "";
+  return src
+    ? `<img class="${className}" src="${escapeHtml(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
+    : `<span class="${className} artwork-fallback" aria-hidden="true">${icon("music")}</span>`;
+}
+
 function renderMusic(data) {
   const current = data?.current;
   const queue = list(data, "upcoming");
@@ -319,22 +326,33 @@ function renderMusic(data) {
   const positionLabel = current?.isStream ? "LIVE" : fmtTrackTime(position);
   const loop = ["off", "track", "queue"].includes(data?.loop) ? data.loop : "off";
   const loopNext = { off: "track", track: "queue", queue: "off" }[loop];
-  const queueHtml = queue.length ? queue.map((track, index) => `<li><span class="queue-index tabular">${String(index + 1).padStart(2, "0")}</span><span class="queue-track"><strong>${escapeHtml(track.title ?? track.name ?? "Untitled track")}</strong><small>${escapeHtml(track.artist ?? track.author ?? "Unknown artist")}</small></span><span class="queue-length tabular">${escapeHtml(track.isStream ? "LIVE" : fmtTrackTime(track.length))}</span></li>`).join("") : `<li class="queue-empty">Queue is clear. Add a track to get started.</li>`;
+  const queueHtml = queue.length
+    ? queue.map((track, index) => `<li><span class="queue-index tabular">${String(index + 1).padStart(2, "0")}</span>${artworkMarkup(track.artworkUrl, "queue-art")}<span class="queue-track"><strong>${escapeHtml(track.title ?? track.name ?? "Untitled track")}</strong><small>${escapeHtml(track.artist ?? track.author ?? "Unknown artist")}</small></span><span class="queue-length tabular">${escapeHtml(track.isStream ? "LIVE" : fmtTrackTime(track.length))}</span></li>`).join("")
+    : `<li class="queue-empty">Queue is clear. Add a track to get started.</li>`;
   const currentGuildName = state.guilds.find((guild) => guild.id === state.guildId)?.name ?? "the selected server";
   const playAction = paused ? "resume" : playing ? "pause" : "play";
   const playLabel = paused ? "Resume playback" : playing ? "Pause playback" : "Choose a track to play";
   const seekDisabled = !current || current.isStream || duration <= 0;
+  const connected = Boolean(data?.channelName || data?.channelId);
   const channelLabel = data?.channelName ? `#${data.channelName}` : data?.channelId ? String(data.channelId) : "Not connected";
+  const statusText = paused ? "Paused" : playing ? "Live" : "Idle";
+  const statusTone = paused ? "warn" : playing ? "ok" : "unknown";
   const activeFilter = ["off", "bassboost", "nightcore", "vaporwave"].includes(data?.filter) ? data.filter : "off";
   const filters = [["off", "Off"], ["bassboost", "Bass boost"], ["nightcore", "Nightcore"], ["vaporwave", "Vaporwave"]];
-  const voiceNotice = hasDiscordUser() ? "" : permissionNotice("Sign in with Discord to join your own voice channel. You can still paste a channel ID.");
+  const voiceNotice = hasDiscordUser() ? "" : permissionNotice("Sign in with Discord to join your own voice channel. You can still type a channel name.");
 
   return `${pageHeader("Music", `Playback and queue for ${currentGuildName}.`)}${voiceNotice}
     <div class="music-layout">
-      <section class="player">
-        <div class="player-topline"><span class="table-meta">Now playing</span><span class="player-topline-status"><span class="volume-chip">80% volume</span><span class="status-inline status-${paused ? "warn" : playing ? "ok" : "unknown"}"><i class="status-dot"></i>${paused ? "Paused" : playing ? "Playing" : "Idle"}</span></span></div>
-        <p class="player-channel">${icon("headphones")}<span>Connected to ${escapeHtml(channelLabel)}</span></p>
-        <div class="track-info"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(artist)}</p></div>
+      <section class="player" aria-label="Music player">
+        <div class="now-playing">
+          ${artworkMarkup(current?.artworkUrl, "now-art")}
+          <div class="now-copy">
+            <div class="now-kicker"><span class="table-meta">Now playing</span><span class="status-inline status-${statusTone}"><i class="status-dot"></i>${statusText}</span><span class="volume-chip">80% volume</span></div>
+            <h2 class="now-title">${escapeHtml(title)}</h2>
+            <p class="now-artist">${escapeHtml(artist)}</p>
+            <p class="player-channel">${icon("headphones")}<span>${connected ? `Connected to ${escapeHtml(channelLabel)}` : "Not connected to voice"}</span></p>
+          </div>
+        </div>
         <div class="player-progress"><output id="track-position" class="tabular">${escapeHtml(positionLabel)}</output><label class="sr-only" for="track-seek">Seek within current track</label><input id="track-seek" class="progress-line" type="range" min="0" max="${Math.max(duration, 1)}" value="${position}" aria-valuetext="${escapeHtml(`${positionLabel} of ${durationLabel}`)}" ${seekDisabled ? "disabled" : ""}><span class="tabular">${escapeHtml(durationLabel)}</span></div>
         <div class="transport">
           <button type="button" class="icon-button transport-secondary" data-action="music" data-music-action="shuffle" aria-label="Shuffle queue" ${queue.length < 2 ? "disabled" : ""}>${icon("shuffle")}</button>
@@ -342,11 +360,20 @@ function renderMusic(data) {
           <button type="button" class="icon-button transport-secondary" data-action="music" data-music-action="skip" aria-label="Skip track" ${current || queue.length ? "" : "disabled"}>${icon("skip-forward")}</button>
           <button type="button" class="loop-button" data-action="music" data-music-action="loop" data-loop-mode="${loopNext}" aria-label="Change repeat mode. Currently ${escapeHtml(loop)}.">${icon("repeat")}<span>${escapeHtml(loop)} repeat</span></button>
         </div>
-        <div class="filter-row" role="group" aria-label="Audio filter"><span class="table-meta">Filter</span>${filters.map(([value, label]) => `<button type="button" class="button ${activeFilter === value ? "button-primary" : "button-secondary"}" data-action="music" data-music-action="filters" data-filter-preset="${value}" aria-pressed="${activeFilter === value}">${label}</button>`).join("")}</div>
-        <form class="play-form" id="play-form"><label for="voice-channel">Voice channel ID</label><input id="voice-channel" name="voiceChannelId" type="text" inputmode="numeric" placeholder="Right-click a voice channel in Discord, then Copy ID" autocomplete="off" value="${escapeHtml(state.voiceChannelId ?? "")}" data-resolve-kind="voice"><label for="track-query">Add to queue</label><div class="input-action"><input id="track-query" name="query" type="search" placeholder="Song or artist…" autocomplete="off" required><button class="button button-primary" type="submit">Add track</button></div></form>
-        <div class="player-actions"><button type="button" class="button button-primary" data-action="music" data-music-action="join" data-voice-self="true">Join my voice channel</button><button type="button" class="button button-secondary" data-action="music" data-music-action="join">Join channel ID</button><button type="button" class="button button-quiet" data-action="music" data-music-action="disconnect">Disconnect</button><button type="button" class="button button-quiet danger-text" data-action="music" data-music-action="stop" ${playing || paused ? "" : "disabled"}>Stop playback</button></div>
+        <div class="filter-strip" role="group" aria-label="Audio filter">
+          <span class="table-meta">Filter</span>
+          ${filters.map(([value, label]) => `<button type="button" class="filter-chip" data-action="music" data-music-action="filters" data-filter-preset="${value}" aria-pressed="${activeFilter === value}">${label}</button>`).join("")}
+        </div>
+        <div class="connect-row" role="group" aria-label="Voice connection">
+          <button type="button" class="button button-primary" data-action="music" data-music-action="join" data-voice-self="true">Join my voice channel</button>
+          <div class="connect-field"><label class="sr-only" for="voice-channel">or pick a channel</label><input id="voice-channel" name="voiceChannelId" type="text" placeholder="#general or paste an ID" autocomplete="off" value="${escapeHtml(state.voiceChannelId ?? "")}" data-resolve-kind="voice"></div>
+          <button type="button" class="button button-secondary" data-action="music" data-music-action="join">Join channel</button>
+          <button type="button" class="button button-quiet" data-action="music" data-music-action="disconnect">Disconnect</button>
+        </div>
+        <form class="play-form" id="play-form"><label for="track-query">Add to queue</label><div class="input-action"><input id="track-query" name="query" type="search" placeholder="Song or artist…" autocomplete="off" required><button class="button button-primary" type="submit">Add track</button></div></form>
+        <div class="player-actions"><button type="button" class="button button-quiet danger-text" data-action="music" data-music-action="stop" ${playing || paused ? "" : "disabled"}>Stop playback</button></div>
       </section>
-      <section class="queue-panel"><div class="section-heading"><h2>Queue <span class="queue-count">${String(queue.length).padStart(2, "0")}</span></h2><button type="button" class="button button-quiet" data-action="music" data-music-action="clear" ${queue.length ? "" : "disabled"}>Clear queue</button></div><ol class="queue-list">${queueHtml}</ol></section>
+      <section class="queue-panel" aria-label="Up next"><div class="section-heading"><h2>Up next <span class="queue-count">${String(queue.length).padStart(2, "0")}</span></h2><button type="button" class="button button-quiet" data-action="music" data-music-action="clear" ${queue.length ? "" : "disabled"}>Clear queue</button></div><ol class="queue-list">${queueHtml}</ol></section>
     </div>`;
 }
 

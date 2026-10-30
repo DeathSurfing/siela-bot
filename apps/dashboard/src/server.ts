@@ -190,7 +190,7 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
   });
 
   app.addHook("onSend", async (_request, reply, payload) => {
-    reply.header("content-security-policy", "default-src 'self'; img-src 'self' https://cdn.discordapp.com data:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
+    reply.header("content-security-policy", "default-src 'self'; img-src 'self' https://cdn.discordapp.com https://i.ytimg.com https://img.youtube.com https://*.sndcdn.com data:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
     reply.header("x-content-type-options", "nosniff");
     reply.header("referrer-policy", "no-referrer");
     reply.header("x-frame-options", "DENY");
