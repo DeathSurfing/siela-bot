@@ -1,10 +1,13 @@
-export const VIEWS = ["overview", "servers", "features", "music", "settings", "user", "audit", "commands"];
+export const VIEWS = ["overview", "servers", "features", "music", "cah", "tambola", "casino", "settings", "user", "audit", "commands"];
 
 const SHORTCUTS = {
   o: "overview",
   s: "servers",
   f: "features",
   m: "music",
+  h: "cah",
+  b: "tambola",
+  d: "casino",
   t: "settings",
   u: "user",
   a: "audit",

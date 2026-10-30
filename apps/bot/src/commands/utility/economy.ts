@@ -1,5 +1,6 @@
 import { slotsPayload } from "../../features/slots-ui.js";
 import { SlashCommandBuilder } from "discord.js";
+import { MAX_CASINO_BET } from "@siela/shared";
 import type { Command, CommandContext } from "../../framework/types.js";
 import { isAdmin } from "../../framework/permissions.js";
 import { UserError } from "../../lib/errors.js";
@@ -13,7 +14,7 @@ import {
   success,
 } from "../../features/ui.js";
 
-const MAX_BET = 10_000;
+const MAX_BET = MAX_CASINO_BET;
 
 const GLOBAL_SHOP = [
   { key: "delulu", name: "Delulu", price: 5, category: "AI", purchasable: false, description: "Per use, doubling each day: 5, 10, 20, 40 SC." },

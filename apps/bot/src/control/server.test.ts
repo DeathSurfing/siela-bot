@@ -19,6 +19,24 @@ interface TestMember {
   administrator: boolean;
 }
 
+interface CahStubGame {
+  id: string;
+  hostId: string;
+  judgeId: string | null;
+  roundIndex: number | null;
+}
+
+interface TambolaStubGame {
+  id: string;
+  hostId: string;
+}
+
+interface EconomyStub {
+  getBalance: (guildId: string, userId: string) => Promise<{ balance: number }>;
+  spend: (...args: unknown[]) => Promise<unknown>;
+  award: (...args: unknown[]) => Promise<unknown>;
+}
+
 function member(entry: TestMember) {
   return {
     id: entry.id,
@@ -29,7 +47,7 @@ function member(entry: TestMember) {
   };
 }
 
-function guild(id: string, name: string, members: TestMember[]) {
+function guild(id: string, name: string, members: TestMember[], channel?: { id: string; guildId: string; isTextBased: () => boolean }) {
   const cache = new Map(members.map((entry) => [entry.id, member(entry)]));
   const fetch = vi.fn(async (input: unknown) => {
     if (typeof input === "string") {
@@ -39,6 +57,7 @@ function guild(id: string, name: string, members: TestMember[]) {
     }
     return new Map();
   });
+  const channelsFetch = vi.fn(async (channelId: string) => channel ? { ...channel, id: channelId } : null);
   return {
     id,
     name,
@@ -47,6 +66,7 @@ function guild(id: string, name: string, members: TestMember[]) {
     joinedTimestamp: 1_710_000_000_000,
     iconURL: () => null,
     members: { cache, fetch },
+    channels: { cache: new Map(), fetch: channelsFetch },
   } as unknown as Guild;
 }
 
@@ -54,23 +74,61 @@ function server(options: {
   multiGuild?: boolean;
   features?: unknown;
   musicEnabled?: boolean;
+  cahEnabled?: boolean;
+  tambolaEnabled?: boolean;
+  economyEnabled?: boolean;
   members?: TestMember[];
   auditEntries?: unknown[];
+  channel?: { id: string; guildId: string; isTextBased: () => boolean };
+  cahGame?: CahStubGame | null;
+  cahLast?: CahStubGame | null;
+  tambolaGame?: TambolaStubGame | null;
+  economy?: EconomyStub;
 } = {}) {
   const guilds = new Map<string, Guild>([
-    [GUILD_A, guild(GUILD_A, "Alpha", options.members ?? [])],
+    [GUILD_A, guild(GUILD_A, "Alpha", options.members ?? [], options.channel)],
     [GUILD_B, guild(GUILD_B, "Beta", [])],
   ]);
   const ids = options.multiGuild ? [GUILD_A, GUILD_B] : [GUILD_A];
   const audits: unknown[] = [];
   const birthdays = new Map<string, Record<string, unknown>>();
-  const services = {
-    features: options.features ?? {
-      list: async () => [{ id: "relics", label: "Relics", category: "Relics", description: "Cards.", defaultEnabled: true, enabled: false, commands: ["relics"], dependsOn: [] }],
-      set: async (guildId: string, featureId: string, enabled: boolean) => ({ guildId, featureId, enabled }),
-      setMany: async (_guildId: string, updates: Array<{ featureId: string; enabled: boolean }>) => updates,
-      isEnabled: async () => options.musicEnabled !== false,
+  const economy = options.economy ?? {
+    getBalance: vi.fn(async () => ({ balance: 500 })),
+    spend: vi.fn(async () => undefined),
+    award: vi.fn(async () => ({ amount: 0, duplicate: false })),
+  };
+  const cah = {
+    snapshot: vi.fn(() => options.cahGame ?? null),
+    lastResult: vi.fn(() => options.cahLast ?? null),
+    host: vi.fn(async () => undefined),
+    start: vi.fn(async () => undefined),
+    reveal: vi.fn(async () => undefined),
+    next: vi.fn(async () => undefined),
+    end: vi.fn(async () => undefined),
+  };
+  const tambola = {
+    snapshot: vi.fn(() => options.tambolaGame ?? null),
+    end: vi.fn(async () => undefined),
+    pause: vi.fn(async () => undefined),
+    resume: vi.fn(async () => undefined),
+  };
+  const featuresStub = options.features ?? {
+    list: async () => [{ id: "relics", label: "Relics", category: "Relics", description: "Cards.", defaultEnabled: true, enabled: false, commands: ["relics"], dependsOn: [] }],
+    set: async (guildId: string, featureId: string, enabled: boolean) => ({ guildId, featureId, enabled }),
+    setMany: async (_guildId: string, updates: Array<{ featureId: string; enabled: boolean }>) => updates,
+    isEnabled: async (_guildId: string, featureId: string) => {
+      if (featureId === "music-playback") return options.musicEnabled !== false;
+      if (featureId === "games-cah") return options.cahEnabled !== false;
+      if (featureId === "games-tambola") return options.tambolaEnabled !== false;
+      if (featureId === "economy-core") return options.economyEnabled !== false;
+      return true;
     },
+  };
+  const services = {
+    features: featuresStub,
+    cah,
+    tambola,
+    economy,
     music: {
       play: async () => ({ added: 1, first: { title: "Song" } }),
       stop: async () => undefined,
@@ -112,11 +170,15 @@ function server(options: {
     getDefaultGuildId: () => (options.multiGuild ? null : GUILD_A),
     getGuildIds: () => ids,
   });
-  const guildA = guilds.get(GUILD_A) as unknown as { members: { fetch: ReturnType<typeof vi.fn> } };
-  return { app: instance.instance, audits, memberFetch: guildA.members.fetch };
+  const guildA = guilds.get(GUILD_A) as unknown as {
+    members: { fetch: ReturnType<typeof vi.fn> };
+    channels: { fetch: ReturnType<typeof vi.fn> };
+  };
+  return { app: instance.instance, audits, memberFetch: guildA.members.fetch, channelFetch: guildA.channels.fetch, cah, tambola, economy };
 }
 
 const auth = { authorization: `Bearer ${TOKEN}` };
+const asUser = (id: string) => ({ ...auth, "x-user-id": id });
 
 describe("ControlServer guild scoping", () => {
   it("rejects a request without the control token", async () => {
@@ -351,5 +413,254 @@ describe("ControlServer audit actor names", () => {
     expect(response.json().map((entry: { actorName: string }) => entry.actorName)).toEqual([UNKNOWN_USER, MEMBER_USER]);
     expect(memberFetch).toHaveBeenCalledTimes(1);
     expect(memberFetch).toHaveBeenCalledWith({ user: [UNKNOWN_USER, MEMBER_USER] });
+  });
+});
+
+describe("ControlServer game tabs", () => {
+  const cahGame = { id: "ABC123", hostId: MEMBER_USER, judgeId: ADMIN_USER, roundIndex: 2 };
+  const OTHER_USER = "900000000000000004";
+  const members = [
+    { id: ADMIN_USER, displayName: "Ada", administrator: true },
+    { id: MEMBER_USER, displayName: "Grace", administrator: false },
+    { id: OTHER_USER, displayName: "Linus", administrator: false },
+  ];
+
+  it("reports the CAH feature flag and the redacted state", async () => {
+    const { app } = server({ cahGame, cahEnabled: false });
+    const state = await app.inject({ method: "GET", url: "/v1/cah/state", headers: auth });
+    expect(state.statusCode).toBe(200);
+    expect(state.json()).toMatchObject({ enabled: false, game: { id: "ABC123", hostId: MEMBER_USER } });
+  });
+
+  it("creates a CAH lobby from a text channel in the guild", async () => {
+    const { app, cah } = server({
+      members,
+      channel: { id: "333333333333333333", guildId: GUILD_A, isTextBased: () => true },
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/cah/host",
+      headers: asUser(MEMBER_USER),
+      payload: { channelId: "333333333333333333", pointsGoal: 5, maxPlayers: 6 },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(cah.host).toHaveBeenCalledWith(expect.objectContaining({
+      guild: expect.objectContaining({ id: GUILD_A }),
+      host: expect.objectContaining({ id: MEMBER_USER }),
+      pointsGoal: 5,
+      maxPlayers: 6,
+    }));
+  });
+
+  it("refuses a CAH lobby when the feature is off or the channel is elsewhere", async () => {
+    const off = server({ members, cahEnabled: false, channel: { id: "333333333333333333", guildId: GUILD_A, isTextBased: () => true } });
+    const blocked = await off.app.inject({
+      method: "POST",
+      url: "/v1/cah/host",
+      headers: asUser(MEMBER_USER),
+      payload: { channelId: "333333333333333333" },
+    });
+    expect(blocked.statusCode).toBe(400);
+    expect(blocked.json().error.code).toBe("feature_disabled");
+    expect(off.cah.host).not.toHaveBeenCalled();
+
+    const otherGuild = server({ members, channel: { id: "333333333333333333", guildId: GUILD_B, isTextBased: () => true } });
+    const invalid = await otherGuild.app.inject({
+      method: "POST",
+      url: "/v1/cah/host",
+      headers: asUser(MEMBER_USER),
+      payload: { channelId: "333333333333333333" },
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json().error.code).toBe("invalid_channel");
+  });
+
+  it("lets only the host start a CAH game", async () => {
+    const { app, cah } = server({ members, cahGame });
+    const denied = await app.inject({
+      method: "POST",
+      url: "/v1/cah/start",
+      headers: asUser(ADMIN_USER),
+      payload: { gameId: "ABC123" },
+    });
+    expect(denied.statusCode).toBe(400);
+    expect(denied.json().error.code).toBe("not_host");
+    expect(cah.start).not.toHaveBeenCalled();
+
+    const allowed = await app.inject({
+      method: "POST",
+      url: "/v1/cah/start",
+      headers: asUser(MEMBER_USER),
+      payload: { gameId: "ABC123" },
+    });
+    expect(allowed.statusCode).toBe(200);
+    expect(cah.start).toHaveBeenCalled();
+  });
+
+  it("lets the host or judge reveal and advance, and nobody else", async () => {
+    const { app, cah } = server({ members, cahGame });
+    const reveal = await app.inject({
+      method: "POST",
+      url: "/v1/cah/reveal",
+      headers: asUser(ADMIN_USER),
+      payload: { gameId: "ABC123", roundIndex: 2 },
+    });
+    expect(reveal.statusCode).toBe(200);
+    expect(cah.reveal).toHaveBeenCalled();
+
+    const next = await app.inject({
+      method: "POST",
+      url: "/v1/cah/next",
+      headers: asUser(MEMBER_USER),
+      payload: { gameId: "ABC123", roundIndex: 2 },
+    });
+    expect(next.statusCode).toBe(200);
+    expect(cah.next).toHaveBeenCalled();
+
+    const stranger = await app.inject({
+      method: "POST",
+      url: "/v1/cah/reveal",
+      headers: asUser(OTHER_USER),
+      payload: { gameId: "ABC123", roundIndex: 2 },
+    });
+    expect(stranger.statusCode).toBe(400);
+    expect(stranger.json().error.code).toBe("not_controller");
+  });
+
+  it("lets the host or an administrator end a CAH game", async () => {
+    const { app, cah } = server({ members, cahGame });
+    const admin = await app.inject({
+      method: "POST",
+      url: "/v1/cah/end",
+      headers: asUser(ADMIN_USER),
+      payload: { gameId: "ABC123" },
+    });
+    expect(admin.statusCode).toBe(200);
+    expect(cah.end).toHaveBeenCalled();
+
+    const other = server({ members, cahGame });
+    const denied = await other.app.inject({
+      method: "POST",
+      url: "/v1/cah/end",
+      headers: asUser(OTHER_USER),
+      payload: { gameId: "ABC123" },
+    });
+    expect(denied.statusCode).toBe(400);
+    expect(denied.json().error.code).toBe("not_controller");
+  });
+
+  it("rejects a stale CAH game or round", async () => {
+    const { app } = server({ members, cahGame });
+    const staleGame = await app.inject({
+      method: "POST",
+      url: "/v1/cah/end",
+      headers: asUser(MEMBER_USER),
+      payload: { gameId: "OLD999" },
+    });
+    expect(staleGame.json().error.code).toBe("stale_game");
+
+    const staleRound = await app.inject({
+      method: "POST",
+      url: "/v1/cah/next",
+      headers: asUser(MEMBER_USER),
+      payload: { gameId: "ABC123", roundIndex: 1 },
+    });
+    expect(staleRound.json().error.code).toBe("stale_round");
+  });
+
+  it("reports Tambola state and lets the host or an administrator pause, resume, and end", async () => {
+    const tambolaGame = { id: "TMB123", hostId: MEMBER_USER };
+    const { app, tambola } = server({ members, tambolaGame });
+    const state = await app.inject({ method: "GET", url: "/v1/tambola/state", headers: auth });
+    expect(state.json()).toMatchObject({ enabled: true, game: { id: "TMB123" } });
+
+    const off = server({ tambolaEnabled: false });
+    const offState = await off.app.inject({ method: "GET", url: "/v1/tambola/state", headers: auth });
+    expect(offState.json()).toEqual({ enabled: false, game: null });
+
+    for (const [action, spy] of [["pause", tambola.pause], ["resume", tambola.resume], ["end", tambola.end]] as const) {
+      const admin = await app.inject({
+        method: "POST",
+        url: `/v1/tambola/${action}`,
+        headers: asUser(ADMIN_USER),
+        payload: { gameId: "TMB123" },
+      });
+      expect(admin.statusCode).toBe(200);
+      expect(spy).toHaveBeenCalled();
+    }
+
+    const denied = await app.inject({
+      method: "POST",
+      url: "/v1/tambola/end",
+      headers: asUser(OTHER_USER),
+      payload: { gameId: "TMB123" },
+    });
+    expect(denied.statusCode).toBe(400);
+    expect(denied.json().error.code).toBe("not_controller");
+  });
+
+  it("returns a casino balance for the caller in the header", async () => {
+    const { app, economy } = server({ members });
+    const state = await app.inject({ method: "GET", url: "/v1/casino/state", headers: asUser(MEMBER_USER) });
+    expect(state.json()).toEqual({ enabled: true, balance: 500, maxBet: 10_000 });
+    expect(economy.getBalance).toHaveBeenCalledWith(GUILD_A, MEMBER_USER);
+
+    const missing = await app.inject({ method: "GET", url: "/v1/casino/state", headers: auth });
+    expect(missing.statusCode).toBe(400);
+    expect(missing.json().error.code).toBe("invalid_user_id");
+  });
+
+  it("plays coinflip and slots for the header user and rejects an oversized bet", async () => {
+    const { app, economy } = server({ members });
+    const flip = await app.inject({
+      method: "POST",
+      url: "/v1/casino/coinflip",
+      headers: asUser(MEMBER_USER),
+      payload: { bet: 50, side: "heads", requestId: "request-1234" },
+    });
+    expect(flip.statusCode).toBe(200);
+    expect(flip.json()).toMatchObject({ enabled: true, maxBet: 10_000, bet: 50, game: "coinflip" });
+    expect(economy.spend).toHaveBeenCalledWith(GUILD_A, MEMBER_USER, 50, "coinflip", expect.stringContaining("request-1234"));
+
+    const slots = await app.inject({
+      method: "POST",
+      url: "/v1/casino/slots",
+      headers: asUser(MEMBER_USER),
+      payload: { bet: 25, requestId: "request-5678" },
+    });
+    expect(slots.statusCode).toBe(200);
+    expect(slots.json().game).toBe("slots");
+
+    const oversized = await app.inject({
+      method: "POST",
+      url: "/v1/casino/coinflip",
+      headers: asUser(MEMBER_USER),
+      payload: { bet: 10_001, side: "heads", requestId: "request-big" },
+    });
+    expect(oversized.statusCode).toBe(400);
+    expect(oversized.json().error.code).toBe("validation_error");
+
+    const spoofed = await app.inject({
+      method: "POST",
+      url: "/v1/casino/coinflip",
+      headers: asUser(MEMBER_USER),
+      payload: { bet: 50, side: "heads", requestId: "request-spoof", userId: ADMIN_USER },
+    });
+    expect(spoofed.statusCode).toBe(400);
+    expect(spoofed.json().error.code).toBe("validation_error");
+    expect(economy.spend).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses casino play when the economy feature is off", async () => {
+    const { app, economy } = server({ members, economyEnabled: false });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/casino/slots",
+      headers: asUser(MEMBER_USER),
+      payload: { bet: 10, requestId: "request-off" },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("feature_disabled");
+    expect(economy.spend).not.toHaveBeenCalled();
   });
 });

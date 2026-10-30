@@ -2,7 +2,7 @@ import { api, ApiError, setCsrfToken } from "./api.js";
 import { navigate, parseRoute, writeRoute } from "./router.js";
 import { installHotkeys } from "./vendor/hotkeys.js";
 import { rememberGuild, state } from "./store.js";
-import { escapeHtml, fmtTrackTime, initialOf, renderLogin, renderStatusPill, renderView, viewTitle } from "./views.js";
+import { escapeHtml, fmtTrackTime, initialOf, renderLivePanel, renderLogin, renderStatusPill, renderView, viewTitle } from "./views.js";
 
 const boot = document.querySelector("#boot-state");
 const loginScreen = document.querySelector("#login-screen");
@@ -23,6 +23,8 @@ const themeIcon = document.querySelector("#theme-icon");
 let loadSequence = 0;
 let currentRoute = { view: "overview", guildId: null };
 let progressTimer = null;
+let gamePoll = null;
+let gamePollSequence = 0;
 const RAIL_COLLAPSED_KEY = "siela.rail.collapsed";
 let railCollapsed = false;
 try { railCollapsed = localStorage.getItem(RAIL_COLLAPSED_KEY) === "1"; } catch { /* storage may be blocked */ }
@@ -89,7 +91,8 @@ function updateUserChip() {
   chip.hidden = !user;
   if (!user) return;
   const name = user.name || "Operator";
-  chip.title = name;
+  chip.title = `Open user settings for ${name}`;
+  chip.setAttribute("aria-label", `Open user settings for ${name}`);
   const nameNode = document.querySelector("#session-name");
   if (nameNode) nameNode.textContent = name;
   const avatar = document.querySelector("#session-avatar");
@@ -177,7 +180,7 @@ navDrawer?.addEventListener("click", (event) => {
     closeNavDrawer();
     return;
   }
-  const link = target.closest(".primary-nav a, .brand");
+  const link = target.closest(".primary-nav a, .brand, .rail-user");
   if (!link) return;
   const hash = link.getAttribute("href");
   closeNavDrawer({ restoreFocus: false });
@@ -269,6 +272,7 @@ function renderMain(preserveSearch = false) {
 async function loadData(route = currentRoute) {
   const sequence = ++loadSequence;
   stopProgress();
+  stopGamePoll();
   closeGuildMenu();
   state.view = route.view;
   state.featureErrors = {};
@@ -276,6 +280,9 @@ async function loadData(route = currentRoute) {
   state.error = null;
   state.loading = true;
   state.search = "";
+  state.casinoResult = null;
+  state.casinoPending = null;
+  state.casinoBusy = false;
   state.permissions = { administrator: false };
   currentRoute = route;
   updateGuildPicker();
@@ -304,6 +311,11 @@ async function loadData(route = currentRoute) {
       const loaders = {
         features: () => api.features(route.guildId),
         music: () => api.music(route.guildId),
+        cah: () => api.cah(route.guildId),
+        tambola: () => api.tambola(route.guildId),
+        casino: () => canLoadBirthday
+          ? api.casino(route.guildId)
+          : Promise.resolve({ enabled: true, balance: null, maxBet: 10_000, discordRequired: true }),
         settings: () => api.config(route.guildId),
         user: () => canLoadBirthday ? api.birthday(route.guildId) : Promise.resolve({ birthday: null }),
         audit: () => api.audit(route.guildId, 50),
@@ -339,7 +351,50 @@ async function loadData(route = currentRoute) {
       setStatusPill(state.status);
       renderMain();
       startProgress();
+      if (!state.error) startGamePoll();
     }
+  }
+}
+
+function stopGamePoll() {
+  gamePollSequence += 1;
+  if (gamePoll) {
+    clearInterval(gamePoll);
+    gamePoll = null;
+  }
+}
+
+function startGamePoll() {
+  stopGamePoll();
+  if (!["cah", "tambola"].includes(state.view) || !state.guildId || document.hidden) return;
+  gamePoll = setInterval(() => { void pollGameView(); }, 5000);
+}
+
+function fetchGameState() {
+  return state.view === "cah" ? api.cah(state.guildId) : api.tambola(state.guildId);
+}
+
+function renderGamePanel(force = false) {
+  const panel = document.querySelector(`[data-live-panel="${state.view}"]`);
+  if (!panel) return false;
+  if (!force && panel.contains(document.activeElement)) return false;
+  panel.innerHTML = renderLivePanel(state.view, state.data);
+  return true;
+}
+
+async function pollGameView(force = false) {
+  if (document.hidden || !["cah", "tambola"].includes(state.view) || !state.guildId) return;
+  const sequence = ++gamePollSequence;
+  const view = state.view;
+  const guildId = state.guildId;
+  try {
+    const data = await fetchGameState();
+    if (sequence !== gamePollSequence || document.hidden || state.view !== view || state.guildId !== guildId) return;
+    const changed = JSON.stringify(data) !== JSON.stringify(state.data);
+    state.data = data;
+    if (changed || force) renderGamePanel(force);
+  } catch {
+    // Keep the last good table on a transient poll failure.
   }
 }
 
@@ -612,6 +667,145 @@ async function runMusicAction(action, body = {}) {
   }
 }
 
+async function runCahAction(action, button) {
+  if (!state.guildId) return;
+  if (action === "end" && !window.confirm("End this CAH game for everyone?")) return;
+  const guildId = state.guildId;
+  const body = { gameId: button.dataset.gameId ?? "" };
+  const roundIndex = button.dataset.roundIndex;
+  if (roundIndex !== undefined) body.roundIndex = Number(roundIndex);
+  button.disabled = true;
+  stopGamePoll();
+  try {
+    const data = await api.cahAction(guildId, action, body);
+    if (state.view !== "cah" || state.guildId !== guildId) return;
+    state.data = data;
+    renderMain();
+    announce(`CAH ${action} sent.`);
+    showToast(`CAH ${action} sent.`, { key: "cah" });
+  } catch (error) {
+    if (button.isConnected) button.disabled = false;
+    const message = error instanceof Error ? error.message : "The CAH action failed.";
+    showToast(message, { key: "cah", tone: "error" });
+    announce("The CAH action failed.");
+  } finally {
+    startGamePoll();
+  }
+}
+
+async function runTambolaAction(action, button) {
+  if (!state.guildId) return;
+  if (action === "end" && !window.confirm("End this Tambola game for everyone?")) return;
+  const guildId = state.guildId;
+  button.disabled = true;
+  stopGamePoll();
+  try {
+    const data = await api.tambolaAction(guildId, action, { gameId: button.dataset.gameId ?? "" });
+    if (state.view !== "tambola" || state.guildId !== guildId) return;
+    state.data = data;
+    renderMain();
+    announce(`Tambola ${action} sent.`);
+    showToast(`Tambola ${action} sent.`, { key: "tambola" });
+  } catch (error) {
+    if (button.isConnected) button.disabled = false;
+    const message = error instanceof Error ? error.message : "The Tambola action failed.";
+    showToast(message, { key: "tambola", tone: "error" });
+    announce("The Tambola action failed.");
+  } finally {
+    startGamePoll();
+  }
+}
+
+async function createCahLobby(form) {
+  if (!state.guildId) return;
+  const guildId = state.guildId;
+  const data = new FormData(form);
+  const channelId = String(data.get("channelId") ?? "").trim();
+  const pointsGoal = Number(data.get("pointsGoal"));
+  const maxPlayers = Number(data.get("maxPlayers"));
+  if (!/^\d{17,20}$/.test(channelId)) {
+    setInlineFeedback("cah-host", "Enter the text channel's Discord ID (17 to 20 digits).", true);
+    return;
+  }
+  if (!Number.isInteger(pointsGoal) || pointsGoal < 1 || pointsGoal > 50) {
+    setInlineFeedback("cah-host", "Points to win must be between 1 and 50.", true);
+    return;
+  }
+  if (!Number.isInteger(maxPlayers) || maxPlayers < 3 || maxPlayers > 10) {
+    setInlineFeedback("cah-host", "Maximum players must be between 3 and 10.", true);
+    return;
+  }
+  const submit = form.querySelector("[type=submit]");
+  if (submit) {
+    submit.disabled = true;
+    submit.textContent = "Creating…";
+  }
+  setInlineFeedback("cah-host", "Creating the lobby…");
+  stopGamePoll();
+  try {
+    const result = await api.cahHost(guildId, { channelId, pointsGoal, maxPlayers });
+    if (state.view !== "cah" || state.guildId !== guildId) return;
+    state.data = result;
+    renderMain();
+    announce("CAH lobby created.");
+    showToast("CAH lobby created.", { key: "cah" });
+  } catch (error) {
+    setInlineFeedback("cah-host", error instanceof Error ? error.message : "The lobby could not be created.", true);
+    if (submit?.isConnected) {
+      submit.disabled = false;
+      submit.textContent = "Create lobby";
+    }
+  } finally {
+    startGamePoll();
+  }
+}
+
+function newRequestId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function playCasino(game, form) {
+  if (!state.guildId || state.casinoBusy) return;
+  const guildId = state.guildId;
+  const data = new FormData(form);
+  const bet = Number(data.get("bet"));
+  const maxBet = Number(state.data?.maxBet) || 10_000;
+  if (!Number.isInteger(bet) || bet <= 0) {
+    setInlineFeedback("casino", "Bet must be a whole number of coins.", true);
+    return;
+  }
+  if (bet > maxBet) {
+    setInlineFeedback("casino", `The maximum bet is ${maxBet.toLocaleString()} SC.`, true);
+    return;
+  }
+  const side = game === "coinflip" ? String(data.get("side") ?? "heads") : undefined;
+  const pending = state.casinoPending;
+  const retry = pending && pending.game === game && pending.bet === bet && pending.side === side;
+  const requestId = retry ? pending.requestId : newRequestId();
+  state.casinoPending = { game, requestId, bet, side };
+  state.casinoBusy = true;
+  const submit = form.querySelector("[type=submit]");
+  if (submit) submit.disabled = true;
+  setInlineFeedback("casino", game === "coinflip" ? "Flipping…" : "Spinning…");
+  try {
+    const body = game === "coinflip" ? { bet, side, requestId } : { bet, requestId };
+    const result = await api.casinoPlay(guildId, game, body);
+    if (state.view !== "casino" || state.guildId !== guildId) return;
+    state.casinoResult = result;
+    state.casinoPending = null;
+    state.casinoBusy = false;
+    state.data = { ...(state.data ?? {}), balance: result.balance, maxBet: result.maxBet ?? maxBet, enabled: true };
+    renderMain();
+    announce(result.payout > 0 ? `You won ${result.payout} SC.` : "No payout this time.");
+  } catch (error) {
+    state.casinoBusy = false;
+    if (submit?.isConnected) submit.disabled = false;
+    setInlineFeedback("casino", error instanceof Error ? error.message : "The play failed.", true);
+    showToast(error instanceof Error ? error.message : "The play failed.", { key: "casino", tone: "error" });
+  }
+}
+
 function readConfigForm(form) {
   const body = {};
   for (const button of form.querySelectorAll("[data-setting-toggle]")) {
@@ -750,6 +944,16 @@ document.addEventListener("submit", async (event) => {
     await runMusicAction("play", { query });
     return;
   }
+  if (form.id === "cah-host-form") {
+    event.preventDefault();
+    await createCahLobby(form);
+    return;
+  }
+  if (form.id === "casino-coinflip-form" || form.id === "casino-slots-form") {
+    event.preventDefault();
+    await playCasino(form.id === "casino-coinflip-form" ? "coinflip" : "slots", form);
+    return;
+  }
   if (form.hasAttribute("data-config-section")) {
     event.preventDefault();
     await saveSettings(form);
@@ -799,6 +1003,13 @@ document.addEventListener("click", async (event) => {
   } else if (action?.dataset.action === "music") {
     const body = action.dataset.musicAction === "loop" ? { mode: action.dataset.loopMode } : {};
     await runMusicAction(action.dataset.musicAction, body);
+  } else if (action?.dataset.action === "refresh-games") {
+    await pollGameView(true);
+    announce("Game state refreshed.");
+  } else if (action?.dataset.action === "cah") {
+    await runCahAction(action.dataset.cahAction, action);
+  } else if (action?.dataset.action === "tambola") {
+    await runTambolaAction(action.dataset.tambolaAction, action);
   }
 
   const copy = target.closest("[data-copy]");
@@ -871,6 +1082,11 @@ window.addEventListener("hashchange", async () => {
   if (route.guildId !== guildId) writeRoute(route.view, guildId, true);
   await loadData({ view: route.view, guildId });
   main.focus({ preventScroll: true });
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stopGamePoll();
+  else startGamePoll();
 });
 
 installHotkeys({

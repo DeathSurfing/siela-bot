@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MAX_WELCOME_MESSAGE, MAX_MUSIC_QUERY } from "./constants.js";
+import { MAX_CASINO_BET, MAX_WELCOME_MESSAGE, MAX_MUSIC_QUERY } from "./constants.js";
 
 export const snowflakeSchema = z
   .string()
@@ -228,6 +228,45 @@ export const musicSkipSchema = withNodeId({
 
 export const musicNodeSchema = withNodeId({
   });
+
+const gameIdSchema = z.string().trim().min(1).max(32);
+
+export const cahHostSchema = z
+  .object({
+    channelId: snowflakeSchema,
+    pointsGoal: z.number().int().min(1).max(50).optional(),
+    maxPlayers: z.number().int().min(3).max(10).optional(),
+  })
+  .strict();
+
+export const cahGameActionSchema = z.object({ gameId: gameIdSchema }).strict();
+
+export const cahRoundActionSchema = z
+  .object({
+    gameId: gameIdSchema,
+    roundIndex: z.number().int().min(0),
+  })
+  .strict();
+
+export const tambolaGameActionSchema = z.object({ gameId: gameIdSchema }).strict();
+
+const casinoRequestSchema = z
+  .object({
+    bet: z.number().int().positive().max(MAX_CASINO_BET),
+    requestId: z
+      .string()
+      .trim()
+      .min(8)
+      .max(100)
+      .regex(/^[A-Za-z0-9_-]+$/, "requestId may only contain letters, numbers, dash, and underscore"),
+  })
+  .strict();
+
+export const casinoCoinflipSchema = casinoRequestSchema
+  .extend({ side: z.enum(["heads", "tails"]) })
+  .strict();
+
+export const casinoSlotsSchema = casinoRequestSchema;
 
 export const welcomeTestSchema = z
   .object({

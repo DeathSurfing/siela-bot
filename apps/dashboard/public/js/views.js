@@ -5,6 +5,9 @@ const titles = {
   servers: "Servers",
   features: "Features",
   music: "Music",
+  cah: "Cards Against Humanity",
+  tambola: "Tambola",
+  casino: "Casino",
   settings: "Server settings",
   user: "User settings",
   audit: "Audit",
@@ -211,6 +214,9 @@ export function renderView(view) {
     case "servers": return renderServers(data);
     case "features": return renderFeatures(data);
     case "music": return renderMusic(data);
+    case "cah": return renderCah(data);
+    case "tambola": return renderTambola(data);
+    case "casino": return renderCasino(data);
     case "settings": return renderSettings(data);
     case "user": return renderUserSettings(data);
     case "audit": return renderAudit(data);
@@ -334,6 +340,262 @@ function renderMusic(data) {
       </section>
       <section class="queue-panel"><div class="section-heading"><h2>Queue <span class="queue-count">${String(queue.length).padStart(2, "0")}</span></h2><button type="button" class="button button-quiet" data-action="music" data-music-action="clear" ${queue.length ? "" : "disabled"}>Clear queue</button></div><ol class="queue-list">${queueHtml}</ol></section>
     </div>`;
+}
+
+function currentGuildName() {
+  return state.guilds.find((guild) => guild.id === state.guildId)?.name ?? "the selected server";
+}
+
+function hasDiscordUser() {
+  return /^\d{17,20}$/.test(state.user?.id ?? "");
+}
+
+function discordLink(channelId, label = "Open in Discord") {
+  if (!state.guildId || !channelId) return "";
+  return `<a class="button button-secondary" href="https://discord.com/channels/${encodeURIComponent(state.guildId)}/${encodeURIComponent(channelId)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+}
+
+function gameStatus(game) {
+  if (game.status === "lobby") return { tone: "warn", label: "Lobby" };
+  if (game.status === "paused") return { tone: "warn", label: "Paused" };
+  if (game.status === "cancelled") return { tone: "danger", label: "Cancelled" };
+  if (game.status === "finished") return { tone: "ok", label: "Finished" };
+  if (game.status === "active") {
+    if (!game.phase) return { tone: "ok", label: "Live" };
+    const phase = game.phase === "submit" ? "Collecting cards" : game.phase === "judge" ? "Judging" : "Reveal";
+    return { tone: "ok", label: phase };
+  }
+  return { tone: "unknown", label: "Unknown" };
+}
+
+function gameMetrics(entries) {
+  return `<section class="metric-row" aria-label="Game metrics">${entries.map(([label, value]) => `<div class="metric"><span class="metric-label">${escapeHtml(label)}</span><strong class="metric-value tabular">${escapeHtml(value)}</strong></div>`).join("")}</section>`;
+}
+
+function refreshButton() {
+  return `<button class="button button-secondary" type="button" data-action="refresh-games">Refresh</button>`;
+}
+
+function renderCah(data) {
+  const enabled = data?.enabled !== false;
+  const notice = [
+    enabled ? "" : permissionNotice("Cards Against Humanity is turned off for this server. Enable it in Features to host a game."),
+    hasDiscordUser() ? "" : permissionNotice("Sign in with Discord to use CAH host controls. You can still watch the live table."),
+  ].join("");
+  return `${pageHeader("Cards Against Humanity", `Live lobby and round state for ${currentGuildName()}.`, refreshButton())}${notice}<div data-live-panel="cah">${renderCahLive(data)}</div>`;
+}
+
+function renderCahLive(data) {
+  const enabled = data?.enabled !== false;
+  const game = data?.game ?? null;
+  if (!game) {
+    if (!enabled) return emptyState("Cards Against Humanity is off", "Enable the games-cah feature before hosting a lobby.");
+    if (!hasDiscordUser()) return emptyState("No CAH game is running", "Sign in with Discord to host a lobby from here, or use /cah host in Discord.");
+    return emptyState("No CAH game is running", "Create a lobby here, or start one in Discord with /cah host. Players join and play their hands in Discord.") + renderCahHostForm();
+  }
+
+  const status = gameStatus(game);
+  const players = Array.isArray(game.players) ? game.players : [];
+  const slots = Array.isArray(game.slots) ? game.slots : [];
+  const me = state.user?.id;
+  const isHost = me === game.hostId;
+  const isJudge = me === game.judgeId;
+  const isAdmin = state.permissions.administrator;
+  const round = Number.isInteger(game.roundIndex) ? `Round ${game.roundIndex + 1}` : "Lobby";
+  const judgeText = game.judgeName ? escapeHtml(game.judgeName) : "Not selected";
+  const roundText = game.roundIndex === null || game.roundIndex === undefined ? "" : `<span class="table-meta">${escapeHtml(round)} · ${fmtNumber(game.submissionCount)}/${fmtNumber(game.submissionExpected)} submitted</span>`;
+  const slotsHtml = slots.length
+    ? `<ol class="card-slots">${slots.map((slot) => `<li class="${slot.slot === game.winnerSlot ? "is-winner" : ""}"><span class="slot-label">Slot ${escapeHtml(slot.slot)}${slot.slot === game.winnerSlot ? " · winner" : ""}</span><p>${escapeHtml(slot.card)}</p></li>`).join("")}</ol>`
+    : "";
+  const winnerHtml = game.winnerSlot
+    ? `<p class="game-note game-winner">Slot ${escapeHtml(game.winnerSlot)} wins for ${escapeHtml(game.winnerName ?? "an unknown player")}.</p>`
+    : "";
+  const judgeNote = game.phase === "judge"
+    ? `<p class="game-note">The judge picks the winning slot in Discord. Slots are anonymized here.</p>`
+    : "";
+
+  const canStart = enabled && game.status === "lobby" && isHost && players.length >= 3;
+  const canReveal = enabled && game.status === "active" && game.phase === "submit" && (isHost || isJudge);
+  const canNext = enabled && game.status === "active" && game.phase === "reveal" && (isHost || isJudge);
+  const canEnd = !["finished", "cancelled"].includes(game.status) && (isHost || isAdmin);
+  const controls = [];
+  if (canStart) {
+    controls.push(`<button class="button button-primary" type="button" data-action="cah" data-cah-action="start" data-game-id="${escapeHtml(game.id)}">Start game</button>`);
+  }
+  if (canReveal) {
+    controls.push(`<button class="button button-secondary" type="button" data-action="cah" data-cah-action="reveal" data-game-id="${escapeHtml(game.id)}" data-round-index="${escapeHtml(game.roundIndex ?? 0)}">Force reveal</button>`);
+  }
+  if (canNext) {
+    controls.push(`<button class="button button-primary" type="button" data-action="cah" data-cah-action="next" data-game-id="${escapeHtml(game.id)}" data-round-index="${escapeHtml(game.roundIndex ?? 0)}">Next round</button>`);
+  }
+  if (canEnd) {
+    controls.push(`<button class="button button-quiet danger-text" type="button" data-action="cah" data-cah-action="end" data-game-id="${escapeHtml(game.id)}">End game</button>`);
+  }
+  const hint = game.status === "lobby" && !isHost
+    ? "Only the host can start this lobby. Players join in Discord."
+    : game.status === "lobby" && players.length < 3
+      ? "At least 3 players are needed to start."
+      : game.status === "active" && game.phase === "judge"
+        ? "Waiting for the judge in Discord."
+        : game.status === "active" && game.phase === "submit" && !isHost && !isJudge
+          ? "Only the host or judge can force a reveal."
+          : "";
+  const controlBlock = `<div class="game-controls">${controls.join("")}${discordLink(game.channelId)}</div>${hint ? `<p class="game-note">${escapeHtml(hint)}</p>` : ""}`;
+
+  const scoreRows = players.map((player) => `<tr><td><strong>${escapeHtml(player.displayName)}</strong></td><td data-label="Role">${player.host ? `<span class="game-tag">Host</span>` : ""}${player.judge ? `<span class="game-tag">Judge</span>` : ""}</td><td class="numeric-cell" data-label="Score">${fmtNumber(player.score)}</td></tr>`).join("");
+  const scores = players.length
+    ? `<section class="table-panel"><div class="section-heading"><h2>Scores</h2><span class="table-meta">Goal ${fmtNumber(game.pointsGoal)}</span></div><div class="table-scroll"><table><thead><tr><th scope="col">Player</th><th scope="col">Role</th><th scope="col" class="numeric-cell">Score</th></tr></thead><tbody>${scoreRows}</tbody></table></div></section>`
+    : `<p class="game-note">No players yet.</p>`;
+  const restart = enabled && hasDiscordUser() && ["finished", "cancelled"].includes(game.status) ? renderCahHostForm() : "";
+
+  return `<section class="game-layout">
+    <div class="game-main">
+      <div class="game-topline"><span class="status-inline status-${status.tone}"><i class="status-dot"></i>${escapeHtml(status.label)}</span>${roundText}</div>
+      <p class="game-subline">Host ${escapeHtml(game.hostName)} · Judge ${judgeText} · Goal ${fmtNumber(game.pointsGoal)} points</p>
+      ${gameMetrics([
+        ["Players", `${fmtNumber(players.length)}/${fmtNumber(game.maxPlayers)}`],
+        ["Submissions", `${fmtNumber(game.submissionCount)}/${fmtNumber(game.submissionExpected)}`],
+        ["Black card", round],
+      ])}
+      ${game.blackCard ? `<section class="card-prompt"><span class="table-meta">Black card</span><p>${escapeHtml(game.blackCard)}</p></section>` : `<p class="game-note">The black card appears when the game starts.</p>`}
+      ${slotsHtml}
+      ${winnerHtml}
+      ${judgeNote}
+    </div>
+    <aside class="game-side">
+      ${controlBlock}
+      ${scores}
+    </aside>
+  </section>${restart}`;
+}
+
+function renderCahHostForm() {
+  return `<form class="settings-section" id="cah-host-form">
+    <div class="settings-heading"><div><h2>Create a lobby</h2><p>The bot posts the lobby card in the channel. Members join, play hands, and judge rounds in Discord.</p></div><div class="settings-save"><button class="button button-primary" type="submit">Create lobby</button></div></div>
+    <div class="settings-fields">
+      <label class="setting-field" for="cah-channel"><span><strong>Text channel ID</strong><small>Right-click a text channel in Discord, then Copy ID.</small></span><input id="cah-channel" name="channelId" type="text" inputmode="numeric" autocomplete="off" required placeholder="123456789012345678"></label>
+      <label class="setting-field" for="cah-points"><span><strong>Points to win</strong><small>1 to 50. Default 7.</small></span><input id="cah-points" name="pointsGoal" type="number" min="1" max="50" step="1" value="7" required></label>
+      <label class="setting-field" for="cah-players"><span><strong>Maximum players</strong><small>3 to 10.</small></span><input id="cah-players" name="maxPlayers" type="number" min="3" max="10" step="1" value="10" required></label>
+    </div>
+    <div class="settings-feedback" data-feedback="cah-host" role="status" aria-live="polite"></div>
+  </form>`;
+}
+
+function renderTambola(data) {
+  const enabled = data?.enabled !== false;
+  const notice = [
+    enabled ? "" : permissionNotice("Tambola is turned off for this server. Enable it in Features before starting a game."),
+    hasDiscordUser() ? "" : permissionNotice("Sign in with Discord to use Tambola host controls. You can still watch the live table."),
+  ].join("");
+  return `${pageHeader("Tambola", `Live table for ${currentGuildName()}. Players join, buy tickets, and mark numbers in Discord.`, refreshButton())}${notice}<div data-live-panel="tambola">${renderTambolaLive(data)}</div>`;
+}
+
+function renderTambolaLive(data) {
+  const enabled = data?.enabled !== false;
+  const game = data?.game ?? null;
+  if (!game) {
+    return enabled
+      ? emptyState("No Tambola game is running", "Start a lobby in Discord with /tambola host. This view follows the live table and can pause, resume, or end it.")
+      : emptyState("Tambola is off", "Enable the games-tambola feature before starting a game.");
+  }
+
+  const status = gameStatus(game);
+  const me = state.user?.id;
+  const canControl = me === game.hostId || state.permissions.administrator;
+  const lastCall = game.lastCall === null || game.lastCall === undefined ? "None" : String(game.lastCall);
+  const claims = Array.isArray(game.claims) && game.claims.length
+    ? `<ul class="claim-list">${game.claims.map((claim) => `<li><strong>${escapeHtml(claim.label)}</strong><span>${escapeHtml(claim.displayName)}</span><small>after ${fmtNumber(claim.atCall)} calls</small></li>`).join("")}</ul>`
+    : `<p class="game-note">No claims yet.</p>`;
+  const players = Array.isArray(game.players) ? game.players : [];
+  const playerList = players.length
+    ? `<ul class="player-chips">${players.map((player) => `<li>${escapeHtml(player.displayName)}</li>`).join("")}</ul>`
+    : `<p class="game-note">No players yet.</p>`;
+  const voice = game.voiceChannelId
+    ? `${game.voiceConnected ? "Connected" : "Not connected"} · channel ${game.voiceChannelId}`
+    : "Text only";
+  const controls = [];
+  if (canControl && game.status === "active") {
+    controls.push(`<button class="button button-secondary" type="button" data-action="tambola" data-tambola-action="pause" data-game-id="${escapeHtml(game.id)}">Pause</button>`);
+  }
+  if (canControl && game.status === "paused") {
+    controls.push(`<button class="button button-primary" type="button" data-action="tambola" data-tambola-action="resume" data-game-id="${escapeHtml(game.id)}">Resume</button>`);
+  }
+  if (canControl && !["finished", "cancelled"].includes(game.status)) {
+    controls.push(`<button class="button button-quiet danger-text" type="button" data-action="tambola" data-tambola-action="end" data-game-id="${escapeHtml(game.id)}">End game</button>`);
+  }
+  const controlBlock = `<div class="game-controls">${controls.join("")}${discordLink(game.channelId)}</div>${canControl ? "" : `<p class="game-note">Only the host or an administrator can pause, resume, or end this game.</p>`}`;
+
+  return `<section class="game-layout">
+    <div class="game-main">
+      <div class="game-topline"><span class="status-inline status-${status.tone}"><i class="status-dot"></i>${escapeHtml(status.label)}</span><span class="table-meta">Every ${fmtNumber(game.intervalSeconds)}s · auto-mark ${game.autoMark ? "on" : "off"}</span></div>
+      <p class="game-subline">Host ${escapeHtml(game.hostName)} · ${escapeHtml(voice)}</p>
+      ${gameMetrics([
+        ["Players", `${fmtNumber(game.playerCount)}/${fmtNumber(game.maxPlayers)}`],
+        ["Called", `${fmtNumber(game.calledCount)}/90`],
+        ["Remaining", fmtNumber(game.remainingCalls)],
+      ])}
+      <section class="tambola-call"><span class="table-meta">Last call</span><strong class="tabular">${escapeHtml(lastCall)}</strong></section>
+      <section class="section-block"><div class="section-heading"><h2>Claims</h2></div>${claims}</section>
+    </div>
+    <aside class="game-side">
+      ${controlBlock}
+      <section class="section-block"><div class="section-heading"><h2>Players</h2><span class="table-meta">${fmtNumber(game.playerCount)} joined</span></div>${playerList}</section>
+    </aside>
+  </section>`;
+}
+
+function renderCasino(data) {
+  if (data?.discordRequired) {
+    return `${pageHeader("Casino", "Play coinflip and slots for yourself.")}${permissionNotice("Sign in with Discord to play the casino. The dashboard needs your Discord user ID for the balance and bets.")}`;
+  }
+  const enabled = data?.enabled !== false;
+  if (!enabled) {
+    return `${pageHeader("Casino", "Play coinflip and slots for yourself.")}${permissionNotice("The economy is turned off for this server. Enable economy-core in Features to play.")}`;
+  }
+  const maxBet = Number(data?.maxBet) || 10_000;
+  const busy = state.casinoBusy === true;
+  const result = state.casinoResult;
+  return `${pageHeader("Casino", "Play coinflip and slots for yourself. No administrator permission is required.")}
+    ${gameMetrics([
+      ["Balance", `${fmtNumber(data?.balance)} SC`],
+      ["Maximum bet", `${fmtNumber(maxBet)} SC`],
+      ["Games", "2"],
+    ])}
+    ${renderCasinoResult(result)}
+    <div class="casino-forms">
+      <form id="casino-coinflip-form" class="settings-section">
+        <div class="settings-heading"><div><h2>Coinflip</h2><p>A win pays 2x the bet. The win chance is 48%.</p></div><div class="settings-save"><button class="button button-primary" type="submit" ${busy ? "disabled" : ""}>Flip</button></div></div>
+        <div class="settings-fields casino-fields">
+          <label class="setting-field" for="casino-coinflip-bet"><span><strong>Bet</strong><small>Whole coins, up to ${fmtNumber(maxBet)}.</small></span><input id="casino-coinflip-bet" name="bet" type="number" min="1" max="${maxBet}" step="1" value="100" required ${busy ? "disabled" : ""}></label>
+          <label class="setting-field" for="casino-coinflip-side"><span><strong>Side</strong></span><select id="casino-coinflip-side" name="side" ${busy ? "disabled" : ""}><option value="heads">Heads</option><option value="tails">Tails</option></select></label>
+        </div>
+      </form>
+      <form id="casino-slots-form" class="settings-section">
+        <div class="settings-heading"><div><h2>Slots</h2><p>Three of a kind pays 5x. A pair pays 1.6x, rounded down.</p></div><div class="settings-save"><button class="button button-primary" type="submit" ${busy ? "disabled" : ""}>Spin</button></div></div>
+        <div class="settings-fields casino-fields">
+          <label class="setting-field" for="casino-slots-bet"><span><strong>Bet</strong><small>Whole coins, up to ${fmtNumber(maxBet)}.</small></span><input id="casino-slots-bet" name="bet" type="number" min="1" max="${maxBet}" step="1" value="100" required ${busy ? "disabled" : ""}></label>
+        </div>
+      </form>
+    </div>
+    <p class="game-note">The maximum bet is ${fmtNumber(maxBet)} SC per play. A bet is taken once per request even if the browser retries.</p>
+    <div class="settings-feedback" data-feedback="casino" role="status" aria-live="polite"></div>`;
+}
+
+function renderCasinoResult(result) {
+  if (!result) return "";
+  if (result.game === "coinflip") {
+    const won = result.win === true;
+    return `<section class="casino-result ${won ? "is-win" : "is-loss"}" role="status"><span class="table-meta">Last flip</span><h2>${won ? "You won" : "You lost"}</h2><p>The coin landed ${escapeHtml(result.result)}. ${won ? `Payout ${fmtNumber(result.payout)} SC` : `Lost ${fmtNumber(result.bet)} SC`}.</p></section>`;
+  }
+  const reels = Array.isArray(result.reels) ? result.reels : [];
+  const label = result.multiplier === 5 ? "Three of a kind, 5x." : result.multiplier === 1.6 ? "A pair, 1.6x." : "No match.";
+  return `<section class="casino-result ${result.payout > 0 ? "is-win" : "is-loss"}" role="status"><span class="table-meta">Last spin</span><div class="reel-row">${reels.map((reel) => `<span class="reel">${escapeHtml(reel)}</span>`).join("")}</div><p>${escapeHtml(label)} ${result.payout > 0 ? `Payout ${fmtNumber(result.payout)} SC` : `Lost ${fmtNumber(result.bet)} SC`}.</p></section>`;
+}
+
+export function renderLivePanel(view, data) {
+  if (view === "cah") return renderCahLive(data);
+  if (view === "tambola") return renderTambolaLive(data);
+  return "";
 }
 
 function getSectionValue(data, section) {

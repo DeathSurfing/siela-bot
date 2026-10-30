@@ -8,10 +8,16 @@ import {
   autoroleSyncSchema,
   autoroleUpdateSchema,
   birthdaySetSchema,
+  cahGameActionSchema,
+  cahHostSchema,
+  cahRoundActionSchema,
+  casinoCoinflipSchema,
+  casinoSlotsSchema,
   countersQuerySchema,
   countersResetSchema,
   featureBulkUpdateSchema,
   featureUpdateSchema,
+  MAX_CASINO_BET,
   messageSendSchema,
   musicAutoplaySchema,
   musicFilterSchema,
@@ -28,6 +34,7 @@ import {
   prefixSetSchema,
   privacyDeleteSchema,
   snowflakeSchema,
+  tambolaGameActionSchema,
   tempvcChannelUpdateSchema,
   tempvcSettingsUpdateSchema,
   tempvcUserActionSchema,
@@ -38,6 +45,7 @@ import {
 import type { Services } from "../framework/types.js";
 import type { Logger } from "../lib/logger.js";
 import { UserError, errorMessage } from "../lib/errors.js";
+import { playCoinflip, playSlots } from "../features/casino.js";
 import { selectGuildId } from "./guildScope.js";
 
 export interface ControlServerOptions {
@@ -552,6 +560,115 @@ export class ControlServer {
       return { ok: true };
     });
 
+    this.route("GET", "/v1/cah/state", async (request) => this.cahState(this.guildId(request)));
+    this.route("POST", "/v1/cah/host", async (request) => {
+      const guild = this.guild(request);
+      const guildId = guild.id;
+      await this.requireCah(guildId);
+      const body = this.parse(cahHostSchema, request.body);
+      const member = await this.controlMember(request);
+      const channel = await guild.channels.fetch(body.channelId).catch(() => null);
+      if (!channel || channel.guildId !== guildId || !channel.isTextBased()) {
+        throw new UserError("Choose a text channel in this server.", "invalid_channel");
+      }
+      await services.cah.host({
+        guild,
+        channel,
+        host: member,
+        pointsGoal: body.pointsGoal,
+        maxPlayers: body.maxPlayers,
+      });
+      return this.cahState(guildId);
+    });
+    this.route("POST", "/v1/cah/start", async (request) => {
+      const guildId = this.guildId(request);
+      await this.requireCah(guildId);
+      const body = this.parse(cahGameActionSchema, request.body);
+      const game = this.cahGame(guildId, body.gameId);
+      const member = await this.controlMember(request);
+      if (member.id !== game.hostId) throw new UserError("Only the host can start the game.", "not_host");
+      await services.cah.start(guildId, member);
+      return this.cahState(guildId);
+    });
+    this.route("POST", "/v1/cah/reveal", async (request) => {
+      const guildId = this.guildId(request);
+      await this.requireCah(guildId);
+      const body = this.parse(cahRoundActionSchema, request.body);
+      const game = this.cahGame(guildId, body.gameId, body.roundIndex);
+      const member = await this.controlMember(request);
+      if (member.id !== game.hostId && member.id !== game.judgeId) {
+        throw new UserError("Only the host or judge can force a reveal.", "not_controller");
+      }
+      await services.cah.reveal(guildId, member);
+      return this.cahState(guildId);
+    });
+    this.route("POST", "/v1/cah/next", async (request) => {
+      const guildId = this.guildId(request);
+      await this.requireCah(guildId);
+      const body = this.parse(cahRoundActionSchema, request.body);
+      const game = this.cahGame(guildId, body.gameId, body.roundIndex);
+      const member = await this.controlMember(request);
+      if (member.id !== game.hostId && member.id !== game.judgeId) {
+        throw new UserError("Only the host or judge can advance the round.", "not_controller");
+      }
+      await services.cah.next(guildId, member);
+      return this.cahState(guildId);
+    });
+    this.route("POST", "/v1/cah/end", async (request) => {
+      const guildId = this.guildId(request);
+      const body = this.parse(cahGameActionSchema, request.body);
+      const game = this.cahGame(guildId, body.gameId);
+      const member = await this.controlMember(request);
+      if (member.id !== game.hostId && !this.administrator(member)) {
+        throw new UserError("Only the host or an admin can end the game.", "not_controller");
+      }
+      await services.cah.end(guildId, member);
+      return this.cahState(guildId);
+    });
+
+    this.route("GET", "/v1/tambola/state", async (request) => this.tambolaState(this.guildId(request)));
+    for (const action of ["end", "pause", "resume"] as const) {
+      this.route("POST", `/v1/tambola/${action}`, async (request) => {
+        const guildId = this.guildId(request);
+        const body = this.parse(tambolaGameActionSchema, request.body);
+        const game = this.tambolaGame(guildId, body.gameId);
+        const member = await this.controlMember(request);
+        if (member.id !== game.hostId && !this.administrator(member)) {
+          throw new UserError("Only the host or an admin can control Tambola.", "not_controller");
+        }
+        if (action === "end") await services.tambola.end(guildId, member);
+        else if (action === "pause") await services.tambola.pause(guildId, member);
+        else await services.tambola.resume(guildId, member);
+        return this.tambolaState(guildId);
+      });
+    }
+
+    this.route("GET", "/v1/casino/state", async (request) => {
+      const guildId = this.guildId(request);
+      const userId = this.userId(request);
+      if (!(await services.features.isEnabled(guildId, "economy-core"))) {
+        return { enabled: false, balance: null, maxBet: MAX_CASINO_BET };
+      }
+      const { balance } = await services.economy.getBalance(guildId, userId);
+      return { enabled: true, balance, maxBet: MAX_CASINO_BET };
+    });
+    this.route("POST", "/v1/casino/coinflip", async (request) => {
+      const guildId = this.guildId(request);
+      const userId = this.userId(request);
+      const body = this.parse(casinoCoinflipSchema, request.body);
+      await this.requireEconomy(guildId);
+      const result = await playCoinflip(services.economy, guildId, userId, body.bet, body.side, body.requestId, this.options.token);
+      return { enabled: true, maxBet: MAX_CASINO_BET, ...result };
+    });
+    this.route("POST", "/v1/casino/slots", async (request) => {
+      const guildId = this.guildId(request);
+      const userId = this.userId(request);
+      const body = this.parse(casinoSlotsSchema, request.body);
+      await this.requireEconomy(guildId);
+      const result = await playSlots(services.economy, guildId, userId, body.bet, body.requestId, this.options.token);
+      return { enabled: true, maxBet: MAX_CASINO_BET, ...result };
+    });
+
     this.route("POST", "/v1/messages", async (request) => {
       const body = this.parse(messageSendSchema, request.body);
       const channel = await this.options.client.channels.fetch(body.channelId).catch(() => null);
@@ -633,6 +750,61 @@ export class ControlServer {
   private requireMusic() {
     if (!this.options.services.music) throw new UserError("Music service is not ready.", "not_ready");
     return this.options.services.music;
+  }
+
+  private async controlMember(request: FastifyRequest): Promise<GuildMember> {
+    const guild = this.guild(request);
+    const userId = this.userId(request);
+    try {
+      return await guild.members.fetch(userId);
+    } catch {
+      throw new UserError("You are not a member of this server.", "not_a_member");
+    }
+  }
+
+  private administrator(member: GuildMember): boolean {
+    return member.permissions.has(PermissionsBitField.Flags.Administrator);
+  }
+
+  private async requireCah(guildId: string): Promise<void> {
+    if (!(await this.options.services.features.isEnabled(guildId, "games-cah"))) {
+      throw new UserError("Cards Against Humanity is turned off on this server.", "feature_disabled");
+    }
+  }
+
+  private async requireEconomy(guildId: string): Promise<void> {
+    if (!(await this.options.services.features.isEnabled(guildId, "economy-core"))) {
+      throw new UserError("The economy is turned off on this server.", "feature_disabled");
+    }
+  }
+
+  private async cahState(guildId: string) {
+    return {
+      enabled: await this.options.services.features.isEnabled(guildId, "games-cah"),
+      game: this.options.services.cah.snapshot(guildId) ?? this.options.services.cah.lastResult(guildId),
+    };
+  }
+
+  private cahGame(guildId: string, gameId: string, roundIndex?: number) {
+    const game = this.options.services.cah.snapshot(guildId);
+    if (!game || game.id !== gameId) throw new UserError("That game is no longer running.", "stale_game");
+    if (roundIndex !== undefined && game.roundIndex !== roundIndex) {
+      throw new UserError("That round has already changed. Refresh and try again.", "stale_round");
+    }
+    return game;
+  }
+
+  private async tambolaState(guildId: string) {
+    return {
+      enabled: await this.options.services.features.isEnabled(guildId, "games-tambola"),
+      game: this.options.services.tambola.snapshot(guildId),
+    };
+  }
+
+  private tambolaGame(guildId: string, gameId: string) {
+    const game = this.options.services.tambola.snapshot(guildId);
+    if (!game || game.id !== gameId) throw new UserError("That game is no longer running.", "stale_game");
+    return game;
   }
 
   /** Music controls require the guild's music-playback flag. Cleanup does not. */

@@ -53,6 +53,41 @@ interface CahSession {
   gameTimer: NodeJS.Timeout | null;
 }
 
+export interface CahSnapshotPlayer {
+  id: string;
+  displayName: string;
+  score: number;
+  host: boolean;
+  judge: boolean;
+}
+
+export interface CahSnapshotSlot {
+  slot: string;
+  card: string;
+}
+
+export interface CahSnapshot {
+  id: string;
+  channelId: string;
+  hostId: string;
+  hostName: string;
+  status: CahGameState["status"];
+  phase: CahGameState["phase"];
+  pointsGoal: number;
+  maxPlayers: number;
+  players: CahSnapshotPlayer[];
+  blackCard: string | null;
+  roundIndex: number | null;
+  judgeId: string | null;
+  judgeName: string | null;
+  submissionCount: number;
+  submissionExpected: number;
+  slots: CahSnapshotSlot[];
+  winnerSlot: string | null;
+  winnerId: string | null;
+  winnerName: string | null;
+}
+
 type OutgoingMessage = Pick<ReplyPayload, "content" | "embeds" | "components" | "files" | "allowedMentions"> & {
   flags: number;
 };
@@ -74,6 +109,7 @@ export class CahService {
   private readonly logger: Logger | null;
   private readonly byGuild = new Map<string, CahSession>();
   private readonly byId = new Map<string, CahSession>();
+  private readonly lastFinished = new Map<string, CahSnapshot>();
   private pack: CahPack | null = null;
 
   constructor(client: Client, a?: BotConfig | Logger | null, b?: Logger | null) {
@@ -113,6 +149,17 @@ export class CahService {
     const session = this.get(guildId);
     if (!session) throw new UserError("No CAH game is running in this server.");
     return session;
+  }
+
+  /** Redacted view for dashboards. Hands, decks, and submission identities stay out. */
+  snapshot(guildId: string): CahSnapshot | null {
+    const session = this.get(guildId);
+    return session ? this.buildSnapshot(session.game) : null;
+  }
+
+  /** Redacted summary of the last game this guild finished or cancelled. */
+  lastResult(guildId: string): CahSnapshot | null {
+    return this.lastFinished.get(guildId) ?? null;
   }
 
   async host(options: {
@@ -162,6 +209,7 @@ export class CahService {
       this.byId.delete(game.id);
       throw error;
     }
+    this.lastFinished.delete(game.guildId);
 
     session.lobbyTimer = setTimeout(() => {
       void this.cancel(session, "The lobby timed out.");
@@ -257,6 +305,10 @@ export class CahService {
     const result = pickWinner(session.game, userId, slot);
     if (!result.ok) throw new UserError(result.reason);
     await this.updateCard(session);
+    if (session.game.status === "finished") {
+      this.clearTimers(session);
+      this.detach(session);
+    }
     return { playerId: result.playerId, score: result.score };
   }
   pickWinner(guildId: string, userIdOrMember: string | GuildMember, slot: string): Promise<{ playerId: string; score: number }> {
@@ -546,12 +598,59 @@ export class CahService {
   }
 
   private detach(session: CahSession): void {
+    if (session.game.status === "finished" || session.game.status === "cancelled") {
+      this.lastFinished.set(session.game.guildId, this.buildSnapshot(session.game));
+    }
     if (this.byGuild.get(session.game.guildId) === session) {
       this.byGuild.delete(session.game.guildId);
     }
     if (this.byId.get(session.game.id) === session) {
       this.byId.delete(session.game.id);
     }
+  }
+
+  private buildSnapshot(game: CahGameState): CahSnapshot {
+    const round = game.round;
+    const showSlots = Boolean(round) && (game.phase === "judge" || game.phase === "reveal");
+    const slots: CahSnapshotSlot[] = showSlots
+      ? [...round!.submissions.entries()]
+        .sort(([left], [right]) => Number(left) - Number(right))
+        .map(([slot, submission]) => ({
+          slot,
+          card: this.cardText(submission.whiteCardIds[0] ?? "", "white"),
+        }))
+      : [];
+    const winner = round?.winnerSlot ? round.submissions.get(round.winnerSlot) : undefined;
+    const judge = round ? game.players.get(round.judgeId) : undefined;
+    return {
+      id: game.id,
+      channelId: game.channelId,
+      hostId: game.hostId,
+      hostName: game.players.get(game.hostId)?.displayName ?? game.hostId,
+      status: game.status,
+      phase: game.phase,
+      pointsGoal: game.pointsGoal,
+      maxPlayers: game.maxPlayers,
+      players: [...game.players.values()]
+        .sort((left, right) => right.score - left.score || left.displayName.localeCompare(right.displayName))
+        .map((player) => ({
+          id: player.userId,
+          displayName: player.displayName,
+          score: player.score,
+          host: player.userId === game.hostId,
+          judge: player.userId === round?.judgeId,
+        })),
+      blackCard: round ? this.cardText(round.blackCardId, "black") : null,
+      roundIndex: round?.index ?? null,
+      judgeId: round?.judgeId ?? null,
+      judgeName: judge?.displayName ?? round?.judgeId ?? null,
+      submissionCount: round?.submissions.size ?? 0,
+      submissionExpected: Math.max(1, game.players.size - 1),
+      slots,
+      winnerSlot: round?.winnerSlot ?? null,
+      winnerId: winner?.playerId ?? null,
+      winnerName: winner ? game.players.get(winner.playerId)?.displayName ?? winner.playerId : null,
+    };
   }
 
   private newId(): string {

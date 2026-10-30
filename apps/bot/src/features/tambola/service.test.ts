@@ -396,7 +396,7 @@ describe("TambolaService", () => {
 
   it("leaves voice six seconds after a game ends", async () => {
     vi.useFakeTimers();
-    const { service, channel, guild } = createService();
+    const { service, channel, guild, music } = createService();
     try {
       const host = fakeMember("host", "Host");
       const player = fakeMember("player", "Player");
@@ -422,9 +422,62 @@ describe("TambolaService", () => {
       expect(voiceSpies.leave).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(6_000);
       expect(voiceSpies.leave).toHaveBeenCalled();
+      expect(music.unlockVoice).toHaveBeenCalledWith("guild");
     } finally {
       service.stop();
       vi.useRealTimers();
     }
+  });
+
+  it("reports a redacted live snapshot and pauses and resumes for the host", async () => {
+    const { service, channel, guild } = createService();
+    const host = fakeMember("host", "Host");
+    const player = fakeMember("player", "Player");
+    await service.host({
+      guild: guild as never,
+      channel: channel as never,
+      host: host as never,
+      maxPlayers: 20,
+      autoMark: false,
+      voiceChannelId: null,
+    });
+    await service.join("guild", player as never);
+    await service.join("guild", host as never);
+    await service.start("guild", host as never);
+    const number = await service.call("guild", host as never);
+    service.get("guild")!.game.claims.set("top_line", { userId: "player", atCall: 9 });
+
+    const snapshot = service.snapshot("guild")!;
+    expect(snapshot).toMatchObject({
+      status: "active",
+      hostId: "host",
+      hostName: "Host",
+      playerCount: 2,
+      calledCount: 1,
+      lastCall: number,
+      autoMark: false,
+      intervalSeconds: 12,
+      voiceChannelId: null,
+      voiceConnected: false,
+    });
+    expect(snapshot.claims).toEqual([
+      { pattern: "top_line", label: "Top Line", userId: "player", displayName: "Player", atCall: 9 },
+    ]);
+    expect(snapshot.players.map((entry) => entry.displayName).sort()).toEqual(["Host", "Player"]);
+    expect(Object.keys(snapshot)).toEqual([
+      "id", "channelId", "hostId", "hostName", "status", "maxPlayers", "playerCount", "players",
+      "calledCount", "lastCall", "remainingCalls", "claims", "autoMark", "intervalSeconds",
+      "voiceChannelId", "voiceConnected", "voiceNote", "winnerId", "winnerName",
+    ]);
+    const serialized = JSON.stringify(snapshot);
+    expect(serialized).not.toContain("tickets");
+    expect(serialized).not.toContain("marked");
+    expect(serialized).not.toContain("rows");
+
+    await service.pause("guild", host as never);
+    expect(service.snapshot("guild")!.status).toBe("paused");
+    await service.resume("guild", host as never);
+    expect(service.snapshot("guild")!.status).toBe("active");
+    service.stop();
   });
 });

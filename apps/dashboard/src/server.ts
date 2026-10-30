@@ -5,12 +5,18 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { z } from "zod";
 import { oauthConfig, type DashboardConfig } from "./config.js";
 import {
+  CAH_ACTIONS,
+  CASINO_GAMES,
   CONFIG_SECTIONS,
   ControlApiError,
   MUSIC_ACTIONS,
+  TAMBOLA_ACTIONS,
+  type CahAction,
+  type CasinoGame,
   type ConfigSection,
   type ControlClient,
   type MusicAction,
+  type TambolaAction,
   createControlClient,
 } from "./control-client.js";
 import {
@@ -40,6 +46,29 @@ const bodySchema = z.record(z.string(), z.unknown());
 const idPattern = /^[A-Za-z0-9_-]{1,100}$/;
 const guildPattern = /^\d{1,20}$/;
 const snowflakePattern = /^\d{17,20}$/;
+const cahHostSchema = z
+  .object({
+    channelId: z.string().regex(snowflakePattern, "Channel ID must be a Discord snowflake."),
+    pointsGoal: z.number().int().min(1).max(50).optional(),
+    maxPlayers: z.number().int().min(3).max(10).optional(),
+  })
+  .strict();
+const gameIdSchema = z.string().min(1).max(32);
+const cahActionSchema = z
+  .object({ gameId: gameIdSchema, roundIndex: z.number().int().min(0).optional() })
+  .strict();
+const tambolaActionSchema = z.object({ gameId: gameIdSchema }).strict();
+const requestIdSchema = z.string().min(8).max(100);
+const casinoCoinflipSchema = z
+  .object({
+    bet: z.number().int().positive(),
+    side: z.enum(["heads", "tails"]),
+    requestId: requestIdSchema,
+  })
+  .strict();
+const casinoSlotsSchema = z
+  .object({ bet: z.number().int().positive(), requestId: requestIdSchema })
+  .strict();
 const MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
@@ -210,6 +239,13 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
     return null;
   };
 
+  const gameUser = (request: FastifyRequest, reply: FastifyReply): SessionUser | null => {
+    const user = sessionUser(request);
+    if (user && snowflakePattern.test(user.id)) return user;
+    apiError(reply, 403, "discord_account_required", "Sign in with Discord to use game controls.");
+    return null;
+  };
+
   app.get("/healthz", async () => ({ ok: true }));
 
   const secureSuffix = (request: FastifyRequest): string =>
@@ -341,6 +377,17 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
       handler: async (request, reply) => handler(request, reply),
     });
   };
+  const post = (
+    url: string,
+    handler: (request: FastifyRequest, reply: FastifyReply) => Promise<unknown>,
+  ) => {
+    app.post(url, {
+      preHandler: async (request, reply) => {
+        await authenticated(request, reply);
+        if (!reply.sent) validCsrf(request, reply, config.DASHBOARD_SESSION_SECRET);
+      },
+    }, async (request, reply) => handler(request, reply));
+  };
 
   get("/api/status", () => control.getStatus());
   get("/api/guilds", () => control.getGuilds());
@@ -404,6 +451,64 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
     const user = await requireAdministrator(request, reply, guildId);
     return user ? control.patchConfig(guildId, section as ConfigSection, body.data, user.id) : undefined;
   });
+  get("/api/guilds/:guildId/cah", (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    return guildId ? control.cahState(guildId) : Promise.resolve(undefined);
+  });
+  post("/api/guilds/:guildId/cah/host", async (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    const body = cahHostSchema.safeParse(request.body);
+    if (!body.success) return apiError(reply, 400, "invalid_body", body.error.issues.map((issue) => issue.message).join("; "));
+    if (!guildId) return undefined;
+    const user = gameUser(request, reply);
+    return user ? control.cahHost(guildId, body.data, user.id) : undefined;
+  });
+  post("/api/guilds/:guildId/cah/:action", async (request, reply) => {
+    const params = request.params as { guildId: string; action: string };
+    const guildId = getGuildId(params.guildId, reply);
+    if (!CAH_ACTIONS.includes(params.action as CahAction)) {
+      return apiError(reply, 404, "unknown_game_action", "That CAH action is not available.");
+    }
+    const body = cahActionSchema.safeParse(request.body);
+    if (!body.success) return apiError(reply, 400, "invalid_body", body.error.issues.map((issue) => issue.message).join("; "));
+    if (!guildId) return undefined;
+    const user = gameUser(request, reply);
+    return user ? control.cahAction(guildId, params.action as CahAction, body.data, user.id) : undefined;
+  });
+  get("/api/guilds/:guildId/tambola", (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    return guildId ? control.tambolaState(guildId) : Promise.resolve(undefined);
+  });
+  post("/api/guilds/:guildId/tambola/:action", async (request, reply) => {
+    const params = request.params as { guildId: string; action: string };
+    const guildId = getGuildId(params.guildId, reply);
+    if (!TAMBOLA_ACTIONS.includes(params.action as TambolaAction)) {
+      return apiError(reply, 404, "unknown_game_action", "That Tambola action is not available.");
+    }
+    const body = tambolaActionSchema.safeParse(request.body);
+    if (!body.success) return apiError(reply, 400, "invalid_body", body.error.issues.map((issue) => issue.message).join("; "));
+    if (!guildId) return undefined;
+    const user = gameUser(request, reply);
+    return user ? control.tambolaAction(guildId, params.action as TambolaAction, body.data, user.id) : undefined;
+  });
+  get("/api/guilds/:guildId/casino", (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    if (!guildId) return Promise.resolve(undefined);
+    const user = gameUser(request, reply);
+    return user ? control.casinoState(guildId, user.id) : Promise.resolve(undefined);
+  });
+  for (const game of CASINO_GAMES) {
+    post(`/api/guilds/:guildId/casino/${game}`, async (request, reply) => {
+      const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+      const schema = game === "coinflip" ? casinoCoinflipSchema : casinoSlotsSchema;
+      const body = schema.safeParse(request.body);
+      if (!body.success) return apiError(reply, 400, "invalid_body", body.error.issues.map((issue) => issue.message).join("; "));
+      if (!guildId) return undefined;
+      const user = gameUser(request, reply);
+      return user ? control.casinoPlay(guildId, game as CasinoGame, body.data, user.id) : undefined;
+    });
+  }
+
   get("/api/guilds/:guildId/me/birthday", async (request, reply) => {
     const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
     if (!guildId) return undefined;
@@ -447,7 +552,12 @@ async function serveStatic(publicRoot: string, requestPath: string, reply: Fasti
       return reply.code(404).send({ error: { code: "not_found", message: "Not found." } });
     }
     const content = await readFile(fileReal);
-    const contentType = MIME_TYPES[path.extname(fileReal)] ?? "application/octet-stream";
+    const extension = path.extname(fileReal).toLowerCase();
+    const contentType = MIME_TYPES[extension] ?? "application/octet-stream";
+    reply.header(
+      "cache-control",
+      [".html", ".js", ".css"].includes(extension) ? "no-store" : "public, max-age=3600",
+    );
     return reply.type(contentType).send(content);
   } catch {
     return reply.code(404).send({ error: { code: "not_found", message: "Not found." } });

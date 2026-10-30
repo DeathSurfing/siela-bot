@@ -3,9 +3,15 @@ export const MUSIC_ACTIONS = [
 ] as const;
 
 export const CONFIG_SECTIONS = ["prefix", "welcome", "autorole", "tempvc", "music"] as const;
+export const CAH_ACTIONS = ["start", "reveal", "next", "end"] as const;
+export const TAMBOLA_ACTIONS = ["end", "pause", "resume"] as const;
+export const CASINO_GAMES = ["coinflip", "slots"] as const;
 
 export type MusicAction = (typeof MUSIC_ACTIONS)[number];
 export type ConfigSection = (typeof CONFIG_SECTIONS)[number];
+export type CahAction = (typeof CAH_ACTIONS)[number];
+export type TambolaAction = (typeof TAMBOLA_ACTIONS)[number];
+export type CasinoGame = (typeof CASINO_GAMES)[number];
 
 export class ControlApiError extends Error {
   constructor(
@@ -43,6 +49,13 @@ export interface ControlClient {
   getBirthday(guildId: string, userId: string): Promise<unknown>;
   setBirthday(guildId: string, userId: string, body: BirthdayInput): Promise<unknown>;
   clearBirthday(guildId: string, userId: string): Promise<unknown>;
+  cahState(guildId: string): Promise<unknown>;
+  cahHost(guildId: string, body: Record<string, unknown>, userId: string): Promise<unknown>;
+  cahAction(guildId: string, action: CahAction, body: Record<string, unknown>, userId: string): Promise<unknown>;
+  tambolaState(guildId: string): Promise<unknown>;
+  tambolaAction(guildId: string, action: TambolaAction, body: Record<string, unknown>, userId: string): Promise<unknown>;
+  casinoState(guildId: string, userId: string): Promise<unknown>;
+  casinoPlay(guildId: string, game: CasinoGame, body: Record<string, unknown>, userId: string): Promise<unknown>;
 }
 
 type ControlFetch = (url: URL, init?: RequestInit) => Promise<Response>;
@@ -126,5 +139,16 @@ export function createControlClient(baseUrl: string, token: string, fetcher: Con
       request("/v1/users/me/birthday", { guildId, userId, method: "PUT", body }),
     clearBirthday: (guildId, userId) =>
       request("/v1/users/me/birthday", { guildId, userId, method: "DELETE" }),
+    cahState: (guildId) => request("/v1/cah/state", { guildId }),
+    cahHost: (guildId, body, userId) =>
+      request("/v1/cah/host", { guildId, userId, actorId: userId, method: "POST", body }),
+    cahAction: (guildId, action, body, userId) =>
+      request(`/v1/cah/${action}`, { guildId, userId, actorId: userId, method: "POST", body }),
+    tambolaState: (guildId) => request("/v1/tambola/state", { guildId }),
+    tambolaAction: (guildId, action, body, userId) =>
+      request(`/v1/tambola/${action}`, { guildId, userId, actorId: userId, method: "POST", body }),
+    casinoState: (guildId, userId) => request("/v1/casino/state", { guildId, userId }),
+    casinoPlay: (guildId, game, body, userId) =>
+      request(`/v1/casino/${game}`, { guildId, userId, actorId: userId, method: "POST", body }),
   };
 }
