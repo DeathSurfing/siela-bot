@@ -445,6 +445,7 @@ describe("TambolaService", () => {
     await service.join("guild", host as never);
     await service.start("guild", host as never);
     const number = await service.call("guild", host as never);
+    service.get("guild")!.game.claims.set("top_line", { userId: "player", atCall: 9 });
 
     const snapshot = service.snapshot("guild")!;
     expect(snapshot).toMatchObject({
@@ -459,6 +460,9 @@ describe("TambolaService", () => {
       voiceChannelId: null,
       voiceConnected: false,
     });
+    expect(snapshot.claims).toEqual([
+      { pattern: "top_line", label: "Top Line", userId: "player", displayName: "Player", atCall: 9 },
+    ]);
     expect(snapshot.players.map((entry) => entry.displayName).sort()).toEqual(["Host", "Player"]);
     expect(Object.keys(snapshot)).toEqual([
       "id", "channelId", "hostId", "hostName", "status", "maxPlayers", "playerCount", "players",
