@@ -476,7 +476,7 @@ td code { overflow-wrap: anywhere; }
 .login-divider::before, .login-divider::after { flex: 1; height: 1px; background: var(--line); content: ""; }
 .login-divider span { white-space: nowrap; }
 .login-foot { margin: 22px 0 0; color: var(--quiet); font-size: 0.68rem; }
-.rail-user { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 34px; padding: 0 10px 0; margin-bottom: 4px; border-bottom: 1px solid var(--line); border-radius: var(--radius-control); color: inherit; text-decoration: none; transition: background-color var(--duration-press), color var(--duration-press); }
+.rail-user { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 34px; padding: 0 10px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--line); border-radius: var(--radius-control); color: inherit; text-decoration: none; transition: background-color var(--duration-press), color var(--duration-press); }
 .rail-user:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .rail-user:hover .rail-user-name { color: var(--text); }
 .rail-user-avatar { position: relative; width: 22px; height: 22px; flex: 0 0 22px; display: grid; place-items: center; overflow: hidden; border-radius: var(--radius-circle); color: var(--muted); background: var(--surface); font-size: 0.58rem; font-weight: 620; }

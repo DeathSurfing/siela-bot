@@ -357,6 +357,7 @@ function gameStatus(game) {
   if (game.status === "cancelled") return { tone: "danger", label: "Cancelled" };
   if (game.status === "finished") return { tone: "ok", label: "Finished" };
   if (game.status === "active") {
+    if (!game.phase) return { tone: "ok", label: "Live" };
     const phase = game.phase === "submit" ? "Collecting cards" : game.phase === "judge" ? "Judging" : "Reveal";
     return { tone: "ok", label: phase };
   }

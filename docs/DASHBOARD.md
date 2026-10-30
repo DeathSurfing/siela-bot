@@ -100,19 +100,21 @@ Feature switches apply immediately. The dashboard shows an Undo action after eac
 
 The music tab needs a voice channel ID. A browser cannot report which Discord voice channel its operator is in, so paste the target channel's ID into the field above **Add to queue**. The dashboard stores it per server in browser storage. Right-click a voice channel in Discord and choose **Copy ID**; enable Developer Mode under Discord's advanced settings if that item is missing.
 
+Server settings save one section at a time. Boolean switches save their visible state, and role ID fields accept a comma-separated list.
+
+Audit entries show the actor's Discord display name when the bot can resolve it. Hover the name or focus it to read the Discord ID. A non-Discord actor such as `dashboard`, `system`, or `mcp` keeps its name. When the bot cannot resolve a Discord ID, the dashboard labels the actor `Discord member` and keeps the ID in the title.
+
 ## Game tabs
 
 The **Cards Against Humanity** tab follows the lobby, submission, judging, reveal, and finished states. It shows the game ID, channel, host, phase, points goal, players and scores, black card, submission count, and anonymized white-card slots at judging and reveal. It does not show hands, decks, discards, submission owners, the judge order, timers, or Discord message objects. Hosts can create a lobby from a text channel ID, start it, force a reveal, advance a round, and end it. Reveal and advance also work for the current judge. Ending also works for an administrator. The judge picks the winning slot in Discord; the dashboard deliberately has no pick route. The Discord link opens the lobby or game channel.
 
 The **Tambola** tab follows the live table: status, host, channel, player count and names, called count, last call, claims, auto-mark, call interval, and voice state. It does not show tickets or marked numbers. The host or an administrator can pause, resume, or end the game. Ending releases the call, lobby, game, and voice timers, leaves voice, unlocks music, and drops the TTS voice path. Players still join, buy tickets, mark numbers, and claim lines in Discord.
 
-The **Casino** tab is for the signed-in member, not an operator action. It shows the member's balance and two games: coinflip spends the bet and pays 2x on a 48% win; slots pays 5x for three of a kind and 1.6x for a pair, rounded down. The maximum bet is 10,000 SC, and a bet must be a positive whole number. Spend and payout use idempotency keys derived from a client request ID, and the roll is derived from that ID, so a retry returns the same result and charges once. Only your own balance is read or changed. Blackjack is not in the dashboard.
+The **Casino** tab is for the signed-in member, not an operator action. It shows the member's balance and two games: coinflip spends the bet and pays 2x on a 48% win; slots pays 5x for three of a kind and 1.6x for a pair, rounded down. The maximum bet is 10,000 SC, and a bet must be a positive whole number. Spend and payout use idempotency keys derived from a client request ID. The roll is an HMAC of that ID with a server-side secret, so a retry returns the same result, charges once, and a client cannot grind request IDs to predict a win. Only your own balance is read or changed. Blackjack is not in the dashboard.
 
 CAH and Tambola controls need a Discord sign-in, because the bot checks the acting member's host, judge, and Administrator permissions. A password-only session can read the CAH and Tambola tables but cannot use their controls. Casino needs a Discord sign-in because the balance and bets belong to a Discord user.
 
-Server settings save one section at a time. Boolean switches save their visible state, and role ID fields accept a comma-separated list.
-
-Audit entries show the actor's Discord display name when the bot can resolve it. Hover the name or focus it to read the Discord ID. A non-Discord actor such as `dashboard`, `system`, or `mcp` keeps its name. When the bot cannot resolve a Discord ID, the dashboard labels the actor `Discord member` and keeps the ID in the title.
+## Discord sign-in
 
 ## Discord sign-in
 
