@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadDashboardConfig } from "./config.js";
 import type { ControlClient } from "./control-client.js";
 import { createDashboardServer, resolvePublicPath } from "./server.js";
-import { issueSession, csrfToken } from "./session.js";
+import { issueSession, csrfToken, type SessionUser } from "./session.js";
 
 const password = "not-a-real-password-value";
 const sessionSecret = "not-a-real-session-secret-with-more-than-32-chars";
@@ -38,6 +38,8 @@ afterEach(async () => {
   if (publicDir) await rm(publicDir, { recursive: true, force: true });
 });
 
+const owner: SessionUser = { id: "111111111111111111", name: "Owner", avatarUrl: null };
+
 function controlStub(overrides: Partial<ControlClient> = {}): ControlClient {
   return {
     getStatus: vi.fn().mockResolvedValue({ ready: true }),
@@ -50,12 +52,16 @@ function controlStub(overrides: Partial<ControlClient> = {}): ControlClient {
     getConfig: vi.fn().mockResolvedValue({}),
     patchConfig: vi.fn().mockResolvedValue({}),
     getCommands: vi.fn().mockResolvedValue({ commands: [] }),
+    authorize: vi.fn().mockResolvedValue({ administrator: true, user: { id: owner.id, name: owner.name } }),
+    getBirthday: vi.fn().mockResolvedValue({ birthday: null }),
+    setBirthday: vi.fn().mockResolvedValue({ month: 1, day: 1, birthYear: null }),
+    clearBirthday: vi.fn().mockResolvedValue({ ok: true }),
     ...overrides,
   };
 }
 
-function sessionHeaders(): Record<string, string> {
-  const cookie = issueSession(config.DASHBOARD_SESSION_SECRET);
+function sessionHeaders(user: SessionUser | null = null): Record<string, string> {
+  const cookie = issueSession(config.DASHBOARD_SESSION_SECRET, Date.now(), user ?? undefined);
   return {
     cookie: `siela_dashboard=${cookie}`,
     "x-csrf-token": csrfToken(cookie, config.DASHBOARD_SESSION_SECRET),
@@ -237,7 +243,116 @@ describe("dashboard HTTP boundary", () => {
     await app.close();
   });
 
-  it("maps a feature update to the fixed control API route", async () => {
+  it("maps a feature update to the fixed control API route and passes the actor", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/guilds/123456789/features/music-playback",
+      headers: sessionHeaders(owner),
+      payload: { enabled: false },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(control.updateFeature).toHaveBeenCalledWith("123456789", "music-playback", false, owner.id);
+    await app.close();
+  });
+
+  it("reports Administrator permission for the signed-in user", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/guilds/123456789/permissions",
+      headers: sessionHeaders(owner),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ administrator: true });
+    expect(control.authorize).toHaveBeenCalledWith("123456789", owner.id);
+    await app.close();
+  });
+
+  it("reports no permission when the member is not an administrator or the check fails", async () => {
+    const member = controlStub({ authorize: vi.fn().mockResolvedValue({ administrator: false, user: null }) });
+    const memberApp = createDashboardServer({ config, publicDir, control: member });
+    const memberResponse = await memberApp.inject({
+      method: "GET",
+      url: "/api/guilds/123456789/permissions",
+      headers: sessionHeaders(owner),
+    });
+    expect(memberResponse.json()).toEqual({ administrator: false });
+    await memberApp.close();
+
+    const failing = controlStub({ authorize: vi.fn().mockRejectedValue(new Error("control offline")) });
+    const failingApp = createDashboardServer({ config, publicDir, control: failing });
+    const failingResponse = await failingApp.inject({
+      method: "GET",
+      url: "/api/guilds/123456789/permissions",
+      headers: sessionHeaders(owner),
+    });
+    expect(failingResponse.statusCode).toBe(200);
+    expect(failingResponse.json()).toEqual({ administrator: false });
+    await failingApp.close();
+  });
+
+  it("blocks feature and settings writes without Administrator permission", async () => {
+    const control = controlStub({ authorize: vi.fn().mockResolvedValue({ administrator: false, user: null }) });
+    const app = createDashboardServer({ config, publicDir, control });
+    const feature = await app.inject({
+      method: "PATCH",
+      url: "/api/guilds/123456789/features/music-playback",
+      headers: sessionHeaders(owner),
+      payload: { enabled: false },
+    });
+    const settings = await app.inject({
+      method: "PATCH",
+      url: "/api/guilds/123456789/config/prefix",
+      headers: sessionHeaders(owner),
+      payload: { prefix: "?" },
+    });
+
+    expect(feature.statusCode).toBe(403);
+    expect(feature.json().error).toMatchObject({ code: "administrator_required" });
+    expect(settings.statusCode).toBe(403);
+    expect(settings.json().error).toMatchObject({ code: "administrator_required" });
+    expect(control.updateFeature).not.toHaveBeenCalled();
+    expect(control.patchConfig).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("blocks writes when the permission check fails", async () => {
+    const control = controlStub({ authorize: vi.fn().mockRejectedValue(new Error("control offline")) });
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/guilds/123456789/features/music-playback",
+      headers: sessionHeaders(owner),
+      payload: { enabled: false },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json().error.code).toBe("administrator_required");
+    expect(control.updateFeature).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("passes the signed-in user as actor for a settings write", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/guilds/123456789/config/prefix",
+      headers: sessionHeaders(owner),
+      payload: { prefix: "?" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(control.patchConfig).toHaveBeenCalledWith("123456789", "prefix", { prefix: "?" }, owner.id);
+    await app.close();
+  });
+
+  it("does not change features without an authenticated Discord user", async () => {
     const control = controlStub();
     const app = createDashboardServer({ config, publicDir, control });
     const response = await app.inject({
@@ -247,8 +362,78 @@ describe("dashboard HTTP boundary", () => {
       payload: { enabled: false },
     });
 
-    expect(response.statusCode).toBe(200);
-    expect(control.updateFeature).toHaveBeenCalledWith("123456789", "music-playback", false);
+    expect(response.statusCode).toBe(403);
+    expect(response.json().error.code).toBe("administrator_required");
+    expect(control.updateFeature).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("reads, saves, and clears the session user's birthday", async () => {
+    const birthday = { month: 4, day: 2, birthYear: null };
+    const control = controlStub({ getBirthday: vi.fn().mockResolvedValue(birthday) });
+    const app = createDashboardServer({ config, publicDir, control });
+    const read = await app.inject({
+      method: "GET",
+      url: "/api/guilds/123456789/me/birthday",
+      headers: sessionHeaders(owner),
+    });
+    const save = await app.inject({
+      method: "PUT",
+      url: "/api/guilds/123456789/me/birthday",
+      headers: sessionHeaders(owner),
+      payload: { month: 4, day: 2 },
+    });
+    const clear = await app.inject({
+      method: "DELETE",
+      url: "/api/guilds/123456789/me/birthday",
+      headers: sessionHeaders(owner),
+    });
+
+    expect(read.statusCode).toBe(200);
+    expect(read.json()).toEqual({ birthday });
+    expect(control.getBirthday).toHaveBeenCalledWith("123456789", owner.id);
+    expect(save.statusCode).toBe(200);
+    expect(control.setBirthday).toHaveBeenCalledWith("123456789", owner.id, { month: 4, day: 2 });
+    expect(clear.statusCode).toBe(200);
+    expect(clear.json()).toEqual({ ok: true });
+    expect(control.clearBirthday).toHaveBeenCalledWith("123456789", owner.id);
+    await app.close();
+  });
+
+  it("returns an empty birthday when the control API has none", async () => {
+    const control = controlStub({ getBirthday: vi.fn().mockResolvedValue({ birthday: null }) });
+    const app = createDashboardServer({ config, publicDir, control });
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/guilds/123456789/me/birthday",
+      headers: sessionHeaders(owner),
+    });
+
+    expect(response.json()).toEqual({ birthday: null });
+    await app.close();
+  });
+
+  it("requires CSRF for a birthday write and a Discord account for birth data", async () => {
+    const control = controlStub();
+    const app = createDashboardServer({ config, publicDir, control });
+    const noCsrf = await app.inject({
+      method: "PUT",
+      url: "/api/guilds/123456789/me/birthday",
+      headers: { cookie: sessionHeaders(owner).cookie },
+      payload: { month: 1, day: 1 },
+    });
+    const operator = await app.inject({
+      method: "GET",
+      url: "/api/guilds/123456789/me/birthday",
+      headers: sessionHeaders({ id: "operator", name: "Operator", avatarUrl: null }),
+    });
+
+    expect(noCsrf.statusCode).toBe(403);
+    expect(noCsrf.json().error.code).toBe("csrf_mismatch");
+    expect(operator.statusCode).toBe(403);
+    expect(operator.json().error.code).toBe("discord_account_required");
+    expect(control.setBirthday).not.toHaveBeenCalled();
+    expect(control.getBirthday).not.toHaveBeenCalled();
     await app.close();
   });
 

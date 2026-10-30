@@ -17,31 +17,50 @@ export class ControlApiError extends Error {
   }
 }
 
+export interface AuthorizationResult {
+  administrator: boolean;
+  user: { id: string; name: string } | null;
+}
+
+export interface BirthdayInput {
+  month: number;
+  day: number;
+  year?: number | null;
+}
+
 export interface ControlClient {
   getStatus(): Promise<unknown>;
   getGuilds(): Promise<unknown>;
   getFeatures(guildId: string): Promise<unknown>;
-  updateFeature(guildId: string, featureId: string, enabled: boolean): Promise<unknown>;
+  updateFeature(guildId: string, featureId: string, enabled: boolean, actorId?: string): Promise<unknown>;
   getAudit(guildId: string, limit: number): Promise<unknown>;
   getMusic(guildId: string): Promise<unknown>;
   musicAction(guildId: string, action: MusicAction, body: unknown): Promise<unknown>;
   getConfig(guildId: string): Promise<unknown>;
-  patchConfig(guildId: string, section: ConfigSection, body: Record<string, unknown>): Promise<unknown>;
+  patchConfig(guildId: string, section: ConfigSection, body: Record<string, unknown>, actorId?: string): Promise<unknown>;
   getCommands(): Promise<unknown>;
+  authorize(guildId: string, userId: string): Promise<AuthorizationResult>;
+  getBirthday(guildId: string, userId: string): Promise<unknown>;
+  setBirthday(guildId: string, userId: string, body: BirthdayInput): Promise<unknown>;
+  clearBirthday(guildId: string, userId: string): Promise<unknown>;
 }
 
 type ControlFetch = (url: URL, init?: RequestInit) => Promise<Response>;
 
 export function createControlClient(baseUrl: string, token: string, fetcher: ControlFetch = fetch): ControlClient {
-  async function request(path: string, options: { guildId?: string; method?: string; body?: unknown } = {}): Promise<unknown> {
+  async function request(
+    path: string,
+    options: { guildId?: string; userId?: string; actorId?: string; method?: string; body?: unknown } = {},
+  ): Promise<unknown> {
     let response: Response;
     try {
       response = await fetcher(new URL(path, baseUrl), {
         method: options.method ?? "GET",
         headers: {
           authorization: `Bearer ${token}`,
-          "x-actor": "dashboard",
+          "x-actor": options.actorId ?? "dashboard",
           ...(options.guildId ? { "x-guild-id": options.guildId } : {}),
+          ...(options.userId ? { "x-user-id": options.userId } : {}),
           ...(options.body === undefined ? {} : { "content-type": "application/json" }),
         },
         ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
@@ -74,7 +93,8 @@ export function createControlClient(baseUrl: string, token: string, fetcher: Con
     getStatus: () => request("/v1/status"),
     getGuilds: () => request("/v1/guilds"),
     getFeatures: (guildId) => request("/v1/features", { guildId }),
-    updateFeature: (guildId, featureId, enabled) => request("/v1/features", { guildId, method: "PATCH", body: { featureId, enabled } }),
+    updateFeature: (guildId, featureId, enabled, actorId) =>
+      request("/v1/features", { guildId, actorId, method: "PATCH", body: { featureId, enabled } }),
     getAudit: (guildId, limit) => request(`/v1/audit?limit=${encodeURIComponent(String(limit))}`, { guildId }),
     getMusic: (guildId) => request("/v1/music/state", { guildId }),
     musicAction: (guildId, action, body) => request(`/v1/music/${action}`, { guildId, method: "POST", body }),
@@ -88,7 +108,7 @@ export function createControlClient(baseUrl: string, token: string, fetcher: Con
       ]);
       return { prefix, welcome, autorole, tempvc, music };
     },
-    patchConfig: (guildId, section, body) => {
+    patchConfig: (guildId, section, body, actorId) => {
       const paths: Record<ConfigSection, string> = {
         prefix: "/v1/prefix",
         welcome: "/v1/welcome",
@@ -96,8 +116,15 @@ export function createControlClient(baseUrl: string, token: string, fetcher: Con
         tempvc: "/v1/tempvc/config",
         music: "/v1/music/config",
       };
-      return request(paths[section], { guildId, method: "PATCH", body });
+      return request(paths[section], { guildId, actorId, method: "PATCH", body });
     },
     getCommands: () => request("/v1/commands"),
+    authorize: (guildId, userId) =>
+      request("/v1/authorize", { guildId, userId }) as Promise<AuthorizationResult>,
+    getBirthday: (guildId, userId) => request("/v1/users/me/birthday", { guildId, userId }),
+    setBirthday: (guildId, userId, body) =>
+      request("/v1/users/me/birthday", { guildId, userId, method: "PUT", body }),
+    clearBirthday: (guildId, userId) =>
+      request("/v1/users/me/birthday", { guildId, userId, method: "DELETE" }),
   };
 }

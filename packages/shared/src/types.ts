@@ -84,6 +84,7 @@ export interface AuditEntry {
   id: string;
   guildId: string;
   actorId: string | null;
+  actorName?: string | null;
   actorType: "user" | "mcp" | "system";
   source: "discord" | "mcp" | "control" | "system";
   action: string;

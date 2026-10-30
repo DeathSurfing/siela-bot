@@ -1,6 +1,6 @@
 # Siela admin dashboard
 
-The dashboard is a self-hosted control panel for the bot. It shows bot health, connected servers, feature flags, music playback, server settings, audit history, and registered commands. The selected server stays in the URL and in browser storage.
+The dashboard is a self-hosted control panel for the bot. It shows bot health, connected servers, feature flags, music playback, server settings, user settings, audit history, and registered commands. The selected server stays in the URL and in browser storage.
 
 ## Set up the dashboard
 
@@ -84,7 +84,7 @@ Put a TLS reverse proxy in front of any public-facing deployment. Set `DASHBOARD
 
 The interface stays flat. Rules and spacing group content; nested cards do not. The topbar carries the navigation toggle below 700px and bot status. The page heading carries the view name. The rail header carries the server picker, with the selected server's Discord image and name, so scope is changed in the menu instead of a topbar dropdown. The desktop rail collapses to a 58px icon column from a chevron beside the picker and remembers that choice. Below 700px the persistent rail gives way to a hamburger button that opens the same navigation, picker, and labels as a left drawer. The Overview keeps one status line, three centered metrics, and two rule-separated columns. Features are compact rows, and their commands live in the Commands view instead of repeating on every row. Servers keeps the owner ID, and Audit keeps the action source.
 
-Settings saves one section at a time. A save no longer re-renders the view, so unsaved edits in other sections survive. `Ctrl` or `Cmd` plus `S` saves every dirty section. A dot next to Save marks an unsaved section.
+The Server settings view saves one section at a time. A save no longer re-renders the view, so unsaved edits in other sections survive. `Ctrl` or `Cmd` plus `S` saves every dirty section. A dot next to Save marks an unsaved section. User settings shows the signed-in Discord profile and a birthday form for the selected server.
 
 The theme is monochrome, with a light and dark palette and a toggle in the rail. The selected palette persists in local storage and defaults to the system preference. Discord guild logos appear in the server selector; guilds without an icon show their initial.
 
@@ -92,11 +92,15 @@ Motion only marks state. Use transform and opacity, exact transition properties,
 
 ## Operating notes
 
+Feature switches and server settings are open only to a signed-in Discord user who has the Administrator permission in the selected server. The dashboard checks that permission with the bot control API before every write and disables the controls for everyone else. A failed check returns 403 `administrator_required`.
+
 Feature switches apply immediately. The dashboard shows an Undo action after each change, and a failed write reverts the switch and shows the API message inline.
 
 The music tab needs a voice channel ID. A browser cannot report which Discord voice channel its operator is in, so paste the target channel's ID into the field above **Add to queue**. The dashboard stores it per server in browser storage. Right-click a voice channel in Discord and choose **Copy ID**; enable Developer Mode under Discord's advanced settings if that item is missing.
 
-Settings save one section at a time. Boolean switches save their visible state, and role ID fields accept a comma-separated list.
+Server settings save one section at a time. Boolean switches save their visible state, and role ID fields accept a comma-separated list.
+
+Audit entries show the actor's Discord display name when the bot can resolve it. Hover the name or focus it to read the Discord ID. A non-Discord actor such as `dashboard`, `system`, or `mcp` keeps its name. When the bot cannot resolve a Discord ID, the dashboard labels the actor `Discord member` and keeps the ID in the title.
 
 ## Discord sign-in
 
@@ -119,7 +123,7 @@ All four are required together. A partial set makes the dashboard exit at startu
 
 Start the sign-in from the public HTTPS origin, not the LAN IP. The state cookie is host-only, so starting at the LAN address and returning to the public callback fails with `oauth=state`.
 
-When `DASHBOARD_PASSWORD` is set, the password form remains available beside Discord. When it is absent, the dashboard hides the password form and `POST /api/login` returns 404 `password_disabled`, so the Discord values must be complete. The owner allowlist is the current authorization gate. Per-guild Administrator permission checks are not enforced yet.
+When `DASHBOARD_PASSWORD` is set, the password form remains available beside Discord. When it is absent, the dashboard hides the password form and `POST /api/login` returns 404 `password_disabled`, so the Discord values must be complete. The owner allowlist decides who can sign in with Discord. A password session can read the dashboard, but it cannot change features or server settings, and it cannot manage a birthday, because those actions need a Discord user ID. Sign in with Discord to make changes.
 
 If the OAuth values are absent, the Discord button is hidden, `/auth/discord` returns 404, and the password is the only sign-in method.
 
@@ -134,13 +138,17 @@ The browser uses these same-origin routes:
 | `GET` | `/api/session` | Check the session, report whether Discord and password sign-in are enabled, and return the CSRF token when signed in. |
 | `GET` | `/api/status` | Read bot readiness and health. |
 | `GET` | `/api/guilds` | List servers the bot serves. |
+| `GET` | `/api/guilds/:guildId/permissions` | Report whether the signed-in user has the Administrator permission in that server. |
 | `GET` | `/api/guilds/:guildId/features` | Read feature toggles. |
-| `PATCH` | `/api/guilds/:guildId/features/:featureId` | Change one feature toggle. |
-| `GET` | `/api/guilds/:guildId/audit?limit=50` | Read recent actions. |
+| `PATCH` | `/api/guilds/:guildId/features/:featureId` | Change one feature toggle. Requires Administrator. |
+| `GET` | `/api/guilds/:guildId/audit?limit=50` | Read recent actions and actor display names. |
 | `GET` | `/api/guilds/:guildId/music` | Read player and queue state. |
 | `POST` | `/api/guilds/:guildId/music/:action` | Run a whitelisted music action. |
 | `GET` | `/api/guilds/:guildId/config` | Read settings for all supported sections. |
-| `PATCH` | `/api/guilds/:guildId/config/:section` | Update `prefix`, `welcome`, `autorole`, `tempvc`, or `music`. |
+| `PATCH` | `/api/guilds/:guildId/config/:section` | Update `prefix`, `welcome`, `autorole`, `tempvc`, or `music`. Requires Administrator. |
+| `GET` | `/api/guilds/:guildId/me/birthday` | Read the signed-in user's birthday for that server. |
+| `PUT` | `/api/guilds/:guildId/me/birthday` | Save the signed-in user's birthday. |
+| `DELETE` | `/api/guilds/:guildId/me/birthday` | Clear the signed-in user's birthday. |
 | `GET` | `/api/commands` | Read command registry metadata. |
 | `GET` | `/healthz` | Check the dashboard process. |
 
@@ -152,7 +160,9 @@ The `siela_dashboard` cookie contains the expiry, optional Discord identity, and
 
 The server sets a restrictive content security policy, denies framing, disables MIME sniffing, and sends a no-referrer policy. Static requests resolve inside `apps/dashboard/public`; traversal and symlink escapes are rejected. The container runs read-only, drops capabilities, and writes only to its `/tmp` tmpfs.
 
-The browser never receives `MCP_TOKEN`. `apps/dashboard/src/control-client.ts` is the single server-side adapter for bearer-authenticated requests. It sets `x-guild-id` on every guild-scoped control request. Dashboard route parameters, methods, configuration sections, and music actions are allowlisted before they reach that client.
+The browser never receives `MCP_TOKEN`. `apps/dashboard/src/control-client.ts` is the single server-side adapter for bearer-authenticated requests. It sets `x-guild-id` on every guild-scoped control request, `x-user-id` on permission and birthday requests, and `x-actor` to the signed-in Discord user on writes. Dashboard route parameters, methods, configuration sections, and music actions are allowlisted before they reach that client.
+
+The bot control API owns the permission check. `GET /v1/authorize` fetches the member from the selected guild and tests the Administrator flag. The dashboard treats a missing member, a non-Administrator member, and a failed check as no permission. Feature and settings writes return 403 `administrator_required`. Birthday routes read the caller from `x-user-id` and never accept a target user, so one member cannot read or change another member's birthday.
 
 ## Network boundary and guild scope
 

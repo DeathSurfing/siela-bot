@@ -11,6 +11,7 @@ export const state = {
   view: "overview",
   status: null,
   data: null,
+  permissions: { administrator: false },
   loading: false,
   error: null,
   featureErrors: {},

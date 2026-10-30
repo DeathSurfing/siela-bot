@@ -276,9 +276,13 @@ async function loadData(route = currentRoute) {
   state.error = null;
   state.loading = true;
   state.search = "";
+  state.permissions = { administrator: false };
   currentRoute = route;
   updateGuildPicker();
   renderMain();
+  const permissionsRequest = route.guildId
+    ? api.permissions(route.guildId).catch(() => ({ administrator: false }))
+    : Promise.resolve({ administrator: false });
   let statusRequest;
   try {
     if (route.view === "overview") {
@@ -296,10 +300,12 @@ async function loadData(route = currentRoute) {
       state.data = null;
       statusRequest = api.status();
     } else {
+      const canLoadBirthday = /^\d{17,20}$/.test(state.user?.id ?? "");
       const loaders = {
         features: () => api.features(route.guildId),
         music: () => api.music(route.guildId),
         settings: () => api.config(route.guildId),
+        user: () => canLoadBirthday ? api.birthday(route.guildId) : Promise.resolve({ birthday: null }),
         audit: () => api.audit(route.guildId, 50),
         commands: () => api.commands(),
       };
@@ -315,7 +321,9 @@ async function loadData(route = currentRoute) {
         state.status = null;
       }
     }
+    const permissions = await permissionsRequest;
     if (sequence !== loadSequence) return;
+    state.permissions = { administrator: permissions?.administrator === true };
     state.error = null;
   } catch (error) {
     if (sequence !== loadSequence) return;
@@ -451,7 +459,7 @@ function renderFeatureError(featureId, message) {
 
 async function applyFeature(featureId, enabled, options = {}) {
   const feature = state.data?.features?.find((item) => item.id === featureId);
-  if (!feature || state.pendingFeatures.has(featureId) || !state.guildId) return false;
+  if (!feature || state.pendingFeatures.has(featureId) || !state.guildId || !state.permissions.administrator) return false;
   const previous = feature.enabled;
   if (previous === enabled) return true;
   state.pendingFeatures.add(featureId);
@@ -626,15 +634,19 @@ function readConfigForm(form) {
 }
 
 function markSettingsDirty(form) {
-  if (!form || form.classList.contains("is-dirty")) return;
+  if (!form || !state.permissions.administrator || form.classList.contains("is-dirty")) return;
   form.classList.add("is-dirty");
   const submit = form.querySelector("[data-save-section]");
   if (submit) submit.disabled = false;
 }
 
 async function saveSettings(form) {
-  if (!form.classList.contains("is-dirty")) return;
   const section = form.dataset.configSection;
+  if (!state.permissions.administrator) {
+    setInlineFeedback(section, "Administrator permission required to change server settings.", true);
+    return;
+  }
+  if (!form.classList.contains("is-dirty")) return;
   const submit = form.querySelector("[type=submit]");
   submit.disabled = true;
   submit.textContent = "Saving…";
@@ -663,9 +675,62 @@ async function saveSettings(form) {
   }
 }
 
+async function saveBirthday(form) {
+  if (!state.guildId) return;
+  const month = Number(form.querySelector("#birthday-month")?.value);
+  const day = Number(form.querySelector("#birthday-day")?.value);
+  const yearField = form.querySelector("#birthday-year");
+  const year = yearField?.value.trim() ?? "";
+  if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(day) || day < 1 || day > 31) {
+    setInlineFeedback("birthday", "Choose a month and enter a day.", true);
+    return;
+  }
+  const body = { month, day };
+  if (year) body.year = Number(year);
+  const submit = form.querySelector("[data-birthday-save]");
+  if (submit) {
+    submit.disabled = true;
+    submit.textContent = "Saving…";
+  }
+  setInlineFeedback("birthday", "Saving birthday…");
+  try {
+    const result = await api.setBirthday(state.guildId, body);
+    state.data = { birthday: result?.birthday ?? null };
+    renderMain();
+    announce("Birthday saved.");
+    showToast("Birthday saved to this server.", { key: "birthday" });
+  } catch (error) {
+    setInlineFeedback("birthday", error instanceof Error ? error.message : "Your birthday could not be saved.", true);
+    if (submit?.isConnected) {
+      submit.disabled = false;
+      submit.textContent = "Save";
+    }
+  }
+}
+
+async function clearBirthday(button) {
+  if (!state.guildId) return;
+  button.disabled = true;
+  try {
+    await api.clearBirthday(state.guildId);
+    state.data = { birthday: null };
+    renderMain();
+    announce("Birthday cleared.");
+    showToast("Birthday cleared.", { key: "birthday" });
+  } catch (error) {
+    if (button.isConnected) button.disabled = false;
+    showToast(error instanceof Error ? error.message : "Your birthday could not be cleared.", { key: "birthday", tone: "error" });
+  }
+}
+
 document.addEventListener("submit", async (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
+  if (form.id === "birthday-form") {
+    event.preventDefault();
+    await saveBirthday(form);
+    return;
+  }
   if (form.id === "login-form") {
     event.preventDefault();
     const submit = form.querySelector("[type=submit]");
@@ -729,6 +794,8 @@ document.addEventListener("click", async (event) => {
     await loadData(currentRoute);
   } else if (action?.dataset.action === "toggle-feature") {
     await toggleFeature(action);
+  } else if (action?.dataset.action === "clear-birthday") {
+    await clearBirthday(action);
   } else if (action?.dataset.action === "music") {
     const body = action.dataset.musicAction === "loop" ? { mode: action.dataset.loopMode } : {};
     await runMusicAction(action.dataset.musicAction, body);
@@ -748,7 +815,7 @@ document.addEventListener("click", async (event) => {
   }
 
   const settingToggle = target.closest("[data-setting-toggle]");
-  if (settingToggle) {
+  if (settingToggle && state.permissions.administrator) {
     const checked = settingToggle.getAttribute("aria-checked") === "true";
     settingToggle.setAttribute("aria-checked", String(!checked));
     markSettingsDirty(settingToggle.closest("[data-config-section]"));

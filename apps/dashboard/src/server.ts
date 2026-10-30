@@ -31,9 +31,15 @@ import { createDiscordOAuth, createOAuthState, isOAuthOwner, type DiscordOAuth }
 
 const loginSchema = z.object({ password: z.string().min(1).max(1024) });
 const featureSchema = z.object({ enabled: z.boolean() });
+const birthdaySchema = z.object({
+  month: z.number().int(),
+  day: z.number().int(),
+  year: z.number().int().nullable().optional(),
+}).strict();
 const bodySchema = z.record(z.string(), z.unknown());
 const idPattern = /^[A-Za-z0-9_-]{1,100}$/;
 const guildPattern = /^\d{1,20}$/;
+const snowflakePattern = /^\d{17,20}$/;
 const MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
@@ -110,6 +116,17 @@ function getIdentifier(value: string, label: string, reply: FastifyReply): strin
   return value;
 }
 
+function toBirthday(value: unknown): { month: number; day: number; birthYear: number | null } | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.month !== "number" || typeof record.day !== "number") return null;
+  return {
+    month: record.month,
+    day: record.day,
+    birthYear: typeof record.birthYear === "number" ? record.birthYear : null,
+  };
+}
+
 export function createDashboardServer(options: DashboardServerOptions): FastifyInstance {
   const { config } = options;
   const now = options.now ?? Date.now;
@@ -155,6 +172,42 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
     if (!verifySession(cookie, config.DASHBOARD_SESSION_SECRET, now())) {
       apiError(reply, 401, "unauthorized", "Your session has expired. Sign in again.");
     }
+  };
+
+  const sessionUser = (request: FastifyRequest): SessionUser | null => {
+    const cookie = readCookie(request.headers.cookie);
+    return verifySession(cookie, config.DASHBOARD_SESSION_SECRET, now())?.user ?? null;
+  };
+
+  const isAdministrator = async (guildId: string, userId: string): Promise<boolean> => {
+    try {
+      return (await control.authorize(guildId, userId)).administrator === true;
+    } catch {
+      return false;
+    }
+  };
+
+  const requireAdministrator = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    guildId: string,
+  ): Promise<SessionUser | null> => {
+    const user = sessionUser(request);
+    if (user && (await isAdministrator(guildId, user.id))) return user;
+    apiError(
+      reply,
+      403,
+      "administrator_required",
+      "You need the Administrator permission in this server to change its features and settings.",
+    );
+    return null;
+  };
+
+  const birthdayUser = (request: FastifyRequest, reply: FastifyReply): SessionUser | null => {
+    const user = sessionUser(request);
+    if (user && snowflakePattern.test(user.id)) return user;
+    apiError(reply, 403, "discord_account_required", "Sign in with Discord to manage your birthday.");
+    return null;
   };
 
   app.get("/healthz", async () => ({ ok: true }));
@@ -273,9 +326,13 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
   const get = (url: string, handler: (request: FastifyRequest, reply: FastifyReply) => Promise<unknown>) => {
     app.get(url, { preHandler: authenticated }, async (request, reply) => handler(request, reply));
   };
-  const mutate = (url: string, handler: (request: FastifyRequest, reply: FastifyReply) => Promise<unknown>) => {
+  const mutation = (
+    method: "PATCH" | "PUT" | "DELETE",
+    url: string,
+    handler: (request: FastifyRequest, reply: FastifyReply) => Promise<unknown>,
+  ) => {
     app.route({
-      method: "PATCH",
+      method,
       url,
       preHandler: async (request, reply) => {
         await authenticated(request, reply);
@@ -288,17 +345,25 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
   get("/api/status", () => control.getStatus());
   get("/api/guilds", () => control.getGuilds());
   get("/api/commands", () => control.getCommands());
+  get("/api/guilds/:guildId/permissions", async (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    if (!guildId) return undefined;
+    const user = sessionUser(request);
+    return { administrator: user ? await isAdministrator(guildId, user.id) : false };
+  });
   get("/api/guilds/:guildId/features", (request, reply) => {
     const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
     return guildId ? control.getFeatures(guildId) : Promise.resolve(undefined);
   });
-  mutate("/api/guilds/:guildId/features/:featureId", async (request, reply) => {
+  mutation("PATCH", "/api/guilds/:guildId/features/:featureId", async (request, reply) => {
     const params = request.params as { guildId: string; featureId: string };
     const guildId = getGuildId(params.guildId, reply);
     const featureId = getIdentifier(params.featureId, "Feature ID", reply);
     const body = featureSchema.safeParse(request.body);
     if (!body.success) return apiError(reply, 400, "invalid_body", "Feature state must include an enabled boolean.");
-    return guildId && featureId ? control.updateFeature(guildId, featureId, body.data.enabled) : undefined;
+    if (!guildId || !featureId) return undefined;
+    const user = await requireAdministrator(request, reply, guildId);
+    return user ? control.updateFeature(guildId, featureId, body.data.enabled, user.id) : undefined;
   });
   get("/api/guilds/:guildId/audit", (request, reply) => {
     const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
@@ -327,19 +392,42 @@ export function createDashboardServer(options: DashboardServerOptions): FastifyI
     const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
     return guildId ? control.getConfig(guildId) : Promise.resolve(undefined);
   });
-  app.patch<{ Params: { guildId: string; section: string } }>(
-    "/api/guilds/:guildId/config/:section",
-    { preHandler: [authenticated, async (request, reply) => { validCsrf(request, reply, config.DASHBOARD_SESSION_SECRET); }] },
-    async (request, reply) => {
-      const guildId = getGuildId(request.params.guildId, reply);
-      if (!CONFIG_SECTIONS.includes(request.params.section as ConfigSection)) {
-        return apiError(reply, 404, "unknown_config_section", "That settings section is not available.");
-      }
-      const body = bodySchema.safeParse(request.body);
-      if (!body.success) return apiError(reply, 400, "invalid_body", "Settings must be a JSON object.");
-      return guildId ? control.patchConfig(guildId, request.params.section as ConfigSection, body.data) : undefined;
-    },
-  );
+  mutation("PATCH", "/api/guilds/:guildId/config/:section", async (request, reply) => {
+    const { guildId: rawGuildId, section } = request.params as { guildId: string; section: string };
+    const guildId = getGuildId(rawGuildId, reply);
+    if (!CONFIG_SECTIONS.includes(section as ConfigSection)) {
+      return apiError(reply, 404, "unknown_config_section", "That settings section is not available.");
+    }
+    const body = bodySchema.safeParse(request.body);
+    if (!body.success) return apiError(reply, 400, "invalid_body", "Settings must be a JSON object.");
+    if (!guildId) return undefined;
+    const user = await requireAdministrator(request, reply, guildId);
+    return user ? control.patchConfig(guildId, section as ConfigSection, body.data, user.id) : undefined;
+  });
+  get("/api/guilds/:guildId/me/birthday", async (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    if (!guildId) return undefined;
+    const user = birthdayUser(request, reply);
+    if (!user) return undefined;
+    return { birthday: toBirthday(await control.getBirthday(guildId, user.id)) };
+  });
+  mutation("PUT", "/api/guilds/:guildId/me/birthday", async (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    if (!guildId) return undefined;
+    const user = birthdayUser(request, reply);
+    if (!user) return undefined;
+    const body = birthdaySchema.safeParse(request.body);
+    if (!body.success) return apiError(reply, 400, "invalid_body", "Birthday must include month and day, with an optional year.");
+    return { birthday: toBirthday(await control.setBirthday(guildId, user.id, body.data)) };
+  });
+  mutation("DELETE", "/api/guilds/:guildId/me/birthday", async (request, reply) => {
+    const guildId = getGuildId((request.params as { guildId: string }).guildId, reply);
+    if (!guildId) return undefined;
+    const user = birthdayUser(request, reply);
+    if (!user) return undefined;
+    await control.clearBirthday(guildId, user.id);
+    return { ok: true };
+  });
 
   app.get("/", async (_request, reply) => serveStatic(publicRoot, "index.html", reply));
   app.get("/*", async (request, reply) => {

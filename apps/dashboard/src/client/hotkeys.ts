@@ -21,6 +21,7 @@ export function installHotkeys(actions: HotkeyActions): () => void {
     manager.register(["G", "F"] as const, () => actions.view("features"), { timeout: 1200 }),
     manager.register(["G", "M"] as const, () => actions.view("music"), { timeout: 1200 }),
     manager.register(["G", "T"] as const, () => actions.view("settings"), { timeout: 1200 }),
+    manager.register(["G", "U"] as const, () => actions.view("user"), { timeout: 1200 }),
     manager.register(["G", "A"] as const, () => actions.view("audit"), { timeout: 1200 }),
     manager.register(["G", "C"] as const, () => actions.view("commands"), { timeout: 1200 }),
     manager.register("Mod+S", actions.save),

@@ -148,7 +148,7 @@ For local development, use a PostgreSQL container and a `.env` file inside `apps
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains process structure, command flow, boot order, and storage.
 - [docs/MULTI-GUILD.md](docs/MULTI-GUILD.md) explains server binding, per-guild state, and the guild-scoped control API.
 - [docs/FEATURES.md](docs/FEATURES.md) lists the per-guild feature switches and where they are enforced.
-- [docs/DASHBOARD.md](docs/DASHBOARD.md) covers the web dashboard, its first-run setup, and its security model.
+- [docs/DASHBOARD.md](docs/DASHBOARD.md) covers the web dashboard, its first-run setup, the Administrator gate on server changes, and its security model.
 - [docs/RUNBOOK.md](docs/RUNBOOK.md) covers deployment, updates, backups, and troubleshooting.
 - [docs/ECONOMY.md](docs/ECONOMY.md) explains Siela Coins and pricing.
 - [docs/ECONOMY_V2.md](docs/ECONOMY_V2.md) explains the earning, AI-gating, and exchange design choices.

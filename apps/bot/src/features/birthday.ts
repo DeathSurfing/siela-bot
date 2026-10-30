@@ -26,13 +26,13 @@ export class BirthdayService {
     return row ?? null;
   }
 
-  async set(guildId: string, userId: string, month: number, day: number, birthYear?: number): Promise<UserBirthdayRow> {
+  async set(guildId: string, userId: string, month: number, day: number, birthYear?: number | null): Promise<UserBirthdayRow> {
     const [row] = await this.db
       .insert(userBirthdays)
-      .values({ guildId, userId, month, day, birthYear })
+      .values({ guildId, userId, month, day, birthYear: birthYear ?? null })
       .onConflictDoUpdate({
         target: [userBirthdays.guildId, userBirthdays.userId],
-        set: { month, day, birthYear, updatedAt: new Date() },
+        set: { month, day, birthYear: birthYear ?? null, updatedAt: new Date() },
       })
       .returning();
     if (!row) throw new Error("Failed to save birthday");
