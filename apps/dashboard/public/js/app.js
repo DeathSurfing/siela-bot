@@ -357,6 +357,7 @@ async function loadData(route = currentRoute) {
 }
 
 function stopGamePoll() {
+  gamePollSequence += 1;
   if (gamePoll) {
     clearInterval(gamePoll);
     gamePoll = null;
