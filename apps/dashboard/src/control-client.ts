@@ -1,5 +1,5 @@
 export const MUSIC_ACTIONS = [
-  "join", "play", "pause", "resume", "skip", "stop", "volume", "seek", "loop", "shuffle", "clear", "filters", "disconnect",
+  "join", "play", "pause", "resume", "skip", "stop", "seek", "loop", "shuffle", "clear", "filters", "disconnect",
 ] as const;
 
 export const CONFIG_SECTIONS = ["prefix", "welcome", "autorole", "tempvc", "music"] as const;

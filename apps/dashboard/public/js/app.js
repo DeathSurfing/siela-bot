@@ -619,6 +619,30 @@ function exactResolverResult(input, record) {
   return matches.length === 1 ? matches[0] : null;
 }
 
+function singleResolverResult(results, query) {
+  const term = query.toLocaleLowerCase();
+  const exact = results.filter((result) => String(result.name ?? "").toLocaleLowerCase() === term);
+  if (exact.length === 1) return exact[0];
+  return results.length === 1 ? results[0] : null;
+}
+
+async function resolveSingle(kind, raw) {
+  const value = String(raw ?? "").trim();
+  if (RESOLVE_SNOWFLAKE.test(value)) return { id: value };
+  const query = value.replace(/^[#@]/, "").trim();
+  if (!query || !state.guildId) return null;
+  let payload;
+  try {
+    payload = await api.resolve(state.guildId, query, kind);
+  } catch {
+    return null;
+  }
+  const results = Array.isArray(payload?.results) ? payload.results : [];
+  const match = singleResolverResult(results, query);
+  const id = String(match?.id ?? "");
+  return RESOLVE_SNOWFLAKE.test(id) ? { ...match, id } : null;
+}
+
 document.addEventListener("focusin", (event) => {
   const target = event.target;
   if (target instanceof HTMLInputElement && target.dataset.resolveKind) enhanceResolver(target);
@@ -889,24 +913,50 @@ async function refreshMusic() {
   startProgress();
 }
 
+const MUSIC_CHANNEL_ACTIONS = new Set(["join", "play"]);
+
+function buildMusicBody(action, body = {}, voiceChannelId = "") {
+  const payload = { ...body };
+  if (MUSIC_CHANNEL_ACTIONS.has(action) && voiceChannelId) payload.voiceChannelId = voiceChannelId;
+  else delete payload.voiceChannelId;
+  return payload;
+}
+
 async function runMusicAction(action, body = {}, button = null) {
   if (!state.guildId) return;
   if (action === "play" && !body.query) {
     document.querySelector("#track-query")?.focus();
     return;
   }
+  const field = document.querySelector("#voice-channel");
   const voiceSelf = button?.dataset.voiceSelf === "true";
-  const voiceChannel = document.querySelector("#voice-channel")?.value.trim() || state.voiceChannelId || "";
-  if (action === "join" && !voiceSelf && !voiceChannel) {
-    showToast("Paste a voice channel ID before joining, or use Join my voice channel.", { key: "music", tone: "error" });
-    document.querySelector("#voice-channel")?.focus();
-    return;
+  let voiceChannel = "";
+  if (MUSIC_CHANNEL_ACTIONS.has(action) && !voiceSelf) {
+    const raw = field?.value.trim() || state.voiceChannelId || "";
+    if (raw) {
+      const resolved = await resolveSingle("voice", raw);
+      if (!resolved) {
+        showToast("No unique voice channel matches that name. Pick one from the list.", { key: "music", tone: "error" });
+        field?.focus();
+        return;
+      }
+      voiceChannel = resolved.id;
+      if (field && field.value.trim() !== voiceChannel) {
+        field.value = voiceChannel;
+        state.voiceChannelId = voiceChannel;
+        localStorage.setItem(`siela.voice.${state.guildId}`, voiceChannel);
+      }
+    }
+    if (action === "join" && !voiceChannel) {
+      showToast("Enter a voice channel name, or use Join my voice channel.", { key: "music", tone: "error" });
+      field?.focus();
+      return;
+    }
   }
-  if (!voiceSelf && voiceChannel && (action === "join" || action === "play")) body.voiceChannelId = voiceChannel;
   const trigger = button ?? document.querySelector(`[data-music-action="${CSS.escape(action)}"]`);
   if (trigger) trigger.disabled = true;
   try {
-    await api.musicAction(state.guildId, action, body);
+    await api.musicAction(state.guildId, action, buildMusicBody(action, body, voiceChannel));
     await refreshMusic();
     announce("Player updated.");
   } catch (error) {
@@ -1364,11 +1414,6 @@ document.addEventListener("input", (event) => {
       state.search = target.value;
       renderMain(true);
     }
-    if (target.id === "volume-control") {
-      const output = document.querySelector('output[for="volume-control"]');
-      if (output) output.value = `${target.value}%`;
-      target.setAttribute("aria-valuetext", `${target.value} percent`);
-    }
     if (target.id === "voice-channel") {
       state.voiceChannelId = target.value.trim();
       if (state.guildId) localStorage.setItem(`siela.voice.${state.guildId}`, state.voiceChannelId);
@@ -1387,9 +1432,6 @@ document.addEventListener("input", (event) => {
 
 document.addEventListener("change", async (event) => {
   const target = event.target;
-  if (target instanceof HTMLInputElement && target.id === "volume-control") {
-    await runMusicAction("volume", { volume: Number(target.value) });
-  }
   if (target instanceof HTMLInputElement && target.id === "track-seek") {
     await runMusicAction("seek", { positionMs: Number(target.value) });
   }

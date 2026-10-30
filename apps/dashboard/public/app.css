@@ -315,6 +315,8 @@ kbd { min-width: 17px; padding: 1px 4px; border: 1px solid var(--line); border-r
 .music-layout { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(280px, 1.1fr); align-items: start; }
 .player { min-width: 0; padding-right: 36px; }
 .player-topline { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.player-topline-status { display: flex; align-items: center; gap: 8px; }
+.volume-chip { padding: 2px 7px; border: 1px solid var(--line); border-radius: var(--radius-pill); color: var(--muted); font: 0.66rem/1.5 ui-monospace, monospace; }
 .player-channel { display: flex; align-items: center; gap: 7px; margin: 10px 0 0; color: var(--muted); font-size: 0.74rem; }
 .player-channel .icon { width: 15px; height: 15px; opacity: 0.72; }
 .player-channel span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -337,11 +339,6 @@ kbd { min-width: 17px; padding: 1px 4px; border: 1px solid var(--line); border-r
 .play-button .icon { width: 18px; height: 18px; filter: var(--icon-on-accent); }
 .loop-button { min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 7px; border: 1px solid transparent; border-radius: var(--radius-control); color: var(--muted); background: transparent; cursor: pointer; font-size: 0.73rem; text-transform: capitalize; transition: transform 90ms var(--ease-out), color var(--duration-press), background-color var(--duration-press); }
 .loop-button .icon { width: 14px; height: 14px; }
-.volume-row { display: flex; align-items: center; gap: 9px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
-.volume-row > .icon { width: 15px; height: 15px; opacity: 0.76; }
-.volume-row label { color: var(--muted); font-size: 0.73rem; }
-.volume-row input { min-width: 30px; flex: 1; accent-color: var(--accent-bright); }
-.volume-row output { min-width: 34px; color: var(--text); font: 0.73rem/1 ui-monospace, monospace; text-align: end; }
 .play-form { display: grid; gap: 6px; margin-top: 20px; }
 .play-form > label, .setting-field strong { color: var(--muted); font-size: 0.72rem; font-weight: 550; }
 .input-action { display: flex; gap: 7px; }

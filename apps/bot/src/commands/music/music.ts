@@ -2,6 +2,7 @@ import { SlashCommandBuilder } from "discord.js";
 import { formatDuration, parseDuration } from "@siela/shared";
 import type { Command, CommandContext } from "../../framework/types.js";
 import type { MusicService } from "../../features/music.js";
+import { MUSIC_VOLUME } from "../../features/music.js";
 import { buildMusicPayload, buildQueuePayload } from "../../features/music-ui.js";
 import { buildLyricsPayload } from "../../features/lyrics-ui.js";
 import { attachConfirmation, attachPagination, card, confirmCard, success } from "../../features/ui.js";
@@ -441,30 +442,25 @@ const volumeCommand: Command = {
   name: "volume",
   aliases: ["vol"],
   category: "music",
-  description: "Set playback volume (0-150).",
-  usage: "<0-150>",
-  examples: ["volume 80"],
+  description: "Show the fixed playback volume.",
+  usage: "",
+  examples: ["volume"],
   slash: new SlashCommandBuilder()
     .setName("volume")
-    .setDescription("Set volume")
-    .addIntegerOption((option) => option.setName("value").setDescription("0-150").setRequired(true).setMinValue(0).setMaxValue(150)),
+    .setDescription("Show the fixed playback volume"),
   async execute(ctx) {
-    const value = Number(ctx.args[0]);
-    if (!Number.isInteger(value) || value < 0 || value > 150) throw new UserError("Volume must be 0-150.");
     await requireDj(ctx);
     const target = fleetTarget(ctx);
     if (target) {
-      const result = (await target.fleet.control(target.nodeId, "volume", { volume: value })) as { volume?: unknown };
+      await target.fleet.control(target.nodeId, "volume", { volume: MUSIC_VOLUME });
       const { state } = await target.fleet.nodeState(target.nodeId);
       await music(ctx).refreshNowPlaying(ctx.guild.id, state, target.channelId);
-      const actual = typeof result?.volume === "number" ? result.volume : value;
-      await ctx.reply(success(`Volume set to **${actual}%**.`));
-      return;
+    } else {
+      requireSameVoice(ctx);
+      await music(ctx).volume(ctx.guild.id, MUSIC_VOLUME);
+      music(ctx).refreshNowPlaying(ctx.guild.id);
     }
-    requireSameVoice(ctx);
-    const actual = await music(ctx).volume(ctx.guild.id, value);
-    music(ctx).refreshNowPlaying(ctx.guild.id);
-    await ctx.reply(success(`Volume set to **${actual}%**.`));
+    await ctx.reply(success(`Volume is fixed at **${MUSIC_VOLUME}%**.`));
   },
 };
 

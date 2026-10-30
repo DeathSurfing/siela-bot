@@ -30,7 +30,6 @@ import {
   musicSeekSchema,
   musicSettingsUpdateSchema,
   musicSkipSchema,
-  musicVolumeSchema,
   prefixSetSchema,
   privacyDeleteSchema,
   resolveQuerySchema,
@@ -601,11 +600,6 @@ export class ControlServer {
     this.route("POST", "/v1/music/stop", async (request) => {
       await this.requireMusic().stop(this.guildId(request));
       return { ok: true };
-    });
-    this.route("POST", "/v1/music/volume", async (request) => {
-      const guildId = await this.musicGuild(request);
-      const body = this.parse(musicVolumeSchema, request.body);
-      return { volume: await this.requireMusic().volume(guildId, body.volume) };
     });
     this.route("POST", "/v1/music/seek", async (request) => {
       const guildId = await this.musicGuild(request);

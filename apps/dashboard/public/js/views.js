@@ -25,7 +25,7 @@ const editableFields = {
   welcome: ["enabled", "channelId", "message", "embed", "card", "pingUser", "dmEnabled", "dmMessage", "goodbyeEnabled", "goodbyeChannelId", "goodbyeMessage"],
   autorole: ["enabled", "roleIds", "includeBots", "minAccountAgeDays", "delayMs"],
   tempvc: ["enabled", "hubChannelId", "categoryId", "nameTemplate", "defaultUserLimit", "defaultLocked", "autoDelete", "graceSeconds", "maxChannels", "maxPerUser"],
-  music: ["djRoleIds", "defaultVolume", "maxQueueSize", "musicChannelId", "aloneTimeoutSeconds"],
+  music: ["djRoleIds", "maxQueueSize", "musicChannelId", "aloneTimeoutSeconds"],
 };
 
 const hints = {
@@ -79,7 +79,6 @@ const labels = {
   maxChannels: "Maximum active channels",
   maxPerUser: "Maximum channels per member",
   djRoleIds: "DJ role IDs",
-  defaultVolume: "Default volume",
   maxQueueSize: "Maximum queue size",
   musicChannelId: "Music text channel ID",
   aloneTimeoutSeconds: "Disconnect after alone for seconds",
@@ -325,7 +324,6 @@ function renderMusic(data) {
   const paused = data?.paused === true;
   const title = current?.title ?? current?.name ?? "Nothing is playing";
   const artist = current?.artist ?? current?.author ?? "The player is idle";
-  const volume = Math.max(0, Math.min(150, Number(data?.volume ?? 50)));
   const duration = Number(current?.length) || 0;
   const position = Math.max(0, Math.min(duration, Number(data?.position) || 0));
   const durationLabel = current?.isStream ? "LIVE" : fmtTrackTime(duration);
@@ -345,7 +343,7 @@ function renderMusic(data) {
   return `${pageHeader("Music", `Playback and queue for ${currentGuildName}.`)}${voiceNotice}
     <div class="music-layout">
       <section class="player">
-        <div class="player-topline"><span class="table-meta">Now playing</span><span class="status-inline status-${paused ? "warn" : playing ? "ok" : "unknown"}"><i class="status-dot"></i>${paused ? "Paused" : playing ? "Playing" : "Idle"}</span></div>
+        <div class="player-topline"><span class="table-meta">Now playing</span><span class="player-topline-status"><span class="volume-chip">80% volume</span><span class="status-inline status-${paused ? "warn" : playing ? "ok" : "unknown"}"><i class="status-dot"></i>${paused ? "Paused" : playing ? "Playing" : "Idle"}</span></span></div>
         <p class="player-channel">${icon("headphones")}<span>Connected to ${escapeHtml(channelLabel)}</span></p>
         <div class="track-info"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(artist)}</p></div>
         <div class="player-progress"><output id="track-position" class="tabular">${escapeHtml(positionLabel)}</output><label class="sr-only" for="track-seek">Seek within current track</label><input id="track-seek" class="progress-line" type="range" min="0" max="${Math.max(duration, 1)}" value="${position}" aria-valuetext="${escapeHtml(`${positionLabel} of ${durationLabel}`)}" ${seekDisabled ? "disabled" : ""}><span class="tabular">${escapeHtml(durationLabel)}</span></div>
@@ -355,7 +353,6 @@ function renderMusic(data) {
           <button type="button" class="icon-button transport-secondary" data-action="music" data-music-action="skip" aria-label="Skip track" ${current || queue.length ? "" : "disabled"}>${icon("skip-forward")}</button>
           <button type="button" class="loop-button" data-action="music" data-music-action="loop" data-loop-mode="${loopNext}" aria-label="Change repeat mode. Currently ${escapeHtml(loop)}.">${icon("repeat")}<span>${escapeHtml(loop)} repeat</span></button>
         </div>
-        <div class="volume-row">${icon("volume-up")}<label for="volume-control">Volume</label><input id="volume-control" type="range" min="0" max="150" value="${volume}" aria-valuetext="${volume} percent"><output for="volume-control" class="tabular">${volume}%</output></div>
         <div class="filter-row" role="group" aria-label="Audio filter"><span class="table-meta">Filter</span>${filters.map(([value, label]) => `<button type="button" class="button ${activeFilter === value ? "button-primary" : "button-secondary"}" data-action="music" data-music-action="filters" data-filter-preset="${value}" aria-pressed="${activeFilter === value}">${label}</button>`).join("")}</div>
         <form class="play-form" id="play-form"><label for="voice-channel">Voice channel ID</label><input id="voice-channel" name="voiceChannelId" type="text" inputmode="numeric" placeholder="Right-click a voice channel in Discord, then Copy ID" autocomplete="off" value="${escapeHtml(state.voiceChannelId ?? "")}" data-resolve-kind="voice"><label for="track-query">Add to queue</label><div class="input-action"><input id="track-query" name="query" type="search" placeholder="Song or artist…" autocomplete="off" required><button class="button button-primary" type="submit">Add track</button></div></form>
         <div class="player-actions"><button type="button" class="button button-primary" data-action="music" data-music-action="join" data-voice-self="true">Join my voice channel</button><button type="button" class="button button-secondary" data-action="music" data-music-action="join">Join channel ID</button><button type="button" class="button button-quiet" data-action="music" data-music-action="disconnect">Disconnect</button><button type="button" class="button button-quiet danger-text" data-action="music" data-music-action="stop" ${playing || paused ? "" : "disabled"}>Stop playback</button></div>
